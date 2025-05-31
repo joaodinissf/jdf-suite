@@ -3,7 +3,10 @@
   "name": "Tab Organizer",
   "version": "1.0",
   "description": "Sort and organize tabs by URL and domain",
-  "permissions": ["tabs", "windows"],
+  "permissions": [
+    "tabs",
+    "windows"
+  ],
   "background": {
     "service_worker": "background.js"
   },

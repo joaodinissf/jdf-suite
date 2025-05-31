@@ -111,7 +111,7 @@ function extractDomain() {
 
       // Only extract tabs from other windows, not the current window
       const tabsToExtract = matchingTabs.filter(tab => tab.windowId !== activeTab.windowId);
-      
+
       if (tabsToExtract.length === 0) {
         alert('All matching tabs are already in the current window.');
         return;
