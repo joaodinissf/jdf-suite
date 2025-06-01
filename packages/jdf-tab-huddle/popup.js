@@ -109,15 +109,10 @@ function extractDomain() {
         return;
       }
 
-      // Only extract tabs from other windows, not the current window
-      const tabsToExtract = matchingTabs.filter(tab => tab.windowId !== activeTab.windowId);
+      // Extract all matching tabs to a new window
+      const tabsToExtract = matchingTabs;
 
-      if (tabsToExtract.length === 0) {
-        alert('All matching tabs are already in the current window.');
-        return;
-      }
-
-      // Create window with first tab from other windows and move others
+      // Create window with first tab and move others
       chrome.windows.create({
         tabId: tabsToExtract[0].id,
         focused: true
@@ -126,7 +121,7 @@ function extractDomain() {
           alert('Failed to create new window: ' + (chrome.runtime.lastError && chrome.runtime.lastError.message));
           return;
         }
-        // Move remaining tabs from other windows to the new window
+        // Move remaining tabs to the new window
         for (let i = 1; i < tabsToExtract.length; i++) {
           chrome.tabs.move(tabsToExtract[i].id, {
             windowId: newWindow.id,
