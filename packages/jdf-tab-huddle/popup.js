@@ -70,16 +70,7 @@ function lexHost(url) {
       return u.host || u.pathname.split('/')[0];
     }
 
-    if (!u.host || u.host === 'localhost') {
-      return u.host || 'localhost';
-    }
-
-    var parts = u.host.split('.');
-    parts.reverse();
-    if (parts.length > 1) {
-      parts = parts.slice(1);
-    }
-    return parts.join('.');
+    return u.hostname;
   } catch (e) {
     return url || '';
   }
