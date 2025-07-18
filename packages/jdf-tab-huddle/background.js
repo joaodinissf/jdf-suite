@@ -27,19 +27,22 @@ async function handleSortAllWindows(sendResponse) {
 
     // Sort tabs within each window
     for (const window of windows) {
-      // Sort this window's tabs by URL
-      const windowTabs = window.tabs.slice(); // Create copy to avoid mutating original
-      windowTabs.sort((a, b) => {
+      // Separate pinned and unpinned tabs
+      const pinnedTabs = window.tabs.filter(tab => tab.pinned);
+      const unpinnedTabs = window.tabs.filter(tab => !tab.pinned);
+      
+      // Sort unpinned tabs by URL
+      unpinnedTabs.sort((a, b) => {
         const urlA = a.pendingUrl || a.url;
         const urlB = b.pendingUrl || b.url;
         return urlA.localeCompare(urlB);
       });
 
-      // Move tabs to their sorted positions within the window
-      for (let i = 0; i < windowTabs.length; i++) {
-        await chrome.tabs.move(windowTabs[i].id, {
+      // Move unpinned tabs to their sorted positions (starting after pinned tabs)
+      for (let i = 0; i < unpinnedTabs.length; i++) {
+        await chrome.tabs.move(unpinnedTabs[i].id, {
           windowId: window.id,
-          index: i
+          index: pinnedTabs.length + i
         });
       }
     }
@@ -58,16 +61,20 @@ async function handleSortCurrentWindow(sendResponse) {
     const tabs = await chrome.tabs.query({ currentWindow: true });
     console.log('[Tab Organizer] Sorting tabs in current window');
 
-    // Sort tabs by URL
-    tabs.sort((a, b) => {
+    // Separate pinned and unpinned tabs
+    const pinnedTabs = tabs.filter(tab => tab.pinned);
+    const unpinnedTabs = tabs.filter(tab => !tab.pinned);
+    
+    // Sort unpinned tabs by URL
+    unpinnedTabs.sort((a, b) => {
       const urlA = a.pendingUrl || a.url;
       const urlB = b.pendingUrl || b.url;
       return urlA.localeCompare(urlB);
     });
 
-    // Move tabs to their new positions
-    for (let i = 0; i < tabs.length; i++) {
-      await chrome.tabs.move(tabs[i].id, { index: i });
+    // Move unpinned tabs to their sorted positions (starting after pinned tabs)
+    for (let i = 0; i < unpinnedTabs.length; i++) {
+      await chrome.tabs.move(unpinnedTabs[i].id, { index: pinnedTabs.length + i });
     }
     
     console.log('[Tab Organizer] Completed sortCurrentWindow');
@@ -123,7 +130,8 @@ async function handleExtractDomain(message, sendResponse) {
     const tabsToMove = [];
     for (const tab of allTabs) {
       const tabDomain = lexHost(tab.url);
-      if (tabDomain === targetDomain && tab.id !== message.tabId) {
+      // Skip pinned tabs - they cannot be moved between windows
+      if (tabDomain === targetDomain && tab.id !== message.tabId && !tab.pinned) {
         tabsToMove.push(tab.id);
       }
     }
@@ -141,16 +149,20 @@ async function handleExtractDomain(message, sendResponse) {
     setTimeout(async () => {
       const windowTabs = await chrome.tabs.query({ windowId: newWindow.id });
       
-      // Sort tabs by URL
-      windowTabs.sort((a, b) => {
+      // Filter out pinned tabs for sorting
+      const unpinnedTabs = windowTabs.filter(tab => !tab.pinned);
+      
+      // Sort unpinned tabs by URL
+      unpinnedTabs.sort((a, b) => {
         const urlA = a.pendingUrl || a.url;
         const urlB = b.pendingUrl || b.url;
         return urlA.localeCompare(urlB);
       });
       
-      // Move tabs to sorted positions
-      for (let i = 0; i < windowTabs.length; i++) {
-        await chrome.tabs.move(windowTabs[i].id, { index: i });
+      // Move unpinned tabs to sorted positions (starting after any pinned tabs)
+      const pinnedCount = windowTabs.filter(tab => tab.pinned).length;
+      for (let i = 0; i < unpinnedTabs.length; i++) {
+        await chrome.tabs.move(unpinnedTabs[i].id, { index: pinnedCount + i });
       }
       
       // Activate the original active tab
@@ -187,45 +199,51 @@ async function handleMoveAllToSingleWindow(sendResponse) {
 
     const allTabsToMove = [];
     
-    // Collect all tabs from other windows
+    // Collect all unpinned tabs from other windows (pinned tabs cannot be moved between windows)
     for (const window of windows) {
       if (window.id !== targetWindow.id) {
         for (const tab of window.tabs) {
-          allTabsToMove.push(tab.id);
+          if (!tab.pinned) {
+            allTabsToMove.push(tab.id);
+          }
         }
       }
     }
 
     if (allTabsToMove.length === 0) {
-      console.log('[Tab Organizer] No tabs to move');
+      console.log('[Tab Organizer] No unpinned tabs to move');
       sendResponse({ success: true });
       return;
     }
 
-    // Move all tabs to the target window
+    // Move all unpinned tabs to the target window
     await chrome.tabs.move(allTabsToMove, {
       windowId: targetWindow.id,
       index: -1
     });
 
-    console.log('[Tab Organizer] Moved', allTabsToMove.length, 'tabs to single window');
+    console.log('[Tab Organizer] Moved', allTabsToMove.length, 'unpinned tabs to single window');
 
-    // Wait a moment for tabs to settle, then sort all tabs in the target window
+    // Wait a moment for tabs to settle, then sort unpinned tabs in the target window
     setTimeout(async () => {
       const windowTabs = await chrome.tabs.query({ windowId: targetWindow.id });
       
-      // Sort tabs by URL
-      windowTabs.sort((a, b) => {
+      // Separate pinned and unpinned tabs
+      const pinnedTabs = windowTabs.filter(tab => tab.pinned);
+      const unpinnedTabs = windowTabs.filter(tab => !tab.pinned);
+      
+      // Sort unpinned tabs by URL
+      unpinnedTabs.sort((a, b) => {
         const urlA = a.pendingUrl || a.url;
         const urlB = b.pendingUrl || b.url;
         return urlA.localeCompare(urlB);
       });
       
-      // Move tabs to sorted positions
-      for (let i = 0; i < windowTabs.length; i++) {
-        await chrome.tabs.move(windowTabs[i].id, { 
+      // Move unpinned tabs to sorted positions (starting after pinned tabs)
+      for (let i = 0; i < unpinnedTabs.length; i++) {
+        await chrome.tabs.move(unpinnedTabs[i].id, { 
           windowId: targetWindow.id,
-          index: i 
+          index: pinnedTabs.length + i 
         });
       }
       
