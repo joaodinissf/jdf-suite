@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('sortAllWindows').addEventListener('click', sortAllWindows);
   document.getElementById('sortCurrentWindow').addEventListener('click', sortCurrentWindow);
   document.getElementById('extractDomain').addEventListener('click', extractDomain);
+  document.getElementById('moveAllToSingleWindow').addEventListener('click', moveAllToSingleWindow);
 });
 
 // Simple logging helper
@@ -89,5 +90,18 @@ function extractDomain() {
         log('Background failed:', response.error);
       }
     });
+  });
+}
+
+// Move all tabs to a single window
+function moveAllToSingleWindow() {
+  chrome.runtime.sendMessage({
+    action: 'moveAllToSingleWindow'
+  }, function(response) {
+    if (chrome.runtime.lastError) {
+      log('Error from background:', chrome.runtime.lastError.message);
+    } else if (!response.success) {
+      log('Background failed:', response.error);
+    }
   });
 }
