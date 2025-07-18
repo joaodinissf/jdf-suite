@@ -91,13 +91,23 @@ function extractDomain() {
 
 // Move all tabs to a single window
 function moveAllToSingleWindow() {
-  chrome.runtime.sendMessage({
-    action: 'moveAllToSingleWindow'
-  }, function(response) {
-    if (chrome.runtime.lastError) {
-      log('Error from background:', chrome.runtime.lastError.message);
-    } else if (!response.success) {
-      log('Background failed:', response.error);
+  chrome.tabs.query({ active: true, currentWindow: true }, function (activeTabs) {
+    if (activeTabs.length === 0) {
+      log('No active tab found');
+      return;
     }
+    
+    var activeTab = activeTabs[0];
+    
+    chrome.runtime.sendMessage({
+      action: 'moveAllToSingleWindow',
+      activeTabId: activeTab.id
+    }, function(response) {
+      if (chrome.runtime.lastError) {
+        log('Error from background:', chrome.runtime.lastError.message);
+      } else if (!response.success) {
+        log('Background failed:', response.error);
+      }
+    });
   });
 }
