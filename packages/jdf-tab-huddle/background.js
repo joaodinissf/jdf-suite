@@ -38,6 +38,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   } else if (message.action === 'sortAllWindows') {
     handleSortAllWindows(sendResponse);
     return true; // Keep message channel open for async response
+  } else if (message.action === 'sortCurrentWindow') {
+    handleSortCurrentWindow(sendResponse);
+    return true; // Keep message channel open for async response
   } else if (message.action === 'moveAllToSingleWindow') {
     handleMoveAllToSingleWindow(sendResponse);
     return true; // Keep message channel open for async response
@@ -101,6 +104,32 @@ async function handleExtractDomain(message, sendResponse) {
     
   } catch (error) {
     console.error('[Tab Organizer] Error in extractDomain:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+async function handleSortCurrentWindow(sendResponse) {
+  try {
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    console.log('[Tab Organizer] Sorting tabs in current window');
+
+    // Sort tabs by URL
+    tabs.sort((a, b) => {
+      const urlA = a.pendingUrl || a.url;
+      const urlB = b.pendingUrl || b.url;
+      return urlA.localeCompare(urlB);
+    });
+
+    // Move tabs to their new positions
+    for (let i = 0; i < tabs.length; i++) {
+      await chrome.tabs.move(tabs[i].id, { index: i });
+    }
+    
+    console.log('[Tab Organizer] Completed sortCurrentWindow');
+    sendResponse({ success: true });
+    
+  } catch (error) {
+    console.error('[Tab Organizer] Error in sortCurrentWindow:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
