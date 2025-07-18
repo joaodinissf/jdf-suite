@@ -15,7 +15,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     handleExtractDomain(message, sendResponse);
     return true; // Keep message channel open for async response
   } else if (message.action === 'moveAllToSingleWindow') {
-    handleMoveAllToSingleWindow(sendResponse);
+    handleMoveAllToSingleWindow(message, sendResponse);
     return true; // Keep message channel open for async response
   }
 });
@@ -179,7 +179,7 @@ async function handleExtractDomain(message, sendResponse) {
   }
 }
 
-async function handleMoveAllToSingleWindow(sendResponse) {
+async function handleMoveAllToSingleWindow(message, sendResponse) {
   try {
     const windows = await chrome.windows.getAll({ populate: true });
     console.log('[Tab Organizer] Moving tabs from', windows.length, 'windows to single window');
@@ -190,11 +190,19 @@ async function handleMoveAllToSingleWindow(sendResponse) {
       return;
     }
 
-    // Find the current window (focused window) to use as the target
-    let targetWindow = windows.find(w => w.focused);
+    // Find the window containing the active tab to use as the target
+    let targetWindow = null;
+    if (message.activeTabId) {
+      targetWindow = windows.find(w => w.tabs.some(tab => tab.id === message.activeTabId));
+    }
+    
     if (!targetWindow) {
-      // If no focused window, use the first window as target
-      targetWindow = windows[0];
+      // If no active tab provided or found, use the focused window
+      targetWindow = windows.find(w => w.focused);
+      if (!targetWindow) {
+        // If no focused window, use the first window as target
+        targetWindow = windows[0];
+      }
     }
 
     const allTabsToMove = [];
@@ -248,6 +256,14 @@ async function handleMoveAllToSingleWindow(sendResponse) {
       }
       
       console.log('[Tab Organizer] Completed moveAllToSingleWindow');
+      
+      // Bring the target window into focus
+      await chrome.windows.update(targetWindow.id, { focused: true });
+      
+      // If we have an active tab ID, make sure it stays active
+      if (message.activeTabId) {
+        await chrome.tabs.update(message.activeTabId, { active: true });
+      }
     }, 200);
     
     sendResponse({ success: true });
