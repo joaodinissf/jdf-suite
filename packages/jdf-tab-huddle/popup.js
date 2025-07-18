@@ -27,17 +27,13 @@ function sortAllWindows() {
 
 // Sort tabs by URL in current window
 function sortCurrentWindow() {
-  chrome.tabs.query({ currentWindow: true }, function (tabs) {
-    // Sort tabs by URL
-    tabs.sort((a, b) => {
-      const urlA = a.pendingUrl || a.url;
-      const urlB = b.pendingUrl || b.url;
-      return urlA.localeCompare(urlB);
-    });
-
-    // Move tabs to their new positions
-    for (let i = 0; i < tabs.length; i++) {
-      chrome.tabs.move(tabs[i].id, { index: i });
+  chrome.runtime.sendMessage({
+    action: 'sortCurrentWindow'
+  }, function(response) {
+    if (chrome.runtime.lastError) {
+      log('Error from background:', chrome.runtime.lastError.message);
+    } else if (!response.success) {
+      log('Background failed:', response.error);
     }
   });
 }
