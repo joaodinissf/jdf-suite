@@ -1,6 +1,84 @@
 // Background service worker for persistent logging
 console.log('Tab Organizer service worker starting...');
 
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === 'log') {
+    console.log('[Tab Organizer]', message.data.message, ...message.data.args);
+    sendResponse({ success: true });
+  } else if (message.action === 'sortAllWindows') {
+    handleSortAllWindows(sendResponse);
+    return true; // Keep message channel open for async response
+  } else if (message.action === 'sortCurrentWindow') {
+    handleSortCurrentWindow(sendResponse);
+    return true; // Keep message channel open for async response
+  } else if (message.action === 'extractDomain') {
+    handleExtractDomain(message, sendResponse);
+    return true; // Keep message channel open for async response
+  } else if (message.action === 'moveAllToSingleWindow') {
+    handleMoveAllToSingleWindow(sendResponse);
+    return true; // Keep message channel open for async response
+  }
+});
+
+async function handleSortAllWindows(sendResponse) {
+  try {
+    const windows = await chrome.windows.getAll({ populate: true });
+    console.log('[Tab Organizer] Sorting tabs in', windows.length, 'windows');
+
+    // Sort tabs within each window
+    for (const window of windows) {
+      // Sort this window's tabs by URL
+      const windowTabs = window.tabs.slice(); // Create copy to avoid mutating original
+      windowTabs.sort((a, b) => {
+        const urlA = a.pendingUrl || a.url;
+        const urlB = b.pendingUrl || b.url;
+        return urlA.localeCompare(urlB);
+      });
+
+      // Move tabs to their sorted positions within the window
+      for (let i = 0; i < windowTabs.length; i++) {
+        await chrome.tabs.move(windowTabs[i].id, {
+          windowId: window.id,
+          index: i
+        });
+      }
+    }
+    
+    console.log('[Tab Organizer] Completed sortAllWindows');
+    sendResponse({ success: true });
+    
+  } catch (error) {
+    console.error('[Tab Organizer] Error in sortAllWindows:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+async function handleSortCurrentWindow(sendResponse) {
+  try {
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    console.log('[Tab Organizer] Sorting tabs in current window');
+
+    // Sort tabs by URL
+    tabs.sort((a, b) => {
+      const urlA = a.pendingUrl || a.url;
+      const urlB = b.pendingUrl || b.url;
+      return urlA.localeCompare(urlB);
+    });
+
+    // Move tabs to their new positions
+    for (let i = 0; i < tabs.length; i++) {
+      await chrome.tabs.move(tabs[i].id, { index: i });
+    }
+    
+    console.log('[Tab Organizer] Completed sortCurrentWindow');
+    sendResponse({ success: true });
+    
+  } catch (error) {
+    console.error('[Tab Organizer] Error in sortCurrentWindow:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
 // Extract domain from URL with better handling for sleeping tabs
 function lexHost(url) {
   try {
@@ -27,25 +105,6 @@ function lexHost(url) {
     return url || '';
   }
 }
-
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'log') {
-    console.log('[Tab Organizer]', message.data.message, ...message.data.args);
-    sendResponse({ success: true });
-  } else if (message.action === 'extractDomain') {
-    handleExtractDomain(message, sendResponse);
-    return true; // Keep message channel open for async response
-  } else if (message.action === 'sortAllWindows') {
-    handleSortAllWindows(sendResponse);
-    return true; // Keep message channel open for async response
-  } else if (message.action === 'sortCurrentWindow') {
-    handleSortCurrentWindow(sendResponse);
-    return true; // Keep message channel open for async response
-  } else if (message.action === 'moveAllToSingleWindow') {
-    handleMoveAllToSingleWindow(sendResponse);
-    return true; // Keep message channel open for async response
-  }
-});
 
 async function handleExtractDomain(message, sendResponse) {
   try {
@@ -104,65 +163,6 @@ async function handleExtractDomain(message, sendResponse) {
     
   } catch (error) {
     console.error('[Tab Organizer] Error in extractDomain:', error);
-    sendResponse({ success: false, error: error.message });
-  }
-}
-
-async function handleSortCurrentWindow(sendResponse) {
-  try {
-    const tabs = await chrome.tabs.query({ currentWindow: true });
-    console.log('[Tab Organizer] Sorting tabs in current window');
-
-    // Sort tabs by URL
-    tabs.sort((a, b) => {
-      const urlA = a.pendingUrl || a.url;
-      const urlB = b.pendingUrl || b.url;
-      return urlA.localeCompare(urlB);
-    });
-
-    // Move tabs to their new positions
-    for (let i = 0; i < tabs.length; i++) {
-      await chrome.tabs.move(tabs[i].id, { index: i });
-    }
-    
-    console.log('[Tab Organizer] Completed sortCurrentWindow');
-    sendResponse({ success: true });
-    
-  } catch (error) {
-    console.error('[Tab Organizer] Error in sortCurrentWindow:', error);
-    sendResponse({ success: false, error: error.message });
-  }
-}
-
-async function handleSortAllWindows(sendResponse) {
-  try {
-    const windows = await chrome.windows.getAll({ populate: true });
-    console.log('[Tab Organizer] Sorting tabs in', windows.length, 'windows');
-
-    // Sort tabs within each window
-    for (const window of windows) {
-      // Sort this window's tabs by URL
-      const windowTabs = window.tabs.slice(); // Create copy to avoid mutating original
-      windowTabs.sort((a, b) => {
-        const urlA = a.pendingUrl || a.url;
-        const urlB = b.pendingUrl || b.url;
-        return urlA.localeCompare(urlB);
-      });
-
-      // Move tabs to their sorted positions within the window
-      for (let i = 0; i < windowTabs.length; i++) {
-        await chrome.tabs.move(windowTabs[i].id, {
-          windowId: window.id,
-          index: i
-        });
-      }
-    }
-    
-    console.log('[Tab Organizer] Completed sortAllWindows');
-    sendResponse({ success: true });
-    
-  } catch (error) {
-    console.error('[Tab Organizer] Error in sortAllWindows:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
