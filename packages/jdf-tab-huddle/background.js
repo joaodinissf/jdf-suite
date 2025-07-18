@@ -38,6 +38,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   } else if (message.action === 'sortAllWindows') {
     handleSortAllWindows(sendResponse);
     return true; // Keep message channel open for async response
+  } else if (message.action === 'moveAllToSingleWindow') {
+    handleMoveAllToSingleWindow(sendResponse);
+    return true; // Keep message channel open for async response
   }
 });
 
@@ -131,6 +134,79 @@ async function handleSortAllWindows(sendResponse) {
     
   } catch (error) {
     console.error('[Tab Organizer] Error in sortAllWindows:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+async function handleMoveAllToSingleWindow(sendResponse) {
+  try {
+    const windows = await chrome.windows.getAll({ populate: true });
+    console.log('[Tab Organizer] Moving tabs from', windows.length, 'windows to single window');
+
+    if (windows.length <= 1) {
+      console.log('[Tab Organizer] Only one window exists, nothing to move');
+      sendResponse({ success: true });
+      return;
+    }
+
+    // Find the current window (focused window) to use as the target
+    let targetWindow = windows.find(w => w.focused);
+    if (!targetWindow) {
+      // If no focused window, use the first window as target
+      targetWindow = windows[0];
+    }
+
+    const allTabsToMove = [];
+    
+    // Collect all tabs from other windows
+    for (const window of windows) {
+      if (window.id !== targetWindow.id) {
+        for (const tab of window.tabs) {
+          allTabsToMove.push(tab.id);
+        }
+      }
+    }
+
+    if (allTabsToMove.length === 0) {
+      console.log('[Tab Organizer] No tabs to move');
+      sendResponse({ success: true });
+      return;
+    }
+
+    // Move all tabs to the target window
+    await chrome.tabs.move(allTabsToMove, {
+      windowId: targetWindow.id,
+      index: -1
+    });
+
+    console.log('[Tab Organizer] Moved', allTabsToMove.length, 'tabs to single window');
+
+    // Wait a moment for tabs to settle, then sort all tabs in the target window
+    setTimeout(async () => {
+      const windowTabs = await chrome.tabs.query({ windowId: targetWindow.id });
+      
+      // Sort tabs by URL
+      windowTabs.sort((a, b) => {
+        const urlA = a.pendingUrl || a.url;
+        const urlB = b.pendingUrl || b.url;
+        return urlA.localeCompare(urlB);
+      });
+      
+      // Move tabs to sorted positions
+      for (let i = 0; i < windowTabs.length; i++) {
+        await chrome.tabs.move(windowTabs[i].id, { 
+          windowId: targetWindow.id,
+          index: i 
+        });
+      }
+      
+      console.log('[Tab Organizer] Completed moveAllToSingleWindow');
+    }, 200);
+    
+    sendResponse({ success: true });
+    
+  } catch (error) {
+    console.error('[Tab Organizer] Error in moveAllToSingleWindow:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
