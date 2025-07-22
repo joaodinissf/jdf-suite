@@ -11,6 +11,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   } else if (message.action === 'sortCurrentWindow') {
     handleSortCurrentWindow(sendResponse);
     return true; // Keep message channel open for async response
+  } else if (message.action === 'removeDuplicatesWindow') {
+    handleRemoveDuplicatesWindow(sendResponse);
+    return true; // Keep message channel open for async response
+  } else if (message.action === 'removeDuplicatesAllWindows') {
+    handleRemoveDuplicatesAllWindows(sendResponse);
+    return true; // Keep message channel open for async response
+  } else if (message.action === 'removeDuplicatesGlobally') {
+    handleRemoveDuplicatesGlobally(sendResponse);
+    return true; // Keep message channel open for async response
   } else if (message.action === 'extractDomain') {
     handleExtractDomain(message, sendResponse);
     return true; // Keep message channel open for async response
@@ -27,24 +36,7 @@ async function handleSortAllWindows(sendResponse) {
 
     // Sort tabs within each window
     for (const window of windows) {
-      // Separate pinned and unpinned tabs
-      const pinnedTabs = window.tabs.filter(tab => tab.pinned);
-      const unpinnedTabs = window.tabs.filter(tab => !tab.pinned);
-      
-      // Sort unpinned tabs by URL
-      unpinnedTabs.sort((a, b) => {
-        const urlA = a.pendingUrl || a.url;
-        const urlB = b.pendingUrl || b.url;
-        return urlA.localeCompare(urlB);
-      });
-
-      // Move unpinned tabs to their sorted positions (starting after pinned tabs)
-      for (let i = 0; i < unpinnedTabs.length; i++) {
-        await chrome.tabs.move(unpinnedTabs[i].id, {
-          windowId: window.id,
-          index: pinnedTabs.length + i
-        });
-      }
+      await sortWindowTabs(window.id);
     }
     
     console.log('[Tab Organizer] Completed sortAllWindows');
@@ -61,21 +53,7 @@ async function handleSortCurrentWindow(sendResponse) {
     const tabs = await chrome.tabs.query({ currentWindow: true });
     console.log('[Tab Organizer] Sorting tabs in current window');
 
-    // Separate pinned and unpinned tabs
-    const pinnedTabs = tabs.filter(tab => tab.pinned);
-    const unpinnedTabs = tabs.filter(tab => !tab.pinned);
-    
-    // Sort unpinned tabs by URL
-    unpinnedTabs.sort((a, b) => {
-      const urlA = a.pendingUrl || a.url;
-      const urlB = b.pendingUrl || b.url;
-      return urlA.localeCompare(urlB);
-    });
-
-    // Move unpinned tabs to their sorted positions (starting after pinned tabs)
-    for (let i = 0; i < unpinnedTabs.length; i++) {
-      await chrome.tabs.move(unpinnedTabs[i].id, { index: pinnedTabs.length + i });
-    }
+    await sortWindowTabs(tabs[0].windowId);
     
     console.log('[Tab Organizer] Completed sortCurrentWindow');
     sendResponse({ success: true });
@@ -179,6 +157,160 @@ async function handleExtractDomain(message, sendResponse) {
   }
 }
 
+// Remove duplicates within current window only
+async function handleRemoveDuplicatesWindow(sendResponse) {
+  try {
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    console.log('[Tab Organizer] Removing duplicates in current window');
+
+    const { tabsToRemove } = findDuplicateTabs([tabs]);
+    
+    if (tabsToRemove.length > 0) {
+      await chrome.tabs.remove(tabsToRemove);
+      console.log('[Tab Organizer] Removed', tabsToRemove.length, 'duplicate tabs from current window');
+    }
+
+    // Sort remaining tabs in the current window
+    setTimeout(async () => {
+      await sortWindowTabs(tabs[0].windowId);
+      console.log('[Tab Organizer] Completed removeDuplicatesWindow');
+    }, 200);
+    
+    sendResponse({ success: true });
+    
+  } catch (error) {
+    console.error('[Tab Organizer] Error in removeDuplicatesWindow:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// Remove duplicates within each window separately
+async function handleRemoveDuplicatesAllWindows(sendResponse) {
+  try {
+    const windows = await chrome.windows.getAll({ populate: true });
+    console.log('[Tab Organizer] Removing duplicates in', windows.length, 'windows separately');
+
+    const windowTabs = windows.map(window => window.tabs);
+    const { tabsToRemove } = findDuplicateTabs(windowTabs);
+    
+    if (tabsToRemove.length > 0) {
+      await chrome.tabs.remove(tabsToRemove);
+      console.log('[Tab Organizer] Removed', tabsToRemove.length, 'duplicate tabs across all windows');
+    }
+
+    // Sort all windows
+    setTimeout(async () => {
+      for (const window of windows) {
+        await sortWindowTabs(window.id);
+      }
+      console.log('[Tab Organizer] Completed removeDuplicatesAllWindows');
+    }, 200);
+    
+    sendResponse({ success: true });
+    
+  } catch (error) {
+    console.error('[Tab Organizer] Error in removeDuplicatesAllWindows:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// Remove duplicates across all windows globally
+async function handleRemoveDuplicatesGlobally(sendResponse) {
+  try {
+    const windows = await chrome.windows.getAll({ populate: true });
+    console.log('[Tab Organizer] Removing duplicates globally across all windows');
+
+    // Flatten all tabs from all windows for global deduplication
+    const allTabs = windows.flatMap(window => window.tabs);
+    const { tabsToRemove } = findDuplicateTabs([allTabs]);
+    
+    if (tabsToRemove.length > 0) {
+      await chrome.tabs.remove(tabsToRemove);
+      console.log('[Tab Organizer] Removed', tabsToRemove.length, 'duplicate tabs globally');
+    }
+
+    // Sort all windows
+    setTimeout(async () => {
+      for (const window of windows) {
+        await sortWindowTabs(window.id);
+      }
+      console.log('[Tab Organizer] Completed removeDuplicatesGlobally');
+    }, 200);
+    
+    sendResponse({ success: true });
+    
+  } catch (error) {
+    console.error('[Tab Organizer] Error in removeDuplicatesGlobally:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// Helper function to find duplicate tabs
+function findDuplicateTabs(tabGroups) {
+  const urlSeen = new Map();
+  const tabsToRemove = [];
+
+  // Process each group of tabs (either per window or globally)
+  for (const tabs of tabGroups) {
+    const localUrlSeen = new Map();
+    
+    for (const tab of tabs) {
+      // Never remove pinned tabs
+      if (tab.pinned) {
+        continue;
+      }
+
+      const url = tab.pendingUrl || tab.url;
+      
+      // For per-window deduplication, track within each window
+      // For global deduplication, track across all windows
+      const seenMap = tabGroups.length === 1 ? urlSeen : localUrlSeen;
+      
+      if (seenMap.has(url)) {
+        // This is a duplicate - mark for removal
+        tabsToRemove.push(tab.id);
+      } else {
+        // First occurrence - keep it
+        seenMap.set(url, tab.id);
+        if (tabGroups.length === 1) {
+          // For global deduplication, also track in the global map
+          urlSeen.set(url, tab.id);
+        }
+      }
+    }
+  }
+
+  return { tabsToRemove };
+}
+
+// Helper function to sort tabs within a specific window
+async function sortWindowTabs(windowId) {
+  try {
+    const tabs = await chrome.tabs.query({ windowId });
+    
+    // Separate pinned and unpinned tabs
+    const pinnedTabs = tabs.filter(tab => tab.pinned);
+    const unpinnedTabs = tabs.filter(tab => !tab.pinned);
+    
+    // Sort unpinned tabs by URL
+    unpinnedTabs.sort((a, b) => {
+      const urlA = a.pendingUrl || a.url;
+      const urlB = b.pendingUrl || b.url;
+      return urlA.localeCompare(urlB);
+    });
+
+    // Move unpinned tabs to their sorted positions (starting after pinned tabs)
+    for (let i = 0; i < unpinnedTabs.length; i++) {
+      await chrome.tabs.move(unpinnedTabs[i].id, {
+        windowId,
+        index: pinnedTabs.length + i
+      });
+    }
+  } catch (error) {
+    console.error('[Tab Organizer] Error sorting window tabs:', error);
+  }
+}
+
 async function handleMoveAllToSingleWindow(message, sendResponse) {
   try {
     const windows = await chrome.windows.getAll({ populate: true });
@@ -234,26 +366,7 @@ async function handleMoveAllToSingleWindow(message, sendResponse) {
 
     // Wait a moment for tabs to settle, then sort unpinned tabs in the target window
     setTimeout(async () => {
-      const windowTabs = await chrome.tabs.query({ windowId: targetWindow.id });
-      
-      // Separate pinned and unpinned tabs
-      const pinnedTabs = windowTabs.filter(tab => tab.pinned);
-      const unpinnedTabs = windowTabs.filter(tab => !tab.pinned);
-      
-      // Sort unpinned tabs by URL
-      unpinnedTabs.sort((a, b) => {
-        const urlA = a.pendingUrl || a.url;
-        const urlB = b.pendingUrl || b.url;
-        return urlA.localeCompare(urlB);
-      });
-      
-      // Move unpinned tabs to sorted positions (starting after pinned tabs)
-      for (let i = 0; i < unpinnedTabs.length; i++) {
-        await chrome.tabs.move(unpinnedTabs[i].id, { 
-          windowId: targetWindow.id,
-          index: pinnedTabs.length + i 
-        });
-      }
+      await sortWindowTabs(targetWindow.id);
       
       console.log('[Tab Organizer] Completed moveAllToSingleWindow');
       
