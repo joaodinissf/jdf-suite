@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('removeDuplicatesAllWindows').addEventListener('click', removeDuplicatesAllWindows);
   document.getElementById('removeDuplicatesGlobally').addEventListener('click', removeDuplicatesGlobally);
   document.getElementById('extractDomain').addEventListener('click', extractDomain);
+  document.getElementById('extractAllDomains').addEventListener('click', extractAllDomains);
   document.getElementById('moveAllToSingleWindow').addEventListener('click', moveAllToSingleWindow);
 });
 
@@ -127,6 +128,21 @@ function removeDuplicatesGlobally() {
       log('Error from background:', chrome.runtime.lastError.message);
     } else if (!response.success) {
       log('Background failed:', response.error);
+    }
+  });
+}
+
+// Extract all domains into separate windows
+function extractAllDomains() {
+  chrome.runtime.sendMessage({
+    action: 'extractAllDomains'
+  }, function(response) {
+    if (chrome.runtime.lastError) {
+      log('Error from background:', chrome.runtime.lastError.message);
+    } else if (!response.success) {
+      log('Background failed:', response.error);
+    } else if (response.cancelled) {
+      log('Extract all domains cancelled by user');
     }
   });
 }
