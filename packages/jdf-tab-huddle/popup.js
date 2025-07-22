@@ -1,6 +1,9 @@
 document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('sortAllWindows').addEventListener('click', sortAllWindows);
   document.getElementById('sortCurrentWindow').addEventListener('click', sortCurrentWindow);
+  document.getElementById('removeDuplicatesWindow').addEventListener('click', removeDuplicatesWindow);
+  document.getElementById('removeDuplicatesAllWindows').addEventListener('click', removeDuplicatesAllWindows);
+  document.getElementById('removeDuplicatesGlobally').addEventListener('click', removeDuplicatesGlobally);
   document.getElementById('extractDomain').addEventListener('click', extractDomain);
   document.getElementById('moveAllToSingleWindow').addEventListener('click', moveAllToSingleWindow);
 });
@@ -86,6 +89,45 @@ function extractDomain() {
         log('Background failed:', response.error);
       }
     });
+  });
+}
+
+// Remove duplicates within current window only
+function removeDuplicatesWindow() {
+  chrome.runtime.sendMessage({
+    action: 'removeDuplicatesWindow'
+  }, function(response) {
+    if (chrome.runtime.lastError) {
+      log('Error from background:', chrome.runtime.lastError.message);
+    } else if (!response.success) {
+      log('Background failed:', response.error);
+    }
+  });
+}
+
+// Remove duplicates within each window separately
+function removeDuplicatesAllWindows() {
+  chrome.runtime.sendMessage({
+    action: 'removeDuplicatesAllWindows'
+  }, function(response) {
+    if (chrome.runtime.lastError) {
+      log('Error from background:', chrome.runtime.lastError.message);
+    } else if (!response.success) {
+      log('Background failed:', response.error);
+    }
+  });
+}
+
+// Remove duplicates across all windows globally
+function removeDuplicatesGlobally() {
+  chrome.runtime.sendMessage({
+    action: 'removeDuplicatesGlobally'
+  }, function(response) {
+    if (chrome.runtime.lastError) {
+      log('Error from background:', chrome.runtime.lastError.message);
+    } else if (!response.success) {
+      log('Background failed:', response.error);
+    }
   });
 }
 
