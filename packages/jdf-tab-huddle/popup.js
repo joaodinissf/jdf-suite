@@ -101,165 +101,77 @@ function log(message, ...args) {
   chrome.runtime.sendMessage({ type: 'log', data: { message, args } }).catch(() => { });
 }
 
+// Generic function to send actions to the background script
+function sendAction(action, data = {}) {
+  const message = { action, ...data };
+  chrome.runtime.sendMessage(message, function (response) {
+    if (chrome.runtime.lastError) {
+      log(`Error from background for action "${action}":`, chrome.runtime.lastError.message);
+    } else if (response && !response.success) {
+      log(`Background failed for action "${action}":`, response.error);
+    } else if (response && response.cancelled) {
+      log(`Action "${action}" was cancelled by the user.`);
+    }
+  });
+}
 
 // Sort tabs by URL across all windows
 function sortAllWindows(respectGroups = true) {
-  chrome.runtime.sendMessage({
-    action: 'sortAllWindows',
-    respectGroups: respectGroups
-  }, function (response) {
-    if (chrome.runtime.lastError) {
-      log('Error from background:', chrome.runtime.lastError.message);
-    } else if (!response.success) {
-      log('Background failed:', response.error);
-    }
-  });
+  sendAction('sortAllWindows', { respectGroups });
 }
 
 // Sort tabs by URL in current window
 function sortCurrentWindow(respectGroups = true) {
-  chrome.runtime.sendMessage({
-    action: 'sortCurrentWindow',
-    respectGroups: respectGroups
-  }, function (response) {
-    if (chrome.runtime.lastError) {
-      log('Error from background:', chrome.runtime.lastError.message);
-    } else if (!response.success) {
-      log('Background failed:', response.error);
-    }
-  });
-}
-
-// Extract domain from URL with better handling for sleeping tabs
-function lexHost(url) {
-  try {
-    var u = new URL(url);
-
-    if (u.protocol === 'chrome-extension:' || u.protocol === 'moz-extension:') {
-      return u.host;
-    }
-
-    if (u.protocol === 'file:') {
-      return 'file';
-    }
-
-    if (u.protocol === 'data:') {
-      return 'data';
-    }
-
-    if (u.protocol === 'about:' || u.protocol === 'chrome:') {
-      return u.host || u.pathname.split('/')[0];
-    }
-
-    return u.hostname;
-  } catch (_e) {
-    return url || '';
-  }
+  sendAction('sortCurrentWindow', { respectGroups });
 }
 
 // Extract tabs from current domain into a new window
 function extractDomain(respectGroups = true) {
   chrome.tabs.query({ active: true, currentWindow: true }, function (activeTabs) {
     if (activeTabs.length === 0) {
-      log('No active tab found');
+      log('No active tab found for extractDomain');
       return;
     }
-
-    var activeTab = activeTabs[0];
-
-    chrome.runtime.sendMessage({
-      action: 'extractDomain',
+    const activeTab = activeTabs[0];
+    sendAction('extractDomain', {
       tabId: activeTab.id,
       url: activeTab.url,
-      respectGroups: respectGroups
-    }, function (response) {
-      if (chrome.runtime.lastError) {
-        log('Error from background:', chrome.runtime.lastError.message);
-      } else if (!response.success) {
-        log('Background failed:', response.error);
-      }
+      respectGroups
     });
   });
 }
 
 // Remove duplicates within current window only
 function removeDuplicatesWindow(respectGroups = true) {
-  chrome.runtime.sendMessage({
-    action: 'removeDuplicatesWindow',
-    respectGroups: respectGroups
-  }, function (response) {
-    if (chrome.runtime.lastError) {
-      log('Error from background:', chrome.runtime.lastError.message);
-    } else if (!response.success) {
-      log('Background failed:', response.error);
-    }
-  });
+  sendAction('removeDuplicatesWindow', { respectGroups });
 }
 
 // Remove duplicates within each window separately
 function removeDuplicatesAllWindows(respectGroups = true) {
-  chrome.runtime.sendMessage({
-    action: 'removeDuplicatesAllWindows',
-    respectGroups: respectGroups
-  }, function (response) {
-    if (chrome.runtime.lastError) {
-      log('Error from background:', chrome.runtime.lastError.message);
-    } else if (!response.success) {
-      log('Background failed:', response.error);
-    }
-  });
+  sendAction('removeDuplicatesAllWindows', { respectGroups });
 }
 
 // Remove duplicates across all windows globally
 function removeDuplicatesGlobally(respectGroups = true) {
-  chrome.runtime.sendMessage({
-    action: 'removeDuplicatesGlobally',
-    respectGroups: respectGroups
-  }, function (response) {
-    if (chrome.runtime.lastError) {
-      log('Error from background:', chrome.runtime.lastError.message);
-    } else if (!response.success) {
-      log('Background failed:', response.error);
-    }
-  });
+  sendAction('removeDuplicatesGlobally', { respectGroups });
 }
 
 // Extract all domains into separate windows
 function extractAllDomains(respectGroups = true) {
-  chrome.runtime.sendMessage({
-    action: 'extractAllDomains',
-    respectGroups: respectGroups
-  }, function (response) {
-    if (chrome.runtime.lastError) {
-      log('Error from background:', chrome.runtime.lastError.message);
-    } else if (!response.success) {
-      log('Background failed:', response.error);
-    } else if (response.cancelled) {
-      log('Extract all domains cancelled by user');
-    }
-  });
+  sendAction('extractAllDomains', { respectGroups });
 }
 
 // Move all tabs to a single window
 function moveAllToSingleWindow(respectGroups = true) {
   chrome.tabs.query({ active: true, currentWindow: true }, function (activeTabs) {
     if (activeTabs.length === 0) {
-      log('No active tab found');
+      log('No active tab found for moveAllToSingleWindow');
       return;
     }
-
-    var activeTab = activeTabs[0];
-
-    chrome.runtime.sendMessage({
-      action: 'moveAllToSingleWindow',
+    const activeTab = activeTabs[0];
+    sendAction('moveAllToSingleWindow', {
       activeTabId: activeTab.id,
-      respectGroups: respectGroups
-    }, function (response) {
-      if (chrome.runtime.lastError) {
-        log('Error from background:', chrome.runtime.lastError.message);
-      } else if (!response.success) {
-        log('Background failed:', response.error);
-      }
+      respectGroups
     });
   });
 }
