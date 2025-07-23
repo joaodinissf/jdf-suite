@@ -1,13 +1,99 @@
 document.addEventListener('DOMContentLoaded', function () {
-  document.getElementById('sortAllWindows').addEventListener('click', sortAllWindows);
-  document.getElementById('sortCurrentWindow').addEventListener('click', sortCurrentWindow);
-  document.getElementById('removeDuplicatesWindow').addEventListener('click', removeDuplicatesWindow);
-  document.getElementById('removeDuplicatesAllWindows').addEventListener('click', removeDuplicatesAllWindows);
-  document.getElementById('removeDuplicatesGlobally').addEventListener('click', removeDuplicatesGlobally);
-  document.getElementById('extractDomain').addEventListener('click', extractDomain);
-  document.getElementById('extractAllDomains').addEventListener('click', extractAllDomains);
-  document.getElementById('moveAllToSingleWindow').addEventListener('click', moveAllToSingleWindow);
+  // Initialize tab switching
+  initTabSwitching();
+  
+  // Load saved preferences
+  loadUserPreferences();
+  
+  // Setup event listeners for both modes
+  setupEventListeners();
 });
+
+// Tab switching functionality
+function initTabSwitching() {
+  const tabButtons = document.querySelectorAll('.tab-button');
+  const tabContents = document.querySelectorAll('.tab-content');
+  
+  tabButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const targetTab = button.dataset.tab;
+      
+      // Update button states
+      tabButtons.forEach(btn => btn.classList.remove('active'));
+      button.classList.add('active');
+      
+      // Update content visibility
+      tabContents.forEach(content => {
+        content.classList.remove('active');
+        if (content.id === targetTab + '-content') {
+          content.classList.add('active');
+        }
+      });
+      
+      // Save preference
+      saveUserPreference('selectedMode', targetTab);
+    });
+  });
+}
+
+// Load user preferences
+function loadUserPreferences() {
+  chrome.storage.local.get(['selectedMode'], (result) => {
+    const savedMode = result.selectedMode || 'groups'; // Default to groups mode
+    
+    // Update UI to show saved mode
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabContents = document.querySelectorAll('.tab-content');
+    
+    tabButtons.forEach(btn => {
+      btn.classList.remove('active');
+      if (btn.dataset.tab === savedMode) {
+        btn.classList.add('active');
+      }
+    });
+    
+    tabContents.forEach(content => {
+      content.classList.remove('active');
+      if (content.id === savedMode + '-content') {
+        content.classList.add('active');
+      }
+    });
+  });
+}
+
+// Save user preference
+function saveUserPreference(key, value) {
+  chrome.storage.local.set({ [key]: value });
+}
+
+// Get current mode
+function getCurrentMode() {
+  const activeTab = document.querySelector('.tab-button.active');
+  return activeTab ? activeTab.dataset.tab : 'groups';
+}
+
+// Setup event listeners for both modes
+function setupEventListeners() {
+  // Groups mode listeners
+  document.getElementById('sortAllWindows-groups').addEventListener('click', () => sortAllWindows(true));
+  document.getElementById('sortCurrentWindow-groups').addEventListener('click', () => sortCurrentWindow(true));
+  document.getElementById('removeDuplicatesWindow-groups').addEventListener('click', () => removeDuplicatesWindow(true));
+  document.getElementById('removeDuplicatesAllWindows-groups').addEventListener('click', () => removeDuplicatesAllWindows(true));
+  document.getElementById('removeDuplicatesGlobally-groups').addEventListener('click', () => removeDuplicatesGlobally(true));
+  document.getElementById('extractDomain-groups').addEventListener('click', () => extractDomain(true));
+  document.getElementById('extractAllDomains-groups').addEventListener('click', () => extractAllDomains(true));
+  document.getElementById('moveAllToSingleWindow-groups').addEventListener('click', () => moveAllToSingleWindow(true));
+  
+  // Individual mode listeners
+  document.getElementById('sortAllWindows-individual').addEventListener('click', () => sortAllWindows(false));
+  document.getElementById('sortCurrentWindow-individual').addEventListener('click', () => sortCurrentWindow(false));
+  document.getElementById('removeDuplicatesWindow-individual').addEventListener('click', () => removeDuplicatesWindow(false));
+  document.getElementById('removeDuplicatesAllWindows-individual').addEventListener('click', () => removeDuplicatesAllWindows(false));
+  document.getElementById('removeDuplicatesGlobally-individual').addEventListener('click', () => removeDuplicatesGlobally(false));
+  document.getElementById('extractDomain-individual').addEventListener('click', () => extractDomain(false));
+  document.getElementById('extractAllDomains-individual').addEventListener('click', () => extractAllDomains(false));
+  document.getElementById('moveAllToSingleWindow-individual').addEventListener('click', () => moveAllToSingleWindow(false));
+}
 
 // Simple logging helper
 function log(message, ...args) {
@@ -17,9 +103,10 @@ function log(message, ...args) {
 
 
 // Sort tabs by URL across all windows
-function sortAllWindows() {
+function sortAllWindows(respectGroups = true) {
   chrome.runtime.sendMessage({
-    action: 'sortAllWindows'
+    action: 'sortAllWindows',
+    respectGroups: respectGroups
   }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error from background:', chrome.runtime.lastError.message);
@@ -30,9 +117,10 @@ function sortAllWindows() {
 }
 
 // Sort tabs by URL in current window
-function sortCurrentWindow() {
+function sortCurrentWindow(respectGroups = true) {
   chrome.runtime.sendMessage({
-    action: 'sortCurrentWindow'
+    action: 'sortCurrentWindow',
+    respectGroups: respectGroups
   }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error from background:', chrome.runtime.lastError.message);
@@ -70,7 +158,7 @@ function lexHost(url) {
 }
 
 // Extract tabs from current domain into a new window
-function extractDomain() {
+function extractDomain(respectGroups = true) {
   chrome.tabs.query({ active: true, currentWindow: true }, function (activeTabs) {
     if (activeTabs.length === 0) {
       log('No active tab found');
@@ -82,7 +170,8 @@ function extractDomain() {
     chrome.runtime.sendMessage({
       action: 'extractDomain',
       tabId: activeTab.id,
-      url: activeTab.url
+      url: activeTab.url,
+      respectGroups: respectGroups
     }, function (response) {
       if (chrome.runtime.lastError) {
         log('Error from background:', chrome.runtime.lastError.message);
@@ -94,9 +183,10 @@ function extractDomain() {
 }
 
 // Remove duplicates within current window only
-function removeDuplicatesWindow() {
+function removeDuplicatesWindow(respectGroups = true) {
   chrome.runtime.sendMessage({
-    action: 'removeDuplicatesWindow'
+    action: 'removeDuplicatesWindow',
+    respectGroups: respectGroups
   }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error from background:', chrome.runtime.lastError.message);
@@ -107,9 +197,10 @@ function removeDuplicatesWindow() {
 }
 
 // Remove duplicates within each window separately
-function removeDuplicatesAllWindows() {
+function removeDuplicatesAllWindows(respectGroups = true) {
   chrome.runtime.sendMessage({
-    action: 'removeDuplicatesAllWindows'
+    action: 'removeDuplicatesAllWindows',
+    respectGroups: respectGroups
   }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error from background:', chrome.runtime.lastError.message);
@@ -120,9 +211,10 @@ function removeDuplicatesAllWindows() {
 }
 
 // Remove duplicates across all windows globally
-function removeDuplicatesGlobally() {
+function removeDuplicatesGlobally(respectGroups = true) {
   chrome.runtime.sendMessage({
-    action: 'removeDuplicatesGlobally'
+    action: 'removeDuplicatesGlobally',
+    respectGroups: respectGroups
   }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error from background:', chrome.runtime.lastError.message);
@@ -133,9 +225,10 @@ function removeDuplicatesGlobally() {
 }
 
 // Extract all domains into separate windows
-function extractAllDomains() {
+function extractAllDomains(respectGroups = true) {
   chrome.runtime.sendMessage({
-    action: 'extractAllDomains'
+    action: 'extractAllDomains',
+    respectGroups: respectGroups
   }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error from background:', chrome.runtime.lastError.message);
@@ -148,7 +241,7 @@ function extractAllDomains() {
 }
 
 // Move all tabs to a single window
-function moveAllToSingleWindow() {
+function moveAllToSingleWindow(respectGroups = true) {
   chrome.tabs.query({ active: true, currentWindow: true }, function (activeTabs) {
     if (activeTabs.length === 0) {
       log('No active tab found');
@@ -159,7 +252,8 @@ function moveAllToSingleWindow() {
 
     chrome.runtime.sendMessage({
       action: 'moveAllToSingleWindow',
-      activeTabId: activeTab.id
+      activeTabId: activeTab.id,
+      respectGroups: respectGroups
     }, function (response) {
       if (chrome.runtime.lastError) {
         log('Error from background:', chrome.runtime.lastError.message);
