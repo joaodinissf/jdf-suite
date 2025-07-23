@@ -20,7 +20,7 @@ function log(message, ...args) {
 function sortAllWindows() {
   chrome.runtime.sendMessage({
     action: 'sortAllWindows'
-  }, function(response) {
+  }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error from background:', chrome.runtime.lastError.message);
     } else if (!response.success) {
@@ -33,7 +33,7 @@ function sortAllWindows() {
 function sortCurrentWindow() {
   chrome.runtime.sendMessage({
     action: 'sortCurrentWindow'
-  }, function(response) {
+  }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error from background:', chrome.runtime.lastError.message);
     } else if (!response.success) {
@@ -76,14 +76,14 @@ function extractDomain() {
       log('No active tab found');
       return;
     }
-    
+
     var activeTab = activeTabs[0];
-    
+
     chrome.runtime.sendMessage({
       action: 'extractDomain',
       tabId: activeTab.id,
       url: activeTab.url
-    }, function(response) {
+    }, function (response) {
       if (chrome.runtime.lastError) {
         log('Error from background:', chrome.runtime.lastError.message);
       } else if (!response.success) {
@@ -97,7 +97,7 @@ function extractDomain() {
 function removeDuplicatesWindow() {
   chrome.runtime.sendMessage({
     action: 'removeDuplicatesWindow'
-  }, function(response) {
+  }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error from background:', chrome.runtime.lastError.message);
     } else if (!response.success) {
@@ -110,7 +110,7 @@ function removeDuplicatesWindow() {
 function removeDuplicatesAllWindows() {
   chrome.runtime.sendMessage({
     action: 'removeDuplicatesAllWindows'
-  }, function(response) {
+  }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error from background:', chrome.runtime.lastError.message);
     } else if (!response.success) {
@@ -123,7 +123,7 @@ function removeDuplicatesAllWindows() {
 function removeDuplicatesGlobally() {
   chrome.runtime.sendMessage({
     action: 'removeDuplicatesGlobally'
-  }, function(response) {
+  }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error from background:', chrome.runtime.lastError.message);
     } else if (!response.success) {
@@ -136,7 +136,7 @@ function removeDuplicatesGlobally() {
 function extractAllDomains() {
   chrome.runtime.sendMessage({
     action: 'extractAllDomains'
-  }, function(response) {
+  }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error from background:', chrome.runtime.lastError.message);
     } else if (!response.success) {
@@ -154,13 +154,13 @@ function moveAllToSingleWindow() {
       log('No active tab found');
       return;
     }
-    
+
     var activeTab = activeTabs[0];
-    
+
     chrome.runtime.sendMessage({
       action: 'moveAllToSingleWindow',
       activeTabId: activeTab.id
-    }, function(response) {
+    }, function (response) {
       if (chrome.runtime.lastError) {
         log('Error from background:', chrome.runtime.lastError.message);
       } else if (!response.success) {
