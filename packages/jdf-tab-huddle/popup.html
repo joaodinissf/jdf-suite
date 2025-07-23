@@ -21,6 +21,47 @@
       text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
     }
 
+    .tab-nav {
+      display: flex;
+      margin-bottom: 16px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      padding: 4px;
+    }
+
+    .tab-button {
+      flex: 1;
+      padding: 8px 12px;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.7);
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      text-align: center;
+    }
+
+    .tab-button.active {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .tab-button:hover:not(.active) {
+      background: rgba(255, 255, 255, 0.1);
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
     .section {
       margin-bottom: 16px;
     }
@@ -69,36 +110,85 @@
     button:active {
       transform: translateY(0);
     }
+
+    .mode-indicator {
+      font-size: 10px;
+      opacity: 0.6;
+      text-align: center;
+      margin-top: 8px;
+      font-style: italic;
+    }
   </style>
 </head>
 
 <body>
   <h2>Tab Organizer</h2>
-  <div class="section">
-    <h3 class="section-header">Sort</h3>
-    <div class="button-row">
-      <button id="sortAllWindows">Sort All Tabs</button>
-      <button id="sortCurrentWindow">Sort Current Window</button>
+  
+  <div class="tab-nav">
+    <button class="tab-button active" data-tab="groups">Tab Groups Mode</button>
+    <button class="tab-button" data-tab="individual">Individual Mode</button>
+  </div>
+
+  <div id="groups-content" class="tab-content active">
+    <div class="mode-indicator">Preserves Chrome tab groups</div>
+    
+    <div class="section">
+      <h3 class="section-header">Sort</h3>
+      <div class="button-row">
+        <button id="sortAllWindows-groups">Sort All Tabs</button>
+        <button id="sortCurrentWindow-groups">Sort Current Window</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3 class="section-header">Organize</h3>
+      <div class="button-row">
+        <button id="extractDomain-groups">Extract Domain</button>
+        <button id="extractAllDomains-groups">Extract All<br>Domains</button>
+        <button id="moveAllToSingleWindow-groups">Move All to<br>Single Window</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3 class="section-header">Remove Duplicates</h3>
+      <div class="button-row">
+        <button id="removeDuplicatesWindow-groups">Window</button>
+        <button id="removeDuplicatesAllWindows-groups">All Windows<br>Per Window</button>
+        <button id="removeDuplicatesGlobally-groups">All Windows<br>All Tabs</button>
+      </div>
     </div>
   </div>
 
-  <div class="section">
-    <h3 class="section-header">Organize</h3>
-    <div class="button-row">
-      <button id="extractDomain">Extract Domain</button>
-      <button id="extractAllDomains">Extract All<br>Domains</button>
-      <button id="moveAllToSingleWindow">Move All to<br>Single Window</button>
+  <div id="individual-content" class="tab-content">
+    <div class="mode-indicator">Treats all tabs individually</div>
+    
+    <div class="section">
+      <h3 class="section-header">Sort</h3>
+      <div class="button-row">
+        <button id="sortAllWindows-individual">Sort All Tabs</button>
+        <button id="sortCurrentWindow-individual">Sort Current Window</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3 class="section-header">Organize</h3>
+      <div class="button-row">
+        <button id="extractDomain-individual">Extract Domain</button>
+        <button id="extractAllDomains-individual">Extract All<br>Domains</button>
+        <button id="moveAllToSingleWindow-individual">Move All to<br>Single Window</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3 class="section-header">Remove Duplicates</h3>
+      <div class="button-row">
+        <button id="removeDuplicatesWindow-individual">Window</button>
+        <button id="removeDuplicatesAllWindows-individual">All Windows<br>Per Window</button>
+        <button id="removeDuplicatesGlobally-individual">All Windows<br>All Tabs</button>
+      </div>
     </div>
   </div>
 
-  <div class="section">
-    <h3 class="section-header">Remove Duplicates</h3>
-    <div class="button-row">
-      <button id="removeDuplicatesWindow">Window</button>
-      <button id="removeDuplicatesAllWindows">All Windows<br>Per Window</button>
-      <button id="removeDuplicatesGlobally">All Windows<br>All Tabs</button>
-    </div>
-  </div>
   <script src="popup.js"></script>
 </body>
 

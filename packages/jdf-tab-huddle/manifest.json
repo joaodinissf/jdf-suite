@@ -5,7 +5,9 @@
   "description": "Sort and organize tabs by URL and domain",
   "permissions": [
     "tabs",
-    "windows"
+    "windows",
+    "tabGroups",
+    "storage"
   ],
   "background": {
     "service_worker": "background.js"
