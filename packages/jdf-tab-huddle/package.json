@@ -12,7 +12,8 @@
     "validate": "node -e \"JSON.parse(require('fs').readFileSync('manifest.json', 'utf8')); console.log('✅ manifest.json is valid')\"",
     "package": "npm run validate && zip -r tab-organizer.zip . -x 'node_modules/*' 'tests/*' '*.md' 'package*.json' 'pnpm-lock.yaml' '.git/*' '.github/*'",
     "dev": "echo '🚀 Load the extension from this directory in Chrome Developer Mode'",
-    "ci": "npm run lint && npm run test && npm run validate"
+    "ci": "npm run lint && npm run test && npm run validate",
+    "build": "npm run validate"
   },
   "devDependencies": {
     "@eslint/js": "^9.31.0",
