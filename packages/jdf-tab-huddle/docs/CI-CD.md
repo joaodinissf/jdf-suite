@@ -8,7 +8,7 @@
 
 **Jobs:**
 - **Test**: Runs complete test suite with coverage
-- **Lint**: Runs linting and type checking (if configured)
+- **Lint**: Runs ESLint with Chrome extension rules
 - **Build**: Validates manifest.json and extension structure
 
 ### 2. Release Workflow (`.github/workflows/release.yml`)
@@ -26,12 +26,13 @@
 - [x] Package.json scripts configured
 - [x] Test suite ready (58 tests, 100% passing)
 - [x] Manifest.json validation
+- [x] ESLint configured with Chrome extension rules
 
 ### Optional Enhancements
-- [ ] **ESLint/Prettier**: Add linting rules
 - [ ] **TypeScript**: Convert to TypeScript for better type safety
 - [ ] **Codecov**: Code coverage reporting (token needed)
 - [ ] **Chrome Web Store Publishing**: Automated publishing
+- [ ] **Dependabot**: Automated dependency updates
 
 ## 🔧 Commands Available
 
@@ -43,7 +44,8 @@ pnpm run test:watch   # Run tests in watch mode
 pnpm run test:coverage # Run tests with coverage
 pnpm run validate     # Validate manifest.json
 pnpm run package      # Create extension package
-pnpm run dev          # Development instructions
+pnpm run lint         # Run ESLint
+pnpm run lint:fix     # Fix ESLint issues
 
 # CI/CD will run automatically on:
 git push origin main  # Triggers test workflow

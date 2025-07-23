@@ -27,7 +27,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Load and execute background script, exposing functions globally
-const backgroundJs = fs.readFileSync(path.resolve(__dirname, '../background.js'), 'utf8');
+const backgroundJs = fs.readFileSync(path.resolve(__dirname, '../src/background.js'), 'utf8');
 const backgroundWrapper = `
 (function() {
   ${backgroundJs}
@@ -54,7 +54,7 @@ const backgroundWrapper = `
 eval(backgroundWrapper);
 
 // Load and execute popup script, exposing functions globally  
-const popupJs = fs.readFileSync(path.resolve(__dirname, '../popup.js'), 'utf8');
+const popupJs = fs.readFileSync(path.resolve(__dirname, '../src/popup.js'), 'utf8');
 const popupWrapper = `
 (function() {
   ${popupJs}
@@ -77,7 +77,7 @@ const popupWrapper = `
 eval(popupWrapper);
 
 // Load and execute confirmation dialog script, exposing functions globally
-const confirmationJs = fs.readFileSync(path.resolve(__dirname, '../confirmation-dialog.js'), 'utf8');
+const confirmationJs = fs.readFileSync(path.resolve(__dirname, '../src/confirmation-dialog.js'), 'utf8');
 const confirmationWrapper = `
 (function() {
   ${confirmationJs}

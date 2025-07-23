@@ -2,7 +2,7 @@ import js from '@eslint/js';
 
 export default [
   {
-    files: ['**/*.js'],
+    files: ['src/**/*.js'],
     ignores: ['node_modules/**', 'tests/**', 'eslint.config.js'],
     languageOptions: {
       ecmaVersion: 2022,

@@ -15,7 +15,7 @@ document.body.innerHTML = `
 `;
 
 // Load the popup script
-const popupScript = fs.readFileSync(path.join(__dirname, '../popup.js'), 'utf8');
+const popupScript = fs.readFileSync(path.join(__dirname, '../src/popup.js'), 'utf8');
 
 describe('Popup Script', () => {
   beforeEach(() => {
