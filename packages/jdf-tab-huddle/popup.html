@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <title>Tab Organizer</title>
   <style>
@@ -11,19 +12,23 @@
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
     }
+
     h2 {
       margin: 0 0 16px 0;
       font-size: 18px;
       font-weight: 600;
       text-align: center;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
     }
+
     .section {
       margin-bottom: 16px;
     }
+
     .section:last-child {
       margin-bottom: 0;
     }
+
     .section-header {
       margin: 0 0 8px 0;
       font-size: 12px;
@@ -33,16 +38,18 @@
       opacity: 0.8;
       text-align: left;
     }
+
     .button-row {
       display: flex;
       gap: 8px;
     }
+
     button {
       flex: 1;
       padding: 12px 8px;
-      background: rgba(255,255,255,0.2);
+      background: rgba(255, 255, 255, 0.2);
       color: white;
-      border: 1px solid rgba(255,255,255,0.3);
+      border: 1px solid rgba(255, 255, 255, 0.3);
       border-radius: 8px;
       cursor: pointer;
       font-size: 12px;
@@ -52,16 +59,19 @@
       text-align: center;
       line-height: 1.2;
     }
+
     button:hover {
-      background: rgba(255,255,255,0.3);
+      background: rgba(255, 255, 255, 0.3);
       transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     }
+
     button:active {
       transform: translateY(0);
     }
   </style>
 </head>
+
 <body>
   <h2>Tab Organizer</h2>
   <div class="section">
@@ -71,7 +81,7 @@
       <button id="sortCurrentWindow">Sort Current Window</button>
     </div>
   </div>
-  
+
   <div class="section">
     <h3 class="section-header">Organize</h3>
     <div class="button-row">
@@ -80,7 +90,7 @@
       <button id="moveAllToSingleWindow">Move All to<br>Single Window</button>
     </div>
   </div>
-  
+
   <div class="section">
     <h3 class="section-header">Remove Duplicates</h3>
     <div class="button-row">
@@ -91,4 +101,5 @@
   </div>
   <script src="popup.js"></script>
 </body>
+
 </html>
