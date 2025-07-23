@@ -152,7 +152,7 @@ function lexHost(url) {
     }
 
     return u.hostname;
-  } catch (e) {
+  } catch (_e) {
     return url || '';
   }
 }
