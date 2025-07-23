@@ -1,0 +1,28 @@
+{
+  "name": "tab-organizer",
+  "version": "1.1.0",
+  "description": "Chrome extension for organizing tabs by URL and domain",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "validate": "node -e \"JSON.parse(require('fs').readFileSync('manifest.json', 'utf8')); console.log('✅ manifest.json is valid')\"",
+    "package": "npm run validate && zip -r tab-organizer.zip . -x 'node_modules/*' 'tests/*' '*.md' 'package*.json' 'pnpm-lock.yaml' '.git/*' '.github/*'",
+    "dev": "echo '🚀 Load the extension from this directory in Chrome Developer Mode'"
+  },
+  "devDependencies": {
+    "jest": "^27.5.1",
+    "jest-chrome": "^0.8.0",
+    "jest-environment-jsdom": "^27.5.1"
+  },
+  "jest": {
+    "testEnvironment": "jsdom",
+    "setupFilesAfterEnv": ["<rootDir>/tests/setup.js"],
+    "testMatch": ["<rootDir>/tests/**/*.test.js"],
+    "collectCoverageFrom": [
+      "*.js",
+      "!confirmation-dialog.js",
+      "!tests/**"
+    ]
+  }
+}
