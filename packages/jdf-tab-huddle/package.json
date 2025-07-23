@@ -1,6 +1,6 @@
 {
   "name": "tab-organizer",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "Chrome extension for organizing tabs by URL and domain",
   "type": "module",
   "scripts": {
