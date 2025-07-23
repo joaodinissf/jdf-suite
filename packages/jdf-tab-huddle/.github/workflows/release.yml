@@ -52,33 +52,11 @@ jobs:
     - name: Install dependencies
       run: pnpm install --frozen-lockfile
       
-    - name: Build extension (if build script exists)
-      run: |
-        if pnpm run --if-present build --dry-run > /dev/null 2>&1; then
-          pnpm run build
-        else
-          echo "No build script found, using source files directly"
-        fi
+    - name: Build and package extension
+      run: pnpm run package
       
-    - name: Create extension package
-      run: |
-        # Create a clean directory for the extension
-        mkdir -p dist
-        
-        # Copy extension files (excluding development files)
-        cp manifest.json dist/
-        cp *.js dist/ 2>/dev/null || true
-        cp *.html dist/ 2>/dev/null || true
-        cp *.css dist/ 2>/dev/null || true
-        cp -r icons dist/ 2>/dev/null || true
-        
-        # Create zip file for Chrome Web Store
-        cd dist
-        zip -r ../tab-organizer-${{ github.ref_name }}.zip .
-        cd ..
-        
-        echo "📦 Extension packaged as tab-organizer-${{ github.ref_name }}.zip"
-        ls -la *.zip
+    - name: List packaged files
+      run: ls -la *.zip
       
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
