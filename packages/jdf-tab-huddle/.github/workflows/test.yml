@@ -98,16 +98,17 @@ jobs:
         echo "======================================"
         echo ""
         echo "📋 Required files:"
-        [ -f "manifest.json" ] && echo "✅ manifest.json" || (echo "❌ manifest.json missing" && exit 1)
+        [ -f "src/manifest.json" ] && echo "✅ src/manifest.json" || (echo "❌ src/manifest.json missing" && exit 1)
         
         echo ""
         echo "📋 Extension files:"
-        [ -f "background.js" ] && echo "✅ background.js" || echo "ℹ️  background.js (not present)"
-        [ -f "popup.html" ] && echo "✅ popup.html" || echo "ℹ️  popup.html (not present)"
-        [ -f "popup.js" ] && echo "✅ popup.js" || echo "ℹ️  popup.js (not present)"
-        [ -f "confirmation-dialog.html" ] && echo "✅ confirmation-dialog.html" || echo "ℹ️  confirmation-dialog.html (not present)"
-        [ -f "confirmation-dialog.js" ] && echo "✅ confirmation-dialog.js" || echo "ℹ️  confirmation-dialog.js (not present)"
-        [ -d "icons" ] && echo "✅ icons/ directory" || echo "ℹ️  icons/ directory (not present)"
+        [ -f "src/background.js" ] && echo "✅ src/background.js" || echo "ℹ️  src/background.js (not present)"
+        [ -f "src/popup.html" ] && echo "✅ src/popup.html" || echo "ℹ️  src/popup.html (not present)"
+        [ -f "src/popup.js" ] && echo "✅ src/popup.js" || echo "ℹ️  src/popup.js (not present)"
+        [ -f "src/confirmation-dialog.html" ] && echo "✅ src/confirmation-dialog.html" || echo "ℹ️  src/confirmation-dialog.html (not present)"
+        [ -f "src/confirmation-dialog.js" ] && echo "✅ src/confirmation-dialog.js" || echo "ℹ️  src/confirmation-dialog.js (not present)"
+        [ -d "src/icons" ] && echo "✅ src/icons/ directory" || echo "ℹ️  src/icons/ directory (not present)"
+        [ -d "src/utils" ] && echo "✅ src/utils/ directory" || echo "ℹ️  src/utils/ directory (not present)"
         
         echo ""
         echo "✅ Extension structure validation complete"

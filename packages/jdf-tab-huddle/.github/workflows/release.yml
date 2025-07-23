@@ -69,7 +69,10 @@ jobs:
           ## Tab Organizer ${{ github.ref_name }}
           
           ### 📦 Installation
-          Download the `tab-organizer-${{ github.ref_name }}.zip` file and load it as an unpacked extension in Chrome Developer Mode.
+          1. Download the `tab-organizer-${{ github.ref_name }}.zip` file
+          2. Extract the contents 
+          3. Load the extracted folder in Chrome Developer Mode (chrome://extensions/)
+          4. The extension contains all source files in the extracted directory
           
           ### 🧪 Testing
           All tests passed ✅

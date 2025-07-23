@@ -7,11 +7,11 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "lint": "eslint *.js tests/**/*.js",
-    "lint:fix": "eslint *.js tests/**/*.js --fix",
-    "validate": "node -e \"JSON.parse(require('fs').readFileSync('manifest.json', 'utf8')); console.log('✅ manifest.json is valid')\"",
-    "package": "npm run validate && zip -r tab-organizer-$(node -p \"require('./package.json').version\").zip . -x 'node_modules/*' 'tests/*' '*.md' 'package*.json' 'pnpm-lock.yaml' '.git/*' '.github/*'",
-    "dev": "echo '🚀 Load the extension from this directory in Chrome Developer Mode'",
+    "lint": "eslint src/**/*.js tests/**/*.js",
+    "lint:fix": "eslint src/**/*.js tests/**/*.js --fix",
+    "validate": "node -e \"JSON.parse(require('fs').readFileSync('src/manifest.json', 'utf8')); console.log('✅ manifest.json is valid')\"",
+    "package": "npm run validate && zip -r tab-organizer-$(node -p \"require('./package.json').version\").zip src -x 'node_modules/*' 'tests/*' '*.md' 'package*.json' 'pnpm-lock.yaml' '.git/*' '.github/*'",
+    "dev": "echo '🚀 Load the src/ folder in Chrome Developer Mode'",
     "ci": "npm run lint && npm run test && npm run validate",
     "build": "npm run validate"
   },
@@ -31,8 +31,8 @@
       "<rootDir>/tests/**/*.test.js"
     ],
     "collectCoverageFrom": [
-      "*.js",
-      "!confirmation-dialog.js",
+      "src/**/*.js",
+      "!src/confirmation-dialog.js",
       "!tests/**"
     ]
   }
