@@ -68,31 +68,8 @@ jobs:
     - name: Install dependencies
       run: pnpm install --frozen-lockfile
       
-    - name: Check if lint script exists
-      id: check-lint
-      run: |
-        if pnpm run --if-present lint --dry-run > /dev/null 2>&1; then
-          echo "has-lint=true" >> $GITHUB_OUTPUT
-        else
-          echo "has-lint=false" >> $GITHUB_OUTPUT
-        fi
-      
     - name: Run linter
-      if: steps.check-lint.outputs.has-lint == 'true'
       run: pnpm run lint
-      
-    - name: Check if typecheck script exists
-      id: check-typecheck
-      run: |
-        if pnpm run --if-present typecheck --dry-run > /dev/null 2>&1; then
-          echo "has-typecheck=true" >> $GITHUB_OUTPUT
-        else
-          echo "has-typecheck=false" >> $GITHUB_OUTPUT
-        fi
-      
-    - name: Run type checking
-      if: steps.check-typecheck.outputs.has-typecheck == 'true'
-      run: pnpm run typecheck
 
   build:
     runs-on: ubuntu-latest
@@ -115,38 +92,25 @@ jobs:
     - name: Install dependencies
       run: pnpm install --frozen-lockfile
       
-    - name: Check if build script exists
-      id: check-build
+    - name: Validate extension structure
       run: |
-        if pnpm run --if-present build --dry-run > /dev/null 2>&1; then
-          echo "has-build=true" >> $GITHUB_OUTPUT
-        else
-          echo "has-build=false" >> $GITHUB_OUTPUT
-        fi
-      
-    - name: Build extension
-      if: steps.check-build.outputs.has-build == 'true'
-      run: pnpm run build
-      
-    - name: Validate manifest
-      run: |
-        if [ -f "manifest.json" ]; then
-          echo "✅ manifest.json found"
-          # Basic JSON validation
-          cat manifest.json | jq empty && echo "✅ manifest.json is valid JSON" || (echo "❌ manifest.json is invalid JSON" && exit 1)
-        else
-          echo "❌ manifest.json not found"
-          exit 1
-        fi
-      
-    - name: Check extension structure
-      run: |
-        echo "📁 Extension structure:"
-        ls -la
+        echo "📁 Chrome Extension Structure Check"
+        echo "======================================"
         echo ""
-        echo "📋 Required files check:"
-        [ -f "manifest.json" ] && echo "✅ manifest.json" || echo "❌ manifest.json"
-        [ -f "background.js" ] && echo "✅ background.js" || echo "⚠️  background.js (optional)"
-        [ -f "popup.html" ] && echo "✅ popup.html" || echo "⚠️  popup.html (optional)"
-        [ -f "popup.js" ] && echo "✅ popup.js" || echo "⚠️  popup.js (optional)"
-        [ -d "icons" ] && echo "✅ icons directory" || echo "⚠️  icons directory (optional)"
+        echo "📋 Required files:"
+        [ -f "manifest.json" ] && echo "✅ manifest.json" || (echo "❌ manifest.json missing" && exit 1)
+        
+        echo ""
+        echo "📋 Extension files:"
+        [ -f "background.js" ] && echo "✅ background.js" || echo "ℹ️  background.js (not present)"
+        [ -f "popup.html" ] && echo "✅ popup.html" || echo "ℹ️  popup.html (not present)"
+        [ -f "popup.js" ] && echo "✅ popup.js" || echo "ℹ️  popup.js (not present)"
+        [ -f "confirmation-dialog.html" ] && echo "✅ confirmation-dialog.html" || echo "ℹ️  confirmation-dialog.html (not present)"
+        [ -f "confirmation-dialog.js" ] && echo "✅ confirmation-dialog.js" || echo "ℹ️  confirmation-dialog.js (not present)"
+        [ -d "icons" ] && echo "✅ icons/ directory" || echo "ℹ️  icons/ directory (not present)"
+        
+        echo ""
+        echo "✅ Extension structure validation complete"
+      
+    - name: Validate manifest.json
+      run: pnpm run validate

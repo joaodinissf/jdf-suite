@@ -84,6 +84,13 @@ Time:        0.85s
 ## 🚀 CI/CD Integration
 - **GitHub Actions configured**: Tests run automatically on push/PR
 - **Multi-Node testing**: Tests on Node.js 18 & 20
+- **ESLint integration**: Code quality checks with Chrome extension rules
 - **Release automation**: Automatic releases on git tags
 - **Coverage reporting**: Integrated with workflows
 - See `CI-CD.md` for complete setup details
+
+## 🔧 Code Quality
+- **ESLint 9.31.0**: Configured with Chrome extension-specific rules
+- **Automated linting**: Runs in CI pipeline and available locally
+- **Code style enforcement**: Consistent formatting and best practices
+- **Commands**: `pnpm run lint` and `pnpm run lint:fix`

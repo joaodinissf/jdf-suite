@@ -89,7 +89,7 @@ async function moveTabsWithGroups(tabsToMove, targetWindowId) {
     }
     
     // Move and recreate grouped tabs
-    for (const [originalGroupId, groupTabs] of tabsByGroup.entries()) {
+    for (const [_originalGroupId, groupTabs] of tabsByGroup.entries()) {
       const tabIds = groupTabs.map(tab => tab.id);
       
       // Move tabs to target window first (they lose their group membership)
@@ -197,7 +197,7 @@ function lexHost(url) {
     }
 
     return u.hostname;
-  } catch (e) {
+  } catch (_e) {
     return url || '';
   }
 }
@@ -369,7 +369,7 @@ function findDuplicateTabs(tabArrays, respectGroups = true) {
     }
 
     // Process each group separately
-    for (const [groupKey, groupTabs] of tabsByGroup.entries()) {
+    for (const [_groupKey, groupTabs] of tabsByGroup.entries()) {
       const groupUrlSeen = new Map();
       
       for (const tab of groupTabs) {
@@ -413,7 +413,7 @@ async function analyzeDomainDistribution() {
 
     // Count tabs per domain (exclude pinned tabs from extraction consideration)
     for (const tab of allTabsWithGroups) {
-      if (tab.pinned) continue;
+      if (tab.pinned) {continue;}
 
       const domain = lexHost(tab.url);
       if (!domainTabCounts.has(domain)) {
@@ -538,7 +538,7 @@ async function performExtractAllDomains(domainAnalysis, respectGroups = true) {
     for (const domain of domainAnalysis.extractableDomains) {
       const domainTabs = domainAnalysis.domainTabs.get(domain);
 
-      if (domainTabs.length < 2) continue;
+      if (domainTabs.length < 2) {continue;}
 
       // Use the first tab as the anchor for the new window
       const anchorTab = domainTabs[0];
@@ -654,7 +654,7 @@ async function sortWindowTabs(windowId, respectGroups = true) {
     });
     
     // Sort tabs within each group by URL
-    for (const [groupId, groupTabs] of groupedTabsMap.entries()) {
+    for (const [_groupId, groupTabs] of groupedTabsMap.entries()) {
       groupTabs.sort((a, b) => {
         const urlA = a.pendingUrl || a.url;
         const urlB = b.pendingUrl || b.url;
@@ -675,7 +675,7 @@ async function sortWindowTabs(windowId, respectGroups = true) {
     currentIndex += ungroupedTabs.length;
     
     // Move grouped tabs while maintaining group boundaries
-    for (const [groupId, groupTabs] of groupedTabsMap.entries()) {
+    for (const [_groupId, groupTabs] of groupedTabsMap.entries()) {
       for (let i = 0; i < groupTabs.length; i++) {
         await chrome.tabs.move(groupTabs[i].id, {
           windowId,
