@@ -7,6 +7,9 @@ document.addEventListener('DOMContentLoaded', function () {
   
   // Setup event listeners for both modes
   setupEventListeners();
+  
+  // Update UI based on number of windows
+  updateUIForWindowCount();
 });
 
 // Tab switching functionality
@@ -173,5 +176,34 @@ function moveAllToSingleWindow(respectGroups = true) {
       activeTabId: activeTab.id,
       respectGroups
     });
+  });
+}
+
+// Update UI based on number of windows
+function updateUIForWindowCount() {
+  chrome.windows.getAll({ populate: false }, function (windows) {
+    const windowCount = windows.length;
+    const isSingleWindow = windowCount === 1;
+    
+    if (isSingleWindow) {
+      // Elements that should be hidden when only one window exists
+      const multiWindowElements = [
+        'sortAllWindows-groups',
+        'sortAllWindows-individual',
+        'moveAllToSingleWindow-groups',
+        'moveAllToSingleWindow-individual',
+        'removeDuplicatesAllWindows-groups',
+        'removeDuplicatesAllWindows-individual',
+        'removeDuplicatesGlobally-groups',
+        'removeDuplicatesGlobally-individual'
+      ];
+      
+      multiWindowElements.forEach(elementId => {
+        const element = document.getElementById(elementId);
+        if (element) {
+          element.style.display = 'none';
+        }
+      });
+    }
   });
 }
