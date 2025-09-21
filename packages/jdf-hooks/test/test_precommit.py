@@ -11,6 +11,7 @@ This script:
 Usage: python test/test_precommit.py
 """
 
+import argparse
 import shutil
 import subprocess
 import sys
@@ -90,8 +91,14 @@ def run_precommit(work_dir, precommit_cmd):
     return result.returncode == 0
 
 
-def show_diff(work_dir):
+def show_diff(work_dir, verbose=False):
     """Show the git diff of changes made by pre-commit."""
+    if not verbose:
+        print(
+            "\n📊 Diff output suppressed. Re-run with --verbose to include full diff."
+        )
+        return
+
     print("\n" + "=" * 60)
     print("📊 DIFF: Changes made by pre-commit hooks")
     print("=" * 60)
@@ -118,12 +125,25 @@ def show_diff(work_dir):
 
 def main():
     """Main test function."""
+    parser = argparse.ArgumentParser(
+        description="Test pre-commit hooks against sample files"
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Display the full git diff after hooks run",
+    )
+    args = parser.parse_args()
+
     # Get script directory and project root
     script_dir = Path(__file__).parent
     project_root = script_dir.parent
     zip_path = script_dir / "example_files.zip"
 
     print("🧪 Pre-commit hooks test script")
+    if not args.verbose:
+        print("🔕 Diff output is disabled by default; pass --verbose to show it.")
     print(f"Project root: {project_root}")
     print(f"Test files zip: {zip_path}")
 
@@ -167,7 +187,7 @@ def main():
             success = run_precommit(work_dir, precommit_cmd)
 
             # Show results
-            show_diff(work_dir)
+            show_diff(work_dir, verbose=args.verbose)
 
             print("\n" + "=" * 60)
             if success:
