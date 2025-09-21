@@ -3,7 +3,11 @@
 # See https://lyz-code.github.io/yamlfix/
 
 # Use double quotes when quoting (equivalent to --quote-style double)
-quote_representation = "\""
+quote_representation = '"'
+
+# Only quote values when required to disambiguate type
+quote_basic_values = false
+quote_keys_and_basic_values = false
 
 # Use block style for sequences (equivalent to --sequence-style block_style)
 sequence_style = "flow_style" # "block_style"
@@ -14,8 +18,8 @@ line_length = 120
 # Use 'null' for None values (equivalent to --none-representation null)
 none_representation = "null"
 
-# Don't add unnecessary quotes (equivalent to --preserve-quotes)
-preserve_quotes = true
+# Let yamlfix drop superfluous quotes instead of preserving them
+preserve_quotes = false
 
 # Don't add document start marker (---)
 explicit_start = false

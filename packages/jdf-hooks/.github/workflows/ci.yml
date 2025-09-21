@@ -27,7 +27,7 @@ jobs:
     - name: Set up Java
       uses: actions/setup-java@v4
       with:
-        distribution: 'temurin'
+        distribution: temurin
         java-version: '21'
     - name: Install system dependencies
       run: |
