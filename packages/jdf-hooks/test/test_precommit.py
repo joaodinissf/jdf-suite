@@ -52,7 +52,21 @@ def unzip_test_files(zip_path, extract_dir):
     print(f"✅ Test files extracted to {extract_dir}")
 
 
-def run_precommit(work_dir):
+def get_precommit_command():
+    """Return the base command used to invoke pre-commit."""
+
+    if shutil.which("pre-commit"):
+        return "pre-commit"
+
+    if shutil.which("uvx"):
+        return "uvx pre-commit"
+
+    raise RuntimeError(
+        "Neither 'pre-commit' nor 'uvx' is available on PATH. Install pre-commit or uv."
+    )
+
+
+def run_precommit(work_dir, precommit_cmd):
     """Run pre-commit on all files in the working directory."""
     print("🔧 Running pre-commit on all files...")
 
@@ -60,7 +74,7 @@ def run_precommit(work_dir):
     run_command("git add .", cwd=work_dir)
 
     # Run pre-commit
-    result = run_command("pre-commit run --all-files", cwd=work_dir, check=False)
+    result = run_command(f"{precommit_cmd} run --all-files", cwd=work_dir, check=False)
 
     print("📋 Pre-commit execution completed")
     print(f"Exit code: {result.returncode}")
@@ -142,12 +156,15 @@ def main():
             # Extract test files
             unzip_test_files(zip_path, work_dir)
 
+            # Determine pre-commit command
+            precommit_cmd = get_precommit_command()
+
             # Install pre-commit hooks
             print("⚙️  Installing pre-commit hooks...")
-            run_command("pre-commit install", cwd=work_dir)
+            run_command(f"{precommit_cmd} install", cwd=work_dir)
 
             # Run pre-commit
-            success = run_precommit(work_dir)
+            success = run_precommit(work_dir, precommit_cmd)
 
             # Show results
             show_diff(work_dir)
