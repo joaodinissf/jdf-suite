@@ -34,23 +34,6 @@ def run_command(cmd, cwd=None, check=True):
         raise
 
 
-def check_git_status():
-    """Check if git working directory is clean."""
-    print("🔍 Checking git status...")
-    result = run_command("git status --porcelain")
-
-    if result.stdout.strip():
-        print(
-            "❌ Git working directory is not clean. Please commit or stash changes first."
-        )
-        print("Dirty files:")
-        print(result.stdout)
-        return False
-
-    print("✅ Git working directory is clean")
-    return True
-
-
 def unzip_test_files(zip_path, extract_dir):
     """Unzip the test files to the extraction directory."""
     print(f"📦 Extracting test files from {zip_path}...")
@@ -131,9 +114,6 @@ def main():
     print(f"Test files zip: {zip_path}")
 
     # Check prerequisites
-    if not check_git_status():
-        sys.exit(1)
-
     if not zip_path.exists():
         print(f"❌ Test files zip not found: {zip_path}")
         sys.exit(1)
