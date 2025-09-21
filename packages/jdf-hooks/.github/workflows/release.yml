@@ -22,16 +22,15 @@ jobs:
         else
           COMMITS=$(git log --pretty=format:"- %s" --no-merges ${LAST_TAG}..HEAD)
         fi
-        echo "changelog<<EOF" >> $GITHUB_OUTPUT
-        echo "$COMMITS" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        {
+          echo "changelog<<EOF"
+          echo "$COMMITS"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
     - name: Create Release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: softprops/action-gh-release@v2.3.3
       with:
-        tag_name: ${{ github.ref_name }}
-        release_name: Release ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
         body: |
           ## Changes
           ${{ steps.changelog.outputs.changelog }}
