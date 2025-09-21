@@ -58,12 +58,11 @@ def unzip_test_files(zip_path, extract_dir):
     with zipfile.ZipFile(zip_path, "r") as zip_ref:
         zip_ref.extractall(extract_dir)
 
-    # Move files from test_files/ subdirectory to root of extract_dir
+    # Move files and directories from test_files/ subdirectory to root of extract_dir
     test_files_dir = extract_dir / "test_files"
     if test_files_dir.exists():
         for file_path in test_files_dir.iterdir():
-            if file_path.is_file():
-                shutil.move(str(file_path), str(extract_dir / file_path.name))
+            shutil.move(str(file_path), str(extract_dir / file_path.name))
         # Remove empty test_files directory
         test_files_dir.rmdir()
 
