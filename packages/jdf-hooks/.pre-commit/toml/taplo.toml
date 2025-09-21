@@ -1,0 +1,3 @@
+[formatting]
+# Options: "auto", "double", "single"
+quote-style = "double"

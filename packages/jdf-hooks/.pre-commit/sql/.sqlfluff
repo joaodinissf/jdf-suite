@@ -1,0 +1,9 @@
+[sqlfluff]
+dialect = postgres
+
+# Example: ignore long line rule
+exclude_rules = L016
+
+# You can also configure indentation, capitalization, etc.
+[sqlfluff:rules:capitalisation.keywords]  # capitalisation of keywords
+capitalisation_policy = upper

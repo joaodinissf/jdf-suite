@@ -1,0 +1,33 @@
+# yamlfix configuration
+# Based on the official yamlfix documentation parameters
+# See https://lyz-code.github.io/yamlfix/
+
+# Use double quotes when quoting (equivalent to --quote-style double)
+quote_representation = "\""
+
+# Use block style for sequences (equivalent to --sequence-style block_style)
+sequence_style = "flow_style" # "block_style"
+
+# Allow lines up to 120 characters (equivalent to --line-length 120)
+line_length = 120
+
+# Use 'null' for None values (equivalent to --none-representation null)
+none_representation = "null"
+
+# Don't add unnecessary quotes (equivalent to --preserve-quotes)
+preserve_quotes = true
+
+# Don't add document start marker (---)
+explicit_start = false
+
+# Fix whitespace issues
+whitelines = 0 # Remove extra blank lines
+
+# Indentation settings for desired list formatting
+# To get list items aligned with their parent keys:
+# indent_mapping: indentation for dict values (2 spaces)
+indent_mapping = 2
+# indent_sequence: total space from root to sequence content (2 spaces)
+indent_sequence = 2
+# indent_offset: offset for the dash (0 spaces, so dash aligns with parent)
+indent_offset = 0

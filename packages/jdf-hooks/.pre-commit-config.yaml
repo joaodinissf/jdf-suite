@@ -1,0 +1,193 @@
+# .pre-commit-config.yaml
+minimum_pre_commit_version: 4.3.0
+repos:
+  # ============================================================================
+  # PYTHON
+  # ============================================================================
+- repo: https://github.com/hadialqattan/pycln
+  rev: v2.5.0
+  hooks:
+  - id: pycln
+    args: [--all]
+    types: [python]
+- repo: https://github.com/pycqa/isort
+  rev: 6.0.1
+  hooks:
+  - id: isort
+    types: [python]
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.13.1
+  hooks:
+  - id: ruff-format
+    name: ruff format
+    description: Run 'ruff format' for extremely fast Python formatting
+    entry: ruff format --force-exclude
+    language: python
+    types_or: [python, pyi, jupyter]
+    args: []
+    require_serial: true
+  - id: ruff-check
+    name: ruff check
+    description: Run 'ruff check' for extremely fast Python linting
+    entry: ruff check --force-exclude
+    language: python
+    types_or: [python, pyi, jupyter]
+    args: []
+    require_serial: true
+- repo: https://github.com/pre-commit/mirrors-mypy
+  rev: v1.18.2
+  hooks:
+  - id: mypy
+    types: [python]
+- repo: https://github.com/pycqa/pylint
+  rev: v3.3.8
+  hooks:
+  - id: pylint
+    types:
+    - python
+
+  # ============================================================================
+  # JAVASCRIPT/TYPESCRIPT/WEB
+  # ============================================================================
+- repo: local
+  hooks:
+  - id: prettier
+    name: prettier (JS/TS/JSON/CSS/etc.)
+    entry: bash -lc 'npx prettier --ignore-unknown --write "$@"'
+    language: system
+    pass_filenames: true
+    types_or:
+    - astro
+    - javascript
+    - jsx
+    - ts
+    - tsx
+    - json
+    - css
+    - scss
+
+  # ============================================================================
+  # RUST
+  # ============================================================================
+- repo: local
+  hooks:
+  - id: rustfmt
+    name: rustfmt (Rust)
+    entry: rustfmt --edition 2024
+    language: system
+    types: [rust]
+    require_serial: true
+
+  # ============================================================================
+  # JAVA
+  # ============================================================================
+- repo: local
+  hooks:
+  - id: google-java-format
+    name: Google Java Format
+    entry: bash -c 'for file in "$@"; do hooks/gjfpc-hook/format.sh -i "$file"; done' --
+    language: system
+    types: [java]
+    pass_filenames: true
+- repo: https://github.com/gherynos/pre-commit-java
+  rev: v0.6.23
+  hooks:
+  - id: pmd
+  - id: cpd
+  - id: checkstyle
+
+  # ============================================================================
+  # MARKDOWN
+  # ============================================================================
+- repo: https://github.com/igorshubovych/markdownlint-cli
+  rev: v0.45.0
+  hooks:
+  - id: markdownlint-fix
+    name: markdownlint-fix
+    description: Fixes the style of Markdown/Commonmark files
+    entry: markdownlint --fix --config .pre-commit/markdown/markdownlint.json
+    language: node
+    types:
+    - markdown
+
+  # ============================================================================
+  # YAML
+  # ============================================================================
+- repo: https://github.com/lyz-code/yamlfix
+  rev: 1.18.0
+  hooks:
+  - id: yamlfix
+    exclude: .*lock\.ya?ml$
+    args: [--config-file, .pre-commit/yaml/yamlfix.toml]
+    types:
+    - yaml
+
+  # ============================================================================
+  # TOML
+  # ============================================================================
+- repo: https://github.com/ComPWA/taplo-pre-commit
+  rev: v0.9.3
+  hooks:
+  - id: taplo-format
+    name: taplo format (TOML)
+    args: [--config, .pre-commit/toml/taplo.toml]
+  - id: taplo-lint
+    name: taplo lint (TOML)
+    args:
+    - --config
+    - .pre-commit/toml/taplo.toml
+
+  # ============================================================================
+  # SQL
+  # ============================================================================
+- repo: https://github.com/sqlfluff/sqlfluff
+  rev: 3.4.2
+  hooks:
+  - id: sqlfluff-fix
+    name: sqlfluff fix (Postgres)
+    entry: sqlfluff fix --config .pre-commit/sql/.sqlfluff
+    language: python
+    types: [sql]
+  - id: sqlfluff-lint
+    name: sqlfluff lint (Postgres)
+    entry: sqlfluff lint --config .pre-commit/sql/.sqlfluff
+    language: python
+    types:
+    - sql
+
+  # ============================================================================
+  # SHELL SCRIPTS
+  # ============================================================================
+- repo: local
+  hooks:
+  - id: shell-fmt
+    name: shfmt
+    description: Rewrites all shell scripts to a canonical format.
+    entry: shfmt
+    language: system
+    types: [file, shell]
+    exclude_types: [zsh]
+    args:
+    - -w
+    - -s
+    - -l
+    - -i
+    - "2"
+
+  # ============================================================================
+  # GENERAL FILE CHECKS
+  # ============================================================================
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v6.0.0
+  hooks:
+  - id: check-yaml
+  - id: end-of-file-fixer
+  - id: trailing-whitespace
+    exclude: \.(md|markdown)$
+  - id: mixed-line-ending
+    args: [--fix=lf]
+  - id: detect-private-key
+  - id: detect-aws-credentials
+    args: [--allow-missing-credentials]
+  - id: check-added-large-files
+    args: [--maxkb=1000]
