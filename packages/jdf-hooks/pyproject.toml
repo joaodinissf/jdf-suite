@@ -1,0 +1,4 @@
+[tool.pyright]
+# Use the .venv in the project root for type checking
+venvPath = "."
+venv = ".venv"
