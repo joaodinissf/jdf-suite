@@ -43,6 +43,10 @@ repos:
   - id: pylint
     types:
     - python
+- repo: https://github.com/RobertCraigie/pyright-python
+  rev: v1.1.405
+  hooks:
+  - id: pyright
 
 # ============================================================================
 # JAVASCRIPT/TYPESCRIPT/WEB
@@ -93,12 +97,6 @@ repos:
     language: system
     types: [java]
     pass_filenames: true
-- repo: https://github.com/gherynos/pre-commit-java
-  rev: v0.6.23
-  hooks:
-  - id: pmd
-  - id: cpd
-  - id: checkstyle
 
 # ============================================================================
 # MARKDOWN
