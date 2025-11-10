@@ -28,7 +28,7 @@ jobs:
           echo "EOF"
         } >> "$GITHUB_OUTPUT"
     - name: Create Release
-      uses: softprops/action-gh-release@v2.3.3
+      uses: softprops/action-gh-release@v2.4.2
       with:
         name: Release ${{ github.ref_name }}
         body: |
