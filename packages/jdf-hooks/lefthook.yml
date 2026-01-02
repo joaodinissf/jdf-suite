@@ -73,7 +73,7 @@ pre-commit:
         run: rustfmt --edition 2024 {staged_files}
         glob: '*.rs'
       - name: clippy
-        run: cargo clippy --all-targets --all-features
+        run: RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --all-features
         glob: '*.rs'
 
           # ==================================================================
@@ -82,20 +82,15 @@ pre-commit:
       - name: google-java-format
         run: bash -c 'for file in "$@"; do hooks/gjfpc-hook/format.sh -i "$file"; done' -- {staged_files}
         glob: '*.java'
-
-          # Note: PMD, CPD, and Checkstyle require manual installation
-          # Uncomment if you have these tools installed
-          # - name: pmd
-          #   run: pmd check -d {staged_files} --no-cache
-          #   glob: "*.java"
-
-          # - name: cpd
-          #   run: cpd --minimum-tokens 50 --files {staged_files}
-          #   glob: "*.java"
-
-          # - name: checkstyle
-          #   run: checkstyle -c /google_checks.xml {staged_files}
-          #   glob: "*.java"
+      - name: pmd
+        run: pmd check -d {staged_files} --no-cache
+        glob: '*.java'
+      - name: cpd
+        run: cpd --minimum-tokens 50 --files {staged_files}
+        glob: '*.java'
+      - name: checkstyle
+        run: checkstyle -c .pre-commit/java/google_checks.xml {staged_files}
+        glob: '*.java'
 
           # ==================================================================
           # MARKDOWN
@@ -168,6 +163,12 @@ pre-commit:
         run: |
           if grep -l 'BEGIN.*PRIVATE KEY' {all_files} 2>/dev/null; then
             echo "Error: Private key detected in files!"
+            exit 1
+          fi
+      - name: detect-aws-credentials
+        run: |
+          if grep -l -i 'AKIA[0-9A-Z]\{16\}' {all_files} 2>/dev/null; then
+            echo "Error: AWS credentials detected in files!"
             exit 1
           fi
       - name: check-large-files

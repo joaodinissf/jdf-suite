@@ -46,20 +46,29 @@ repos:
 # ============================================================================
 # Active: pyright (fast, accurate, VS Code native)
 # Active: ty (experimental v0.0.8, 10-60x faster than mypy/pyright)
-# Alternative: mypy (stable, widely used - commented below)
 # ============================================================================
-- repo: https://github.com/RobertCraigie/pyright-python
-  rev: v1.1.407
-  hooks:
-  - id: pyright
+# Uses system-installed tools for consistency with lefthook
 - repo: local
   hooks:
+  - id: pyright
+    name: pyright
+    entry: pyright
+    language: system
+    types: [python]
+    pass_filenames: true
   - id: ty
     name: ty (experimental type checker)
     entry: ty check
     language: system
     types: [python]
     pass_filenames: true
+
+# ALTERNATIVE: Unofficial pyright wrapper (automatically manages pyright installation)
+# Uncomment to use wrapper instead of system pyright (no npm required)
+# - repo: https://github.com/RobertCraigie/pyright-python
+#   rev: v1.1.407
+#   hooks:
+#   - id: pyright
 
 # ALTERNATIVE: mypy (stable type checker)
 # Uncomment to use mypy instead of/in addition to pyright
@@ -118,6 +127,7 @@ repos:
 # ============================================================================
 # JAVA
 # ============================================================================
+# Uses system-installed tools for consistency with lefthook
 - repo: local
   hooks:
   - id: google-java-format
@@ -126,12 +136,33 @@ repos:
     language: system
     types: [java]
     pass_filenames: true
-- repo: https://github.com/gherynos/pre-commit-java
-  rev: v0.6.31
-  hooks:
   - id: pmd
+    name: PMD
+    entry: pmd check --no-cache -d
+    language: system
+    types: [java]
+    pass_filenames: true
   - id: cpd
+    name: CPD (Copy-Paste Detector)
+    entry: cpd --minimum-tokens 50 --files
+    language: system
+    types: [java]
+    pass_filenames: true
   - id: checkstyle
+    name: Checkstyle
+    entry: checkstyle -c .pre-commit/java/google_checks.xml
+    language: system
+    types: [java]
+    pass_filenames: true
+
+# ALTERNATIVE: Unofficial Java tools wrapper (uses Docker for PMD/Checkstyle)
+# Uncomment to use wrapper instead of system tools
+# - repo: https://github.com/gherynos/pre-commit-java
+#   rev: v0.6.31
+#   hooks:
+#   - id: pmd
+#   - id: cpd
+#   - id: checkstyle
 
 # ============================================================================
 # MARKDOWN
