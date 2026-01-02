@@ -432,3 +432,4 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/python,java,node,rust,macos,linux,windows,visualstudioc
+uv.lock
