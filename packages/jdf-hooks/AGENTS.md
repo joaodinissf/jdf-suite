@@ -6,7 +6,7 @@ This document helps AI assistants (Claude, GitHub Copilot, GPT, etc.) understand
 
 **Name**: Sensible Pre-Commit Hooks
 **Purpose**: A comprehensive, reusable Git hooks repository supporting both **lefthook** and **pre-commit**
-**Version**: 2.0.0 (hybrid architecture)
+**Version**: 2.2.0 (hybrid architecture)
 
 ### What This Repository Provides
 
@@ -44,7 +44,7 @@ This repository supports **two hook managers** with identical functionality:
 ### Key Files
 
 | File | Purpose |
-|------|---------|
+| ---- | ------- |
 | `lefthook.yml` | Lefthook configuration (fast local dev) |
 | `.pre-commit-config.yaml` | Pre-commit configuration (CI/standardization) |
 | `.pre-commit/` | Shared tool configurations (markdownlint, sqlfluff, taplo, yamlfix) |
@@ -90,6 +90,7 @@ When modifying hooks:
 Some hooks **cannot** run in parallel due to dependencies:
 
 **Python formatters (MUST run in sequence)**:
+
 1. `pycln` - Removes unused imports
 2. `isort` - Sorts imports
 3. `ruff-format` - Formats code
@@ -97,10 +98,12 @@ Some hooks **cannot** run in parallel due to dependencies:
 These modify the same files and conflict if run concurrently.
 
 **Implementation**:
+
 - In `lefthook.yml`: Use number prefixes (`01-pycln`, `02-isort`, `03-ruff-format`)
 - In `.pre-commit-config.yaml`: Order matters (repos listed sequentially)
 
 **Safe to parallelize**:
+
 - Different languages (Python vs Rust vs JS)
 - Read-only checks (mypy, ruff-check, clippy)
 - Independent formatters (shfmt vs prettier)
@@ -109,7 +112,7 @@ These modify the same files and conflict if run concurrently.
 
 Both hook managers use the **same** tool configurations in `.pre-commit/`:
 
-```
+```text
 .pre-commit/
 ├── markdown/markdownlint.json
 ├── sql/.sqlfluff
@@ -118,6 +121,7 @@ Both hook managers use the **same** tool configurations in `.pre-commit/`:
 ```
 
 When modifying tool behavior:
+
 - ✅ Edit config files in `.pre-commit/`
 - ❌ Don't add tool-specific flags to just one hook manager
 
@@ -142,9 +146,31 @@ lefthook dump
 The `ty` type checker is **optional and experimental** (v0.0.8):
 
 - ❌ **Never** make ty the default
-- ✅ **Always** keep mypy as default
+- ✅ **Always** keep pyright as default
 - ✅ Document experimental status
-- ✅ Keep ty commented out in both configs
+- ✅ Keep ty as an additional experimental checker
+
+### Rule #6: Keep Version Numbers Consistent
+
+When releasing a new version, update the version number in **ALL** documentation files:
+
+- ✅ `README.md` - Footer: `**Version**: X.Y.Z`
+- ✅ `INTEGRATION.md` - Footer: `**Version**: X.Y.Z`
+- ✅ `AGENTS.md` - Project Overview: `**Version**: X.Y.Z`
+- ✅ `INTEGRATION.md` - All curl URLs: `v{X.Y.Z}`
+- ✅ Git tag: Create annotated tag `vX.Y.Z`
+
+**Example**: When releasing v2.2.0:
+
+```bash
+# Update all version references in documentation
+sed -i '' 's/Version\*\*: 2.1.0/Version**: 2.2.0/g' README.md INTEGRATION.md AGENTS.md
+sed -i '' 's/v2.1.0/v2.2.0/g' INTEGRATION.md
+
+# Create annotated tag
+git tag -a v2.2.0 -m "Release v2.2.0"
+git push origin v2.2.0
+```
 
 ---
 
@@ -156,6 +182,7 @@ The `ty` type checker is **optional and experimental** (v0.0.8):
 
 1. **Research the tool**: Find official repo, understand configuration
 2. **Add to `.pre-commit-config.yaml`**:
+
    ```yaml
    - repo: https://github.com/tool/repo
      rev: v1.0.0
@@ -165,6 +192,7 @@ The `ty` type checker is **optional and experimental** (v0.0.8):
    ```
 
 3. **Add to `lefthook.yml`**:
+
    ```yaml
    XX-tool-name:  # Use appropriate number prefix
      glob: "*.py"
@@ -258,11 +286,13 @@ pre-commit:
 ```
 
 **Why this works**:
+
 - Number prefixes ensure formatters run 01 → 02 → 03 before other commands start
 - Different language tools (10, 20, 30) can run truly in parallel
 - Read-only checks (ruff-check, mypy) are safe to overlap
 
 **Future alternative** (when [Issue #846](https://github.com/evilmartians/lefthook/issues/846) is resolved):
+
 ```yaml
 commands:
   pycln:
@@ -288,11 +318,13 @@ Lefthook provides these template variables:
 - `{files}` - Custom file list
 
 **Usage**:
+
 ```yaml
 run: tool-name {staged_files}  # Pass files to tool
 ```
 
 **Exception** - Some tools don't accept file lists:
+
 ```yaml
 clippy:
   glob: "*.rs"
@@ -307,6 +339,7 @@ clippy:
 ### Repository Types
 
 **Remote repositories**:
+
 ```yaml
 - repo: https://github.com/tool/repo
   rev: v1.0.0
@@ -315,6 +348,7 @@ clippy:
 ```
 
 **Local hooks** (for tools not in pre-commit ecosystem):
+
 ```yaml
 - repo: local
   hooks:
@@ -328,6 +362,7 @@ clippy:
 ### Language Types
 
 Common language specifiers:
+
 - `language: python` - Uses Python environment
 - `language: node` - Uses Node environment
 - `language: system` - Uses system-installed tool
@@ -336,12 +371,14 @@ Common language specifiers:
 ### File Filtering
 
 **By type**:
+
 ```yaml
 types: [python]  # Only .py files
 types_or: [python, pyi, jupyter]  # Multiple types
 ```
 
 **By glob pattern**:
+
 ```yaml
 files: '^src/.*\.py$'  # Regex pattern
 exclude: '^tests/'  # Exclude pattern
@@ -393,6 +430,7 @@ git diff
 3. **validate-configs**: Validate YAML syntax
 
 **When modifying hooks**:
+
 - CI must pass for both test suites
 - Both configs must be validated
 - No test failures allowed
@@ -404,6 +442,7 @@ git diff
 ### ❌ Updating Only One Config
 
 **Wrong**:
+
 ```yaml
 # Only updating .pre-commit-config.yaml
 - repo: https://github.com/new/tool
@@ -415,6 +454,7 @@ git diff
 ```
 
 **Right**:
+
 ```yaml
 # Update .pre-commit-config.yaml
 - repo: https://github.com/new/tool
@@ -431,6 +471,7 @@ new-tool:
 ### ❌ Breaking Sequential Dependencies
 
 **Wrong**:
+
 ```yaml
 # Running formatters in random order
 ruff-format:
@@ -442,6 +483,7 @@ pycln:
 ```
 
 **Right**:
+
 ```yaml
 # Enforcing order with number prefixes
 01-pycln:
@@ -455,6 +497,7 @@ pycln:
 ### ❌ Inconsistent Tool Configurations
 
 **Wrong**:
+
 ```yaml
 # Different line length in each config
 # .pre-commit-config.yaml
@@ -467,6 +510,7 @@ black:
 ```
 
 **Right**:
+
 ```yaml
 # Use shared config file
 # .pre-commit/python/pyproject.toml
@@ -479,6 +523,7 @@ line-length = 88
 ### ❌ Making ty the Default
 
 **Wrong**:
+
 ```yaml
 # Uncommenting ty, commenting mypy
 # - id: mypy
@@ -486,6 +531,7 @@ line-length = 88
 ```
 
 **Right**:
+
 ```yaml
 # Keep mypy as default, ty commented
 - id: mypy
@@ -500,7 +546,7 @@ line-length = 88
 
 ## File Organization
 
-```
+```text
 .
 ├── .github/
 │   └── workflows/
@@ -538,6 +584,13 @@ line-length = 88
   - Added lefthook.yml
   - Added ty as experimental option
   - Complete documentation rewrite
+- **v2.1.0**: Enhanced integration documentation
+  - Added comprehensive INTEGRATION.md guide
+  - Improved README structure with documentation links
+- **v2.2.0**: Documentation polish and badges
+  - Added CI status, version, and license badges
+  - Updated version consistency across all docs
+  - Added version management guidelines to AGENTS.md
 
 ---
 
@@ -546,6 +599,7 @@ line-length = 88
 ### Adding Python Linter
 
 1. Add to `.pre-commit-config.yaml`:
+
    ```yaml
    - repo: https://github.com/tool/repo
      rev: v1.0.0
@@ -555,6 +609,7 @@ line-length = 88
    ```
 
 2. Add to `lefthook.yml`:
+
    ```yaml
    0X-tool-name:  # Choose appropriate number
      glob: "*.py"
@@ -567,6 +622,7 @@ line-length = 88
 ### Adding JavaScript Formatter
 
 1. Add to `.pre-commit-config.yaml`:
+
    ```yaml
    - repo: local
      hooks:
@@ -577,6 +633,7 @@ line-length = 88
    ```
 
 2. Add to `lefthook.yml`:
+
    ```yaml
    1X-tool-name:
      glob: "*.js"
@@ -597,9 +654,9 @@ line-length = 88
 
 ## Getting Help
 
-- **Lefthook docs**: https://lefthook.dev/
-- **Pre-commit docs**: https://pre-commit.com/
-- **Issue tracker**: https://github.com/joaodinissf/sensible-pre-commit-hooks/issues
+- **Lefthook docs**: <https://lefthook.dev/>
+- **Pre-commit docs**: <https://pre-commit.com/>
+- **Issue tracker**: <https://github.com/joaodinissf/sensible-pre-commit-hooks/issues>
 - **This file**: Reference for AI assistants and contributors
 
 ---

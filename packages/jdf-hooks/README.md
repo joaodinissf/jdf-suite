@@ -1,5 +1,9 @@
 # Sensible Pre-Commit Hooks
 
+[![CI Status](https://img.shields.io/github/actions/workflow/status/joaodinissf/Sensible-Pre-Commit-Hooks/ci.yml?branch=main&label=CI&logo=github)](https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/v/tag/joaodinissf/Sensible-Pre-Commit-Hooks?label=version&logo=git)](https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A comprehensive Git hooks repository supporting both **lefthook** and **pre-commit**, providing fast local development with standardized CI/CD validation.
 
 ## Philosophy: Hybrid Approach
@@ -7,7 +11,7 @@ A comprehensive Git hooks repository supporting both **lefthook** and **pre-comm
 This repository supports **both** hook managers to get the best of both worlds:
 
 | Feature | Lefthook | Pre-commit |
-|---------|----------|------------|
+| ------- | -------- | ---------- |
 | **Speed** | ⚡ Extremely fast (<1s commits) | Slower (5-10s commits) |
 | **Parallelization** | Native parallel execution | Sequential by default |
 | **Setup** | Requires tool installation | Auto-manages environments |
@@ -405,12 +409,15 @@ Both test suites:
 ## Getting Started
 
 ### New Project
+
 See **[INTEGRATION.md](INTEGRATION.md)** for step-by-step instructions to add these hooks to your project.
 
 ### Existing Hooks
+
 See **[MIGRATION.md](MIGRATION.md)** for migrating from husky, lint-staged, or other hook managers.
 
 ### Keeping Updated
+
 See **[UPDATE.md](UPDATE.md)** for maintaining dependencies and hook versions.
 
 ## Troubleshooting
@@ -499,4 +506,4 @@ Built with:
 
 ---
 
-**Version**: 2.0.0 | **Hybrid Approach**: Lefthook (local) + Pre-commit (CI)
+**Version**: 2.2.0 | **Hybrid Approach**: Lefthook (local) + Pre-commit (CI)

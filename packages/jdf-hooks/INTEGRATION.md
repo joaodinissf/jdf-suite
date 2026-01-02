@@ -9,14 +9,14 @@ This guide explains how to integrate these Git hooks into your existing project.
 cd /path/to/your/project
 
 # For lefthook (recommended for local development)
-curl -O https://raw.githubusercontent.com/joaodinissf/Sensible-Pre-Commit-Hooks/v2.0.0/lefthook.yml
+curl -O https://raw.githubusercontent.com/joaodinissf/Sensible-Pre-Commit-Hooks/v2.2.0/lefthook.yml
 
 # For pre-commit (recommended for CI/CD)
-curl -O https://raw.githubusercontent.com/joaodinissf/Sensible-Pre-Commit-Hooks/v2.0.0/.pre-commit-config.yaml
+curl -O https://raw.githubusercontent.com/joaodinissf/Sensible-Pre-Commit-Hooks/v2.2.0/.pre-commit-config.yaml
 
 # 2. Copy shared configurations
 mkdir -p .pre-commit
-curl -L https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks/archive/v2.0.0.tar.gz | \
+curl -L https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks/archive/v2.2.0.tar.gz | \
   tar xz --strip-components=1 "*/\.pre-commit"
 
 # 3. Install hooks
@@ -35,17 +35,20 @@ Done! Your project now has comprehensive Git hooks.
 
 ### Step 1: Choose Your Hook Manager
 
-**Option A: Lefthook (Fast Local Development)**
+#### Option A: Lefthook (Fast Local Development)
+
 - ⚡ 5-10x faster than pre-commit
 - ✅ Best for local development
 - ⚠️ Requires manual tool installation
 
-**Option B: Pre-commit (Standardized CI/CD)**
+#### Option B: Pre-commit (Standardized CI/CD)
+
 - 🏭 Auto-manages tool environments
 - ✅ Best for CI/CD pipelines
 - ⚠️ Slower locally (5-10s vs <1s)
 
-**Option C: Both (Recommended)**
+#### Option C: Both (Recommended)
+
 - 🎯 Lefthook for local speed
 - 🎯 Pre-commit for CI reliability
 - ✅ Best of both worlds
@@ -58,17 +61,17 @@ Done! Your project now has comprehensive Git hooks.
 cd /path/to/your/project
 
 # Copy lefthook config
-curl -O https://raw.githubusercontent.com/joaodinissf/Sensible-Pre-Commit-Hooks/v2.0.0/lefthook.yml
+curl -O https://raw.githubusercontent.com/joaodinissf/Sensible-Pre-Commit-Hooks/v2.2.0/lefthook.yml
 
 # Copy pre-commit config
-curl -O https://raw.githubusercontent.com/joaodinissf/Sensible-Pre-Commit-Hooks/v2.0.0/.pre-commit-config.yaml
+curl -O https://raw.githubusercontent.com/joaodinissf/Sensible-Pre-Commit-Hooks/v2.2.0/.pre-commit-config.yaml
 
 # Copy shared configs
 mkdir -p .pre-commit
 cd .pre-commit
 for dir in python rust java markdown yaml toml sql; do
   mkdir -p $dir
-  curl -O "https://raw.githubusercontent.com/joaodinissf/Sensible-Pre-Commit-Hooks/v2.0.0/.pre-commit/$dir/*"
+  curl -O "https://raw.githubusercontent.com/joaodinissf/Sensible-Pre-Commit-Hooks/v2.2.0/.pre-commit/$dir/*"
 done
 ```
 
@@ -96,7 +99,7 @@ Create `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks
-    rev: v2.0.0
+    rev: v2.2.0
     hooks:
       - id: pycln
       - id: isort
@@ -159,11 +162,13 @@ pre-commit run --all-files
 ### Python Projects
 
 **Minimum required tools:**
+
 ```bash
 uv tool install pycln isort ruff pyright
 ```
 
 **Hooks enabled:**
+
 - pycln (remove unused imports)
 - isort (sort imports)
 - ruff-format (format code)
@@ -172,116 +177,140 @@ uv tool install pycln isort ruff pyright
 - ty (experimental fast type checker)
 
 **Configuration files used:**
+
 - `.pre-commit/python/` (no additional config needed - uses pyproject.toml)
 
 ### JavaScript/TypeScript Projects
 
 **Minimum required tools:**
+
 ```bash
 npm install -g prettier
 ```
 
 **Hooks enabled:**
+
 - prettier (format JS/TS/JSON/CSS/HTML)
 
 **Configuration files used:**
+
 - `.pre-commit/javascript/` (optional prettier config)
 
 ### Rust Projects
 
 **Minimum required tools:**
+
 ```bash
 rustup component add rustfmt clippy
 ```
 
 **Hooks enabled:**
+
 - rustfmt (format Rust code)
 - clippy (lint Rust code)
 
 **Configuration files used:**
+
 - `.pre-commit/rust/` (optional rustfmt.toml)
 
 ### Java Projects
 
 **Minimum required tools:**
+
 ```bash
 # google-java-format, PMD, Checkstyle
 # These are auto-managed or use Docker
 ```
 
 **Hooks enabled:**
+
 - google-java-format (format Java code)
 - PMD (Java linter)
 - CPD (copy-paste detector)
 - Checkstyle (style checker)
 
 **Configuration files used:**
+
 - `.pre-commit/java/google_checks.xml`
 - `.pre-commit/java/pmd-ruleset.xml`
 
 ### Markdown Projects
 
 **Minimum required tools:**
+
 ```bash
 npm install -g markdownlint-cli
 ```
 
 **Hooks enabled:**
+
 - markdownlint (lint and fix Markdown)
 
 **Configuration files used:**
+
 - `.pre-commit/markdown/markdownlint.json`
 
 ### YAML Projects
 
 **Minimum required tools:**
+
 ```bash
 uv tool install yamlfix
 ```
 
 **Hooks enabled:**
+
 - yamlfix (format YAML files)
 
 **Configuration files used:**
+
 - `.pre-commit/yaml/yamlfix.toml`
 
 ### TOML Projects
 
 **Minimum required tools:**
+
 ```bash
 cargo install taplo-cli
 ```
 
 **Hooks enabled:**
+
 - taplo-format (format TOML)
 - taplo-lint (lint TOML)
 
 **Configuration files used:**
+
 - `.pre-commit/toml/taplo.toml`
 
 ### SQL Projects
 
 **Minimum required tools:**
+
 ```bash
 uv tool install sqlfluff
 ```
 
 **Hooks enabled:**
+
 - sqlfluff-fix (format SQL)
 - sqlfluff-lint (lint SQL)
 
 **Configuration files used:**
+
 - `.pre-commit/sql/.sqlfluff`
 
 ### Shell Scripts
 
 **Minimum required tools:**
+
 ```bash
 brew install shfmt  # macOS
 sudo apt-get install shfmt  # Ubuntu
 ```
 
 **Hooks enabled:**
+
 - shfmt (format shell scripts)
 
 ---
@@ -420,12 +449,14 @@ exclude: '^(vendor/|node_modules/|\.git/)'
 ### Hooks Don't Run
 
 **Check installation:**
+
 ```bash
 ls -la .git/hooks/
 # Should see pre-commit symlink/script
 ```
 
 **Reinstall:**
+
 ```bash
 lefthook install
 pre-commit install
@@ -434,6 +465,7 @@ pre-commit install
 ### Tools Not Found
 
 **Check PATH:**
+
 ```bash
 which pycln isort ruff pyright prettier
 ```
@@ -444,6 +476,7 @@ See [UPDATE.md](UPDATE.md#tool-installation-quick-reference)
 ### Hooks Too Slow
 
 **Use lefthook locally:**
+
 - Pre-commit creates isolated environments (slow)
 - Lefthook runs direct commands (fast)
 
@@ -453,6 +486,7 @@ Comment out Java tools (PMD, Checkstyle) in lefthook.yml
 ### Conflicts with Existing Hooks
 
 **Backup existing hooks:**
+
 ```bash
 mv .git/hooks .git/hooks.backup
 ```
@@ -498,6 +532,7 @@ pre-commit:
 ### Team Onboarding
 
 1. **Document in README:**
+
    ```markdown
    ## Development Setup
 
@@ -542,4 +577,4 @@ pre-commit:
 
 ---
 
-**Version**: 2.0.0 | **Last Updated**: 2025-01-02
+**Version**: 2.2.0 | **Last Updated**: 2025-01-02
