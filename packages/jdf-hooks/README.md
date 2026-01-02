@@ -23,6 +23,13 @@ This repository supports **both** hook managers to get the best of both worlds:
 
 Both configurations are **automatically kept in sync** and use the same tool settings from `.pre-commit/`.
 
+## Documentation
+
+- **[INTEGRATION.md](INTEGRATION.md)** - Add these hooks to your existing project
+- **[MIGRATION.md](MIGRATION.md)** - Migrate from other hook managers
+- **[UPDATE.md](UPDATE.md)** - Keep dependencies up to date
+- **[AGENTS.md](AGENTS.md)** - Guidelines for AI assistants
+
 ## Supported Languages & Tools
 
 ### Python
@@ -395,17 +402,16 @@ Both test suites:
 - Show the diff of changes made
 - Verify hooks work correctly
 
-## Migration Guide
+## Getting Started
 
-Migrating from another hook manager or setting up for the first time?
+### New Project
+See **[INTEGRATION.md](INTEGRATION.md)** for step-by-step instructions to add these hooks to your project.
 
-See **[MIGRATION.md](MIGRATION.md)** for:
+### Existing Hooks
+See **[MIGRATION.md](MIGRATION.md)** for migrating from husky, lint-staged, or other hook managers.
 
-- Step-by-step migration instructions
-- Tool installation guide
-- Troubleshooting common issues
-- Team communication template
-- Command equivalency reference
+### Keeping Updated
+See **[UPDATE.md](UPDATE.md)** for maintaining dependencies and hook versions.
 
 ## Troubleshooting
 
