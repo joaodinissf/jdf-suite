@@ -1,3 +1,12 @@
+# ============================================================================
+# SENSIBLE PRE-COMMIT HOOKS - VERSION 2.0
+# ============================================================================
+# This repository supports both pre-commit and lefthook:
+# - Use lefthook for fast local development (lefthook.yml)
+# - Use pre-commit for CI/CD and standardization (this file)
+#
+# Both configurations use the same tool settings in .pre-commit/
+# ============================================================================
 repos:
 # ============================================================================
 # PYTHON
@@ -32,21 +41,41 @@ repos:
     types_or: [python, pyi, jupyter]
     args: []
     require_serial: true
-- repo: https://github.com/pre-commit/mirrors-mypy
-  rev: v1.18.2
-  hooks:
-  - id: mypy
-    types: [python]
-- repo: https://github.com/pycqa/pylint
-  rev: v3.3.8
-  hooks:
-  - id: pylint
-    types:
-    - python
+# ============================================================================
+# PYTHON TYPE CHECKING
+# ============================================================================
+# Active: pyright (fast, accurate, VS Code native)
+# Active: ty (experimental v0.0.8, 10-60x faster than mypy/pyright)
+# Alternative: mypy (stable, widely used - commented below)
+# ============================================================================
 - repo: https://github.com/RobertCraigie/pyright-python
   rev: v1.1.405
   hooks:
   - id: pyright
+- repo: local
+  hooks:
+  - id: ty
+    name: ty (experimental type checker)
+    entry: ty check
+    language: system
+    types: [python]
+    pass_filenames: true
+
+# ALTERNATIVE: mypy (stable type checker)
+# Uncomment to use mypy instead of/in addition to pyright
+# - repo: https://github.com/pre-commit/mirrors-mypy
+#   rev: v1.18.2
+#   hooks:
+#   - id: mypy
+#     types: [python]
+
+# NOTE: pylint removed - ruff-check provides equivalent linting
+# Uncomment if you need pylint-specific checks
+# - repo: https://github.com/pycqa/pylint
+#   rev: v3.3.8
+#   hooks:
+#   - id: pylint
+#     types: [python]
 
 # ============================================================================
 # JAVASCRIPT/TYPESCRIPT/WEB

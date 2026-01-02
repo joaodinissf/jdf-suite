@@ -1,0 +1,183 @@
+# ============================================================================
+# LEFTHOOK CONFIGURATION - FAST LOCAL DEVELOPMENT
+# ============================================================================
+# This configuration mirrors .pre-commit-config.yaml but runs commands directly
+# for maximum speed. Use this for local development.
+#
+# For CI/CD, use .pre-commit-config.yaml instead for reproducible environments.
+#
+# Prerequisites:
+# - All tools must be installed (see README.md for installation instructions)
+# - Both configs use the same tool settings in .pre-commit/
+#
+# Usage:
+#   lefthook install  # Install hooks
+#   git commit  # Runs automatically
+#   LEFTHOOK=0 git commit  # Skip hooks
+# ============================================================================
+pre-commit:
+  jobs:
+    # ========================================================================
+    # GROUP 1: PYTHON FORMATTERS (SEQUENTIAL)
+    # These must run in order because they modify the same files
+    # ========================================================================
+  - group:
+      parallel: false
+      jobs:
+      - name: pycln
+        run: pycln --all {staged_files}
+        glob: '*.py'
+      - name: isort
+        run: isort {staged_files}
+        glob: '*.py'
+      - name: ruff-format
+        run: ruff format --force-exclude {staged_files}
+        glob: '*.{py,pyi}'
+
+    # ========================================================================
+    # GROUP 2: ALL OTHER HOOKS (PARALLEL)
+    # These can run concurrently for maximum speed
+    # ========================================================================
+  - group:
+      parallel: true
+      jobs:
+          # ==================================================================
+          # PYTHON CHECKS (read-only, safe to run in parallel)
+          # ==================================================================
+      - name: ruff-check
+        run: ruff check --force-exclude {staged_files}
+        glob: '*.{py,pyi}'
+      - name: pyright
+        run: pyright {staged_files}
+        glob: '*.py'
+      - name: ty
+        run: ty check {staged_files}
+        glob: '*.py'
+
+          # Optional: Uncomment to use mypy instead of pyright
+          # - name: mypy
+          #   run: mypy {staged_files}
+          #   glob: "*.py"
+
+          # ==================================================================
+          # JAVASCRIPT/TYPESCRIPT/WEB
+          # ==================================================================
+      - name: prettier
+        run: npx prettier --ignore-unknown --write {staged_files}
+        glob: '*.{astro,js,jsx,ts,tsx,json,css,scss}'
+
+          # ==================================================================
+          # RUST
+          # ==================================================================
+      - name: rustfmt
+        run: rustfmt --edition 2024 {staged_files}
+        glob: '*.rs'
+      - name: clippy
+        run: cargo clippy --all-targets --all-features
+        glob: '*.rs'
+
+          # ==================================================================
+          # JAVA
+          # ==================================================================
+      - name: google-java-format
+        run: bash -c 'for file in "$@"; do hooks/gjfpc-hook/format.sh -i "$file"; done' -- {staged_files}
+        glob: '*.java'
+
+          # Note: PMD, CPD, and Checkstyle require manual installation
+          # Uncomment if you have these tools installed
+          # - name: pmd
+          #   run: pmd check -d {staged_files} --no-cache
+          #   glob: "*.java"
+
+          # - name: cpd
+          #   run: cpd --minimum-tokens 50 --files {staged_files}
+          #   glob: "*.java"
+
+          # - name: checkstyle
+          #   run: checkstyle -c /google_checks.xml {staged_files}
+          #   glob: "*.java"
+
+          # ==================================================================
+          # MARKDOWN
+          # ==================================================================
+      - name: markdownlint
+        run: markdownlint --fix --config .pre-commit/markdown/markdownlint.json {staged_files}
+        glob: '*.md'
+
+          # ==================================================================
+          # YAML
+          # ==================================================================
+      - name: yamlfix
+        run: yamlfix --config-file .pre-commit/yaml/yamlfix.toml {staged_files}
+        glob: '*.{yml,yaml}'
+        exclude: .*lock\.ya?ml$
+
+          # ==================================================================
+          # TOML
+          # ==================================================================
+      - name: taplo-format
+        run: taplo format --config .pre-commit/toml/taplo.toml {staged_files}
+        glob: '*.toml'
+      - name: taplo-lint
+        run: taplo lint --config .pre-commit/toml/taplo.toml {staged_files}
+        glob: '*.toml'
+
+          # ==================================================================
+          # SQL
+          # ==================================================================
+      - name: sqlfluff-fix
+        run: sqlfluff fix --config .pre-commit/sql/.sqlfluff {staged_files}
+        glob: '*.sql'
+      - name: sqlfluff-lint
+        run: sqlfluff lint --config .pre-commit/sql/.sqlfluff {staged_files}
+        glob: '*.sql'
+
+          # ==================================================================
+          # SHELL SCRIPTS
+          # ==================================================================
+      - name: shfmt
+        run: shfmt -w -s -l -i 2 {staged_files}
+        glob: '*.sh'
+        exclude: \.zsh$
+
+          # ==================================================================
+          # GENERAL FILE CHECKS
+          # ==================================================================
+      - name: check-yaml
+        run: python3 -c "import yaml, sys; [yaml.safe_load(open(f)) for f in sys.argv[1:]]" {staged_files}
+        glob: '*.{yml,yaml}'
+      - name: end-of-file-fixer
+        run: |
+          for file in {all_files}; do
+            if [ -f "$file" ] && [ -n "$(tail -c 1 "$file")" ]; then
+              echo >> "$file"
+            fi
+          done
+      - name: trailing-whitespace
+        run: sed -i '' -e 's/[[:space:]]*$//' {staged_files}
+        glob: '*.{py,js,ts,tsx,jsx,java,rs,sql,toml,yml,yaml,json,sh}'
+        exclude: \.(md|markdown)$
+      - name: mixed-line-ending
+        run: |
+          for file in {all_files}; do
+            if [ -f "$file" ]; then
+              sed -i '' -e 's/\r$//' "$file"
+            fi
+          done
+      - name: detect-private-key
+        run: |
+          if grep -l 'BEGIN.*PRIVATE KEY' {all_files} 2>/dev/null; then
+            echo "Error: Private key detected in files!"
+            exit 1
+          fi
+      - name: check-large-files
+        run: |-
+          for file in {all_files}; do
+            if [ -f "$file" ]; then
+              size=$(wc -c < "$file" | tr -d ' ')
+              if [ "$size" -gt 1000000 ]; then
+                echo "Error: File $file is too large (> 1MB)"
+                exit 1
+              fi
+            fi
+          done
