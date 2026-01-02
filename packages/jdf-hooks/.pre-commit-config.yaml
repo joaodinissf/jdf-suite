@@ -162,17 +162,20 @@ repos:
 # ============================================================================
 # TOML
 # ============================================================================
-- repo: https://github.com/ComPWA/taplo-pre-commit
-  rev: v0.9.3
+# Uses system-installed taplo (cargo install taplo-cli)
+# Matches lefthook configuration for consistency
+- repo: local
   hooks:
   - id: taplo-format
     name: taplo format (TOML)
-    args: [--config, .pre-commit/toml/taplo.toml]
+    entry: taplo format --config .pre-commit/toml/taplo.toml
+    language: system
+    types: [toml]
   - id: taplo-lint
     name: taplo lint (TOML)
-    args:
-    - --config
-    - .pre-commit/toml/taplo.toml
+    entry: taplo lint --config .pre-commit/toml/taplo.toml
+    language: system
+    types: [toml]
 
 # ============================================================================
 # SQL

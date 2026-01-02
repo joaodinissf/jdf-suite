@@ -259,7 +259,7 @@ Both should call the same tools with the same arguments. See `AGENTS.md` for syn
 | **prettier** | 3.0.0+ | 3.7.4 | |
 | **markdownlint** | 0.40.0+ | 0.47.0 | |
 | **yamlfix** | 1.18.0+ | 1.19.1 | |
-| **taplo** | 0.9.0+ | 0.9.3 | |
+| **taplo** | 0.9.0+ | 0.10.0 | Uses system install (cargo install taplo-cli) |
 | **sqlfluff** | 3.4.0+ | 4.0.0a2 | |
 | **shfmt** | 3.8.0+ | 3.10.0 | |
 
