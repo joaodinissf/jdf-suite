@@ -514,4 +514,4 @@ Built with:
 
 ---
 
-**Version**: 2.2.0 | **Hybrid Approach**: Lefthook (local) + Pre-commit (CI)
+**Version**: 2.3.0 | **Hybrid Approach**: Lefthook (local) + Pre-commit (CI)
