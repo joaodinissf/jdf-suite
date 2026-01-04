@@ -138,6 +138,8 @@ pre-commit:
           # ==================================================================
           # GENERAL FILE CHECKS
           # ==================================================================
+      - name: keep-sorted
+        run: keep-sorted {staged_files}
       - name: check-yaml
         run: python3 -c "import yaml, sys; [yaml.safe_load(open(f)) for f in sys.argv[1:]]" {staged_files}
         glob: '*.{yml,yaml}'

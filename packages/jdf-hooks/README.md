@@ -82,6 +82,7 @@ Both configurations are **automatically kept in sync** and use the same tool set
 
 ### General File Checks
 
+- **keep-sorted** - Automatically maintain sorted blocks in files
 - YAML syntax validation
 - End-of-file fixer
 - Trailing whitespace trimmer
@@ -209,6 +210,13 @@ sudo pacman -S shfmt
 ### Java Tools
 
 Java tools (google-java-format, PMD, Checkstyle) are managed automatically by the hooks. CPD is bundled with PMD.
+
+### General Tools
+
+```bash
+# Install keep-sorted using Go
+go install github.com/google/keep-sorted/cmd/keep-sorted@latest
+```
 
 ## Usage
 
