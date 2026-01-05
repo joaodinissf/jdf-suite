@@ -154,27 +154,55 @@ The `ty` type checker is **optional and experimental** (v0.0.8):
 - ✅ Document experimental status
 - ✅ Keep ty as an additional experimental checker
 
-### Rule #6: Keep Version Numbers Consistent
+### Rule #6: Version Management and Semantic Versioning
 
-When releasing a new version, update the version number in **ALL** documentation files:
+⚠️ **CRITICAL**: After EVERY commit to main, create and push an appropriate semantic version tag.
 
-- ✅ `README.md` - Footer: `**Version**: X.Y.Z`
-- ✅ `INTEGRATION.md` - Footer: `**Version**: X.Y.Z`
-- ✅ `AGENTS.md` - Project Overview: `**Version**: X.Y.Z`
-- ✅ `INTEGRATION.md` - All curl URLs: `v{X.Y.Z}`
-- ✅ Git tag: Create annotated tag `vX.Y.Z`
+**Semantic Versioning (SemVer)**:
 
-**Example**: When releasing v2.2.0:
+- **Major (X.0.0)**: Breaking changes (incompatible API/config changes)
+- **Minor (x.Y.0)**: New features (backwards-compatible additions)
+- **Patch (x.y.Z)**: Bug fixes, docs, tests (no functional changes)
+
+**Workflow for EVERY commit**:
 
 ```bash
-# Update all version references in documentation
-sed -i '' 's/Version\*\*: 2.1.0/Version**: 2.2.0/g' README.md INTEGRATION.md AGENTS.md
-sed -i '' 's/v2.1.0/v2.2.0/g' INTEGRATION.md
+# 1. Make your changes and commit
+git add .
+git commit -m "type: description"
 
-# Create annotated tag
-git tag -a v2.2.0 -m "Release v2.2.0"
-git push origin v2.2.0
+# 2. Create tag (REQUIRED)
+git tag -a vX.Y.Z -m "vX.Y.Z - Brief description"
+
+# 3. Push both commit and tag
+git push && git push origin vX.Y.Z
 ```
+
+**Examples**:
+
+```bash
+# Patch: Fix tests
+git commit -m "fix: update tests to use configs/ directory"
+git tag -a v3.0.2 -m "v3.0.2 - Fix test directory references"
+git push && git push origin v3.0.2
+
+# Minor: Add new hook
+git commit -m "feat: add prettier-java formatter"
+git tag -a v3.1.0 -m "v3.1.0 - Add Java formatting support"
+git push && git push origin v3.1.0
+
+# Major: Breaking change
+git commit -m "feat!: restructure as Python package"
+git tag -a v3.0.0 -m "v3.0.0 - Interactive CLI and repository restructure"
+git push && git push origin v3.0.0
+```
+
+**Documentation updates** (for major/minor releases only):
+
+- ✅ `src/sensible_hooks/__init__.py` - `__version__ = "X.Y.Z"`
+- ✅ `README.md` - Footer: `**Version**: X.Y.Z`
+- ✅ `AGENTS.md` - Project Overview: `**Version**: X.Y.Z`
+- ✅ `pyproject.toml` - `version = "X.Y.Z"`
 
 ---
 
