@@ -8,7 +8,7 @@ This script:
 3. Runs pre-commit on all files
 4. Shows the resulting diff for manual inspection
 
-Usage: python test/test_precommit.py
+Usage: python tests/test_precommit.py
 """
 
 import argparse

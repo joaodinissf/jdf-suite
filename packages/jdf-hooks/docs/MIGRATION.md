@@ -504,10 +504,10 @@ Run both test suites:
 
 ```bash
 # Pre-commit test
-python test/test_precommit.py --verbose
+python tests/test_precommit.py --verbose
 
 # Lefthook test
-python test/test_lefthook.py --verbose
+python tests/test_lefthook.py --verbose
 
 # Compare outputs
 # Both should produce similar results

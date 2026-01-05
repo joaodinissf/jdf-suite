@@ -10,7 +10,7 @@ This script:
 5. Runs lefthook on all files
 6. Shows the resulting diff for manual inspection
 
-Usage: python test/test_lefthook.py
+Usage: python tests/test_lefthook.py
 """
 
 import argparse

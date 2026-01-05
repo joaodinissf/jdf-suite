@@ -12,7 +12,7 @@ This directory contains tools for testing the pre-commit hooks configuration.
 
 ```bash
 # Run the test (requires clean git working directory)
-python3 test/test_precommit.py
+python3 tests/test_precommit.py
 ```
 
 ## What the test does
