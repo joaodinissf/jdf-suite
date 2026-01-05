@@ -5,8 +5,8 @@ This document helps AI assistants (Claude, GitHub Copilot, GPT, etc.) understand
 ## Project Overview
 
 **Name**: Sensible Pre-Commit Hooks
-**Purpose**: A comprehensive, reusable Git hooks repository supporting both **lefthook** and **pre-commit**
-**Version**: 2.2.0 (hybrid architecture)
+**Purpose**: A comprehensive Git hooks framework with interactive CLI, supporting both **lefthook** and **pre-commit**
+**Version**: 3.0.0 (Python CLI + hybrid architecture)
 
 ### What This Repository Provides
 
@@ -45,14 +45,18 @@ This repository supports **two hook managers** with identical functionality:
 
 | File | Purpose |
 | ---- | ------- |
+| `src/sensible_hooks/` | Python CLI package |
+| `src/sensible_hooks/cli.py` | Interactive CLI entry point |
+| `src/sensible_hooks/detect.py` | Language detection |
+| `src/sensible_hooks/generate.py` | Config file generation |
 | `lefthook.yml` | Lefthook configuration (fast local dev) |
 | `.pre-commit-config.yaml` | Pre-commit configuration (CI/standardization) |
-| `.pre-commit/` | Shared tool configurations (markdownlint, sqlfluff, taplo, yamlfix) |
-| `install.sh` | Interactive installation script for both tools |
-| `test/test_precommit.py` | Pre-commit test suite |
-| `test/test_lefthook.py` | Lefthook test suite |
+| `configs/` | Shared tool configurations (markdownlint, sqlfluff, taplo, yamlfix) |
+| `tests/test_precommit.py` | Pre-commit test suite |
+| `tests/test_lefthook.py` | Lefthook test suite |
+| `docs/` | Documentation (INTEGRATION.md, MIGRATION.md, UPDATE.md) |
 | `README.md` | User-facing documentation |
-| `MIGRATION.md` | Migration guide for users |
+| `pyproject.toml` | Package definition and tool configs |
 | `.github/workflows/ci.yml` | CI testing both configurations |
 
 ---
@@ -110,10 +114,10 @@ These modify the same files and conflict if run concurrently.
 
 ### Rule #3: Tool Configuration Consistency
 
-Both hook managers use the **same** tool configurations in `.pre-commit/`:
+Both hook managers use the **same** tool configurations in `configs/`:
 
 ```text
-.pre-commit/
+configs/
 ├── markdown/markdownlint.json
 ├── sql/.sqlfluff
 ├── toml/taplo.toml
@@ -122,7 +126,7 @@ Both hook managers use the **same** tool configurations in `.pre-commit/`:
 
 When modifying tool behavior:
 
-- ✅ Edit config files in `.pre-commit/`
+- ✅ Edit config files in `configs/`
 - ❌ Don't add tool-specific flags to just one hook manager
 
 ### Rule #4: Test Both Configurations
@@ -131,10 +135,10 @@ Before committing changes:
 
 ```bash
 # Test pre-commit
-python test/test_precommit.py --verbose
+uv run python tests/test_precommit.py --verbose
 
 # Test lefthook
-python test/test_lefthook.py --verbose
+uv run python tests/test_lefthook.py --verbose
 
 # Validate configurations
 pre-commit validate-config
@@ -199,7 +203,7 @@ git push origin v2.2.0
      run: tool-name {staged_files}
    ```
 
-4. **Add tool config** (if needed) to `.pre-commit/tool-name/config.ext`
+4. **Add tool config** (if needed) to `configs/tool-name/config.ext`
 
 5. **Update README.md**: Document the new tool
 
@@ -213,7 +217,7 @@ git push origin v2.2.0
 
 1. **Remove from `.pre-commit-config.yaml`**: Delete entire repo section
 2. **Remove from `lefthook.yml`**: Delete command entry
-3. **Remove config files** (if any): Delete from `.pre-commit/`
+3. **Remove config files** (if any): Delete from `configs/`
 4. **Update README.md**: Remove from documentation
 5. **Update CI** (if needed): Remove tool installation
 6. **Test both configs**
@@ -223,7 +227,7 @@ git push origin v2.2.0
 **Steps**:
 
 1. **Understand the change**: What behavior is changing?
-2. **Update config file** in `.pre-commit/` (if applicable)
+2. **Update config file** in `configs/` (if applicable)
 3. **Update arguments** in BOTH `.pre-commit-config.yaml` and `lefthook.yml`
 4. **Test both configs**
 5. **Document in README.md** if user-visible
@@ -390,11 +394,11 @@ exclude: '^tests/'  # Exclude pattern
 
 ### Test Suites
 
-Both test suites (`test/test_precommit.py` and `test/test_lefthook.py`):
+Both test suites (`tests/test_precommit.py` and `tests/test_lefthook.py`):
 
 1. Check tool installation
 2. Create temporary workspace
-3. Extract `test/example_files.zip` (intentionally badly-formatted files)
+3. Extract `tests/example_files.zip` (intentionally badly-formatted files)
 4. Run hooks
 5. Verify files are fixed consistently
 
@@ -408,8 +412,8 @@ lefthook dump
 pre-commit validate-config
 
 # Run on test files
-python test/test_precommit.py --verbose
-python test/test_lefthook.py --verbose
+uv run python tests/test_precommit.py --verbose
+uv run python tests/test_lefthook.py --verbose
 
 # Run on real repository
 lefthook run pre-commit --all-files
@@ -548,27 +552,35 @@ line-length = 88
 
 ```text
 .
-├── .github/
-│   └── workflows/
-│       ├── ci.yml              # Tests both configs
-│       └── release.yml         # Auto-release on tags
-├── .pre-commit/                # Shared tool configurations
+├── src/sensible_hooks/         # Python CLI package
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── cli.py                  # Interactive CLI
+│   ├── detect.py               # Language detection
+│   └── generate.py             # Config generation
+├── configs/                    # Shared tool configurations
 │   ├── markdown/markdownlint.json
 │   ├── sql/.sqlfluff
 │   ├── toml/taplo.toml
 │   └── yaml/yamlfix.toml
-├── hooks/
-│   └── gjfpc-hook/             # Git submodule for Java formatting
-├── test/
+├── tests/                      # Test suite
 │   ├── example_files.zip       # Badly-formatted test files
 │   ├── test_precommit.py       # Pre-commit test suite
-│   ├── test_lefthook.py        # Lefthook test suite
-│   └── README.md
+│   └── test_lefthook.py        # Lefthook test suite
+├── docs/                       # Documentation
+│   ├── INTEGRATION.md
+│   ├── MIGRATION.md
+│   └── UPDATE.md
+├── hooks/
+│   └── gjfpc-hook/             # Git submodule for Java formatting
+├── .github/
+│   └── workflows/
+│       ├── ci.yml              # Tests both configs
+│       └── release.yml         # Auto-release on tags
 ├── .pre-commit-config.yaml     # Pre-commit configuration
 ├── lefthook.yml                # Lefthook configuration
-├── install.sh                  # Installation script (both tools)
+├── pyproject.toml              # Package definition
 ├── README.md                   # User documentation
-├── MIGRATION.md                # Migration guide
 ├── AGENTS.md                   # This file
 ├── LICENSE
 └── .gitignore
@@ -591,6 +603,14 @@ line-length = 88
   - Added CI status, version, and license badges
   - Updated version consistency across all docs
   - Added version management guidelines to AGENTS.md
+- **v3.0.0**: Python CLI + repository restructure
+  - Added interactive Python CLI (`sensible-hooks setup`)
+  - Restructured as proper Python package (`src/sensible_hooks/`)
+  - Renamed `.pre-commit/` to `configs/` (visible directory)
+  - Renamed `test/` to `tests/` (Python convention)
+  - Moved documentation to `docs/` directory
+  - Removed `install.sh` (replaced by CLI)
+  - Package installable via pip/pipx/uv
 
 ---
 
@@ -646,7 +666,7 @@ line-length = 88
 
 ### Changing Tool Arguments
 
-1. If tool has config file: Edit `.pre-commit/tool-name/config.ext`
+1. If tool has config file: Edit `configs/tool-name/config.ext`
 2. If using CLI args: Update BOTH `.pre-commit-config.yaml` AND `lefthook.yml`
 3. Test both configs
 

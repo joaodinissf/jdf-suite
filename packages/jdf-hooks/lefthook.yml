@@ -8,7 +8,7 @@
 #
 # Prerequisites:
 # - All tools must be installed (see README.md for installation instructions)
-# - Both configs use the same tool settings in .pre-commit/
+# - Both configs use the same tool settings in configs/
 #
 # Usage:
 #   lefthook install  # Install hooks
@@ -89,21 +89,21 @@ pre-commit:
         run: cpd --minimum-tokens 50 --files {staged_files}
         glob: '*.java'
       - name: checkstyle
-        run: checkstyle -c .pre-commit/java/google_checks.xml {staged_files}
+        run: checkstyle -c configs/java/google_checks.xml {staged_files}
         glob: '*.java'
 
           # ==================================================================
           # MARKDOWN
           # ==================================================================
       - name: markdownlint
-        run: markdownlint --fix --config .pre-commit/markdown/markdownlint.json {staged_files}
+        run: markdownlint --fix --config configs/markdown/markdownlint.json {staged_files}
         glob: '*.md'
 
           # ==================================================================
           # YAML
           # ==================================================================
       - name: yamlfix
-        run: yamlfix --config-file .pre-commit/yaml/yamlfix.toml {staged_files}
+        run: yamlfix --config-file configs/yaml/yamlfix.toml {staged_files}
         glob: '*.{yml,yaml}'
         exclude: .*lock\.ya?ml$
 
@@ -111,20 +111,20 @@ pre-commit:
           # TOML
           # ==================================================================
       - name: taplo-format
-        run: taplo format --config .pre-commit/toml/taplo.toml {staged_files}
+        run: taplo format --config configs/toml/taplo.toml {staged_files}
         glob: '*.toml'
       - name: taplo-lint
-        run: taplo lint --config .pre-commit/toml/taplo.toml {staged_files}
+        run: taplo lint --config configs/toml/taplo.toml {staged_files}
         glob: '*.toml'
 
           # ==================================================================
           # SQL
           # ==================================================================
       - name: sqlfluff-fix
-        run: sqlfluff fix --config .pre-commit/sql/.sqlfluff {staged_files}
+        run: sqlfluff fix --config configs/sql/.sqlfluff {staged_files}
         glob: '*.sql'
       - name: sqlfluff-lint
-        run: sqlfluff lint --config .pre-commit/sql/.sqlfluff {staged_files}
+        run: sqlfluff lint --config configs/sql/.sqlfluff {staged_files}
         glob: '*.sql'
 
           # ==================================================================

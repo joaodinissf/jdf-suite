@@ -25,9 +25,7 @@ from pathlib import Path
 def run_command(cmd, cwd=None, check=True):
     """Run a shell command and return the result."""
     try:
-        result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, cwd=cwd, check=check
-        )
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=cwd, check=check)
         return result
     except subprocess.CalledProcessError as e:
         print(f"Command failed: {cmd}")
@@ -104,9 +102,7 @@ def run_lefthook(work_dir):
     run_command("git add .", cwd=work_dir)
 
     # Run lefthook
-    result = run_command(
-        "lefthook run pre-commit --all-files", cwd=work_dir, check=False
-    )
+    result = run_command("lefthook run pre-commit --all-files", cwd=work_dir, check=False)
 
     print("📋 Lefthook execution completed")
     print(f"Exit code: {result.returncode}")
@@ -125,9 +121,7 @@ def run_lefthook(work_dir):
 def show_diff(work_dir, verbose=False):
     """Show the git diff of changes made by lefthook."""
     if not verbose:
-        print(
-            "\n📊 Diff output suppressed. Re-run with --verbose to include full diff."
-        )
+        print("\n📊 Diff output suppressed. Re-run with --verbose to include full diff.")
         return
 
     print("\n" + "=" * 60)
@@ -201,9 +195,7 @@ def run_test(work_dir, verbose):
 
 def main():
     """Main test function."""
-    parser = argparse.ArgumentParser(
-        description="Test lefthook hooks against sample files"
-    )
+    parser = argparse.ArgumentParser(description="Test lefthook hooks against sample files")
     parser.add_argument(
         "-v",
         "--verbose",

@@ -5,7 +5,7 @@
 # - Use lefthook for fast local development (lefthook.yml)
 # - Use pre-commit for CI/CD and standardization (this file)
 #
-# Both configurations use the same tool settings in .pre-commit/
+# Both configurations use the same tool settings in configs/
 # ============================================================================
 repos:
 # ============================================================================
@@ -150,7 +150,7 @@ repos:
     pass_filenames: true
   - id: checkstyle
     name: Checkstyle
-    entry: checkstyle -c .pre-commit/java/google_checks.xml
+    entry: checkstyle -c configs/java/google_checks.xml
     language: system
     types: [java]
     pass_filenames: true
@@ -173,7 +173,7 @@ repos:
   - id: markdownlint-fix
     name: markdownlint-fix
     description: Fixes the style of Markdown/Commonmark files
-    entry: markdownlint --fix --config .pre-commit/markdown/markdownlint.json
+    entry: markdownlint --fix --config configs/markdown/markdownlint.json
     language: node
     types:
     - markdown
@@ -186,7 +186,7 @@ repos:
   hooks:
   - id: yamlfix
     exclude: .*lock\.ya?ml$
-    args: [--config-file, .pre-commit/yaml/yamlfix.toml]
+    args: [--config-file, configs/yaml/yamlfix.toml]
     types:
     - yaml
 
@@ -199,12 +199,12 @@ repos:
   hooks:
   - id: taplo-format
     name: taplo format (TOML)
-    entry: taplo format --config .pre-commit/toml/taplo.toml
+    entry: taplo format --config configs/toml/taplo.toml
     language: system
     types: [toml]
   - id: taplo-lint
     name: taplo lint (TOML)
-    entry: taplo lint --config .pre-commit/toml/taplo.toml
+    entry: taplo lint --config configs/toml/taplo.toml
     language: system
     types: [toml]
 
@@ -216,12 +216,12 @@ repos:
   hooks:
   - id: sqlfluff-fix
     name: sqlfluff fix (Postgres)
-    entry: sqlfluff fix --config .pre-commit/sql/.sqlfluff
+    entry: sqlfluff fix --config configs/sql/.sqlfluff
     language: python
     types: [sql]
   - id: sqlfluff-lint
     name: sqlfluff lint (Postgres)
-    entry: sqlfluff lint --config .pre-commit/sql/.sqlfluff
+    entry: sqlfluff lint --config configs/sql/.sqlfluff
     language: python
     types:
     - sql

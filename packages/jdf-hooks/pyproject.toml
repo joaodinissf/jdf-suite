@@ -1,15 +1,51 @@
 [project]
-name = "sensible-pre-commit-hooks"
-version = "2.0.0"
+name = "sensible-hooks"
+version = "3.0.0"
+description = "Interactive CLI to set up sensible pre-commit hooks for any project"
+readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.12"
+authors = [{ name = "João Dinis Ferreira", email = "hello@joaof.eu" }]
+keywords = ["pre-commit", "lefthook", "git", "hooks", "linting", "formatting"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Software Development :: Version Control :: Git",
+]
+
+[project.urls]
+Homepage = "https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks"
+Repository = "https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks"
+Documentation = "https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks#readme"
+
+[project.scripts]
+sensible-hooks = "sensible_hooks.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "pyright"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sensible_hooks"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/configs", "/.pre-commit-config.yaml", "/lefthook.yml"]
 
 [tool.ruff]
-# Comprehensive linting configuration (replaces pylint)
-line-length = 88
+line-length = 120
 target-version = "py312"
 
 [tool.ruff.lint]
-# Enable comprehensive rule sets
 select = [
   "E",   # pycodestyle errors
   "F",   # Pyflakes
@@ -38,6 +74,6 @@ max-returns = 6
 max-statements = 50
 
 [tool.pyright]
-# Use the .venv in the project root for type checking
 venvPath = "."
 venv = ".venv"
+pythonVersion = "3.12"

@@ -23,9 +23,7 @@ from pathlib import Path
 def run_command(cmd, cwd=None, check=True):
     """Run a shell command and return the result."""
     try:
-        result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, cwd=cwd, check=check
-        )
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=cwd, check=check)
         return result
     except subprocess.CalledProcessError as e:
         print(f"Command failed: {cmd}")
@@ -62,9 +60,7 @@ def get_precommit_command():
     if shutil.which("uvx"):
         return "uvx pre-commit"
 
-    raise RuntimeError(
-        "Neither 'pre-commit' nor 'uvx' is available on PATH. Install pre-commit or uv."
-    )
+    raise RuntimeError("Neither 'pre-commit' nor 'uvx' is available on PATH. Install pre-commit or uv.")
 
 
 def run_precommit(work_dir, precommit_cmd):
@@ -94,9 +90,7 @@ def run_precommit(work_dir, precommit_cmd):
 def show_diff(work_dir, verbose=False):
     """Show the git diff of changes made by pre-commit."""
     if not verbose:
-        print(
-            "\n📊 Diff output suppressed. Re-run with --verbose to include full diff."
-        )
+        print("\n📊 Diff output suppressed. Re-run with --verbose to include full diff.")
         return
 
     print("\n" + "=" * 60)
@@ -125,9 +119,7 @@ def show_diff(work_dir, verbose=False):
 
 def main():
     """Main test function."""
-    parser = argparse.ArgumentParser(
-        description="Test pre-commit hooks against sample files"
-    )
+    parser = argparse.ArgumentParser(description="Test pre-commit hooks against sample files")
     parser.add_argument(
         "-v",
         "--verbose",
@@ -193,9 +185,7 @@ def main():
             if success:
                 print("✅ Pre-commit run completed successfully!")
             else:
-                print(
-                    "⚠️  Pre-commit run completed with issues (this is expected for formatting)"
-                )
+                print("⚠️  Pre-commit run completed with issues (this is expected for formatting)")
 
             print("\n📖 Instructions for manual review:")
             print("1. Review the diff above to see what changes were made")

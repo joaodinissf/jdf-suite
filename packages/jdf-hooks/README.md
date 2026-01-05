@@ -1,10 +1,30 @@
 # Sensible Pre-Commit Hooks
 
 [![CI Status](https://img.shields.io/github/actions/workflow/status/joaodinissf/Sensible-Pre-Commit-Hooks/ci.yml?branch=main&label=CI&logo=github)](https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/github/v/tag/joaodinissf/Sensible-Pre-Commit-Hooks?label=version&logo=git)](https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks/releases)
+[![PyPI](https://img.shields.io/pypi/v/sensible-hooks?logo=python&logoColor=white)](https://pypi.org/project/sensible-hooks/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A comprehensive Git hooks repository supporting both **lefthook** and **pre-commit**, providing fast local development with standardized CI/CD validation.
+A comprehensive Git hooks framework with an **interactive CLI** to set up hooks for any project. Supports both **lefthook** and **pre-commit** for fast local development with standardized CI/CD validation.
+
+## Quick Start
+
+```bash
+# Install the CLI
+pip install sensible-hooks
+# or: pipx install sensible-hooks
+# or: uv tool install sensible-hooks
+
+# Set up hooks in your project
+cd your-project
+sensible-hooks setup
+```
+
+The CLI will:
+
+1. Auto-detect languages in your project
+2. Let you select which hooks to enable
+3. Ask which hook manager you prefer (lefthook, pre-commit, or both)
+4. Generate the appropriate configuration files
 
 ## Philosophy: Hybrid Approach
 
@@ -12,7 +32,7 @@ This repository supports **both** hook managers to get the best of both worlds:
 
 | Feature | Lefthook | Pre-commit |
 | ------- | -------- | ---------- |
-| **Speed** | ⚡ Extremely fast (<1s commits) | Slower (5-10s commits) |
+| **Speed** | Extremely fast (<1s commits) | Slower (5-10s commits) |
 | **Parallelization** | Native parallel execution | Sequential by default |
 | **Setup** | Requires tool installation | Auto-manages environments |
 | **CI/CD** | Works, but less common | Industry standard |
@@ -25,13 +45,11 @@ This repository supports **both** hook managers to get the best of both worlds:
 - **CI/CD**: Use **pre-commit** for reproducible, standardized validation
 - **Contributors**: Install both (5-10x faster locally, same results in CI)
 
-Both configurations are **automatically kept in sync** and use the same tool settings from `.pre-commit/`.
-
 ## Documentation
 
-- **[INTEGRATION.md](INTEGRATION.md)** - Add these hooks to your existing project
-- **[MIGRATION.md](MIGRATION.md)** - Migrate from other hook managers
-- **[UPDATE.md](UPDATE.md)** - Keep dependencies up to date
+- **[docs/INTEGRATION.md](docs/INTEGRATION.md)** - Add these hooks to your existing project
+- **[docs/MIGRATION.md](docs/MIGRATION.md)** - Migrate from other hook managers
+- **[docs/UPDATE.md](docs/UPDATE.md)** - Keep dependencies up to date
 - **[AGENTS.md](AGENTS.md)** - Guidelines for AI assistants
 
 ## Supported Languages & Tools
@@ -93,20 +111,18 @@ Both configurations are **automatically kept in sync** and use the same tool set
 
 ## Installation
 
-### Quick Start (Recommended)
-
-Run the interactive installation script:
+### Using the CLI (Recommended)
 
 ```bash
-./install.sh
+# Install the CLI tool
+pip install sensible-hooks
+
+# Navigate to your project
+cd your-project
+
+# Run the interactive setup
+sensible-hooks setup
 ```
-
-The script will:
-
-1. Detect available tools (lefthook, pre-commit)
-1. Prompt you to choose: lefthook, pre-commit, or both
-1. Install the selected hook(s)
-1. Display test commands
 
 ### Manual Installation
 
@@ -282,13 +298,12 @@ pre-commit autoupdate
 
 ### Shared Tool Settings
 
-Both lefthook and pre-commit use the same tool configurations from `.pre-commit/`:
+Both lefthook and pre-commit use the same tool configurations from `configs/`:
 
-- `.pre-commit/python/` - Python tool configs
-- `.pre-commit/rust/` - Rust tool configs
-- `.pre-commit/java/` - Java tool configs
-- `.pre-commit/markdown/` - Markdown configs
-- `.pre-commit/sql/` - SQL configs
+- `configs/markdown/` - Markdown configs
+- `configs/yaml/` - YAML configs
+- `configs/toml/` - TOML configs
+- `configs/sql/` - SQL configs
 
 ### Customizing Hooks
 
@@ -297,57 +312,25 @@ Both lefthook and pre-commit use the same tool configurations from `.pre-commit/
 
 Refer to `AGENTS.md` for guidelines on keeping both configurations in sync.
 
-## ty Type Checker (Experimental)
+## Project Structure
 
-### What is ty?
-
-[ty](https://astral.sh/ty) is Astral's new Python type checker, written in Rust. It's **10-60x faster** than mypy/pyright but is currently in **early preview (v0.0.8)**.
-
-### Current Status
-
-⚠️ **ty is NOT production-ready**:
-
-- Hundreds of open issues
-- Missing essential features
-- May occasionally fail
-- Early preview release
-
-**Recommendation**: Use **pyright** (default) for stable type checking. Try **ty** if you want to experiment with cutting-edge tooling.
-
-### How to Enable ty
-
-ty is **already enabled** in both configurations as an experimental hook:
-
-- **Pre-commit**: ty hook runs alongside pyright
-- **Lefthook**: ty runs in parallel with other checks
-
-### Disabling ty
-
-**Lefthook**: Comment out the `ty` job in `lefthook.yml`:
-
-```yaml
-# - name: ty
-#   run: ty check {staged_files}
-#   glob: '*.py'
+```text
+sensible-hooks/
+├── src/sensible_hooks/     # Python CLI package
+│   ├── cli.py              # Interactive CLI
+│   ├── detect.py           # Language detection
+│   └── generate.py         # Config generation
+├── configs/                # Tool configuration files
+│   ├── markdown/
+│   ├── yaml/
+│   ├── toml/
+│   └── sql/
+├── tests/                  # Test suite
+├── docs/                   # Documentation
+├── .pre-commit-config.yaml # Pre-commit hooks config
+├── lefthook.yml            # Lefthook config
+└── pyproject.toml          # Package definition
 ```
-
-**Pre-commit**: Comment out the ty hook in `.pre-commit-config.yaml`:
-
-```yaml
-# - repo: local
-#   hooks:
-#   - id: ty
-#     ...
-```
-
-### Switching to mypy
-
-To use mypy instead of pyright:
-
-1. **Uncomment mypy** in `.pre-commit-config.yaml`
-2. **Comment out pyright** in `.pre-commit-config.yaml`
-3. **Update lefthook.yml** to use mypy instead of pyright
-4. Install mypy: `uv tool install mypy` (for lefthook)
 
 ## CI/CD Integration
 
@@ -395,15 +378,15 @@ jobs:
 Test the pre-commit configuration:
 
 ```bash
-python test/test_precommit.py
-python test/test_precommit.py --verbose  # Show full diff
+uv run python tests/test_precommit.py
+uv run python tests/test_precommit.py --verbose  # Show full diff
 ```
 
 Test the lefthook configuration:
 
 ```bash
-python test/test_lefthook.py
-python test/test_lefthook.py --verbose  # Show full diff
+uv run python tests/test_lefthook.py
+uv run python tests/test_lefthook.py --verbose  # Show full diff
 ```
 
 Both test suites:
@@ -413,20 +396,6 @@ Both test suites:
 - Run all hooks
 - Show the diff of changes made
 - Verify hooks work correctly
-
-## Getting Started
-
-### New Project
-
-See **[INTEGRATION.md](INTEGRATION.md)** for step-by-step instructions to add these hooks to your project.
-
-### Existing Hooks
-
-See **[MIGRATION.md](MIGRATION.md)** for migrating from husky, lint-staged, or other hook managers.
-
-### Keeping Updated
-
-See **[UPDATE.md](UPDATE.md)** for maintaining dependencies and hook versions.
 
 ## Troubleshooting
 
@@ -464,19 +433,6 @@ See **[UPDATE.md](UPDATE.md)** for maintaining dependencies and hook versions.
 - Update hooks: `pre-commit autoupdate`
 - Clear cache: `pre-commit clean`
 
-### ty-Specific Issues
-
-#### ty fails with "unresolved import"
-
-- This is expected for missing dependencies in test files
-- ty is experimental and may have false positives
-- Consider disabling ty if it causes issues
-
-#### ty is too strict/lenient
-
-- ty is in early preview with limited configuration options
-- Switch to pyright (default) or mypy for more control
-
 ### General Issues
 
 #### Hooks modified files but commit still fails
@@ -495,7 +451,7 @@ Contributions welcome! Please:
 
 1. Keep lefthook and pre-commit configurations in sync
 2. Update `AGENTS.md` when adding new hooks
-3. Add test files to `test/example_files.zip` for new languages
+3. Add test files to `tests/example_files.zip` for new languages
 4. Update this README with new tools/hooks
 5. Test both configurations before submitting
 
@@ -514,4 +470,4 @@ Built with:
 
 ---
 
-**Version**: 2.3.0 | **Hybrid Approach**: Lefthook (local) + Pre-commit (CI)
+**Version**: 3.0.0 | **Hybrid Approach**: Lefthook (local) + Pre-commit (CI)
