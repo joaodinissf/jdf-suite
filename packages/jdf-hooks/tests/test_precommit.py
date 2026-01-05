@@ -159,7 +159,7 @@ def main():
 
             # Copy pre-commit configuration
             shutil.copy2(project_root / ".pre-commit-config.yaml", work_dir)
-            shutil.copytree(project_root / ".pre-commit", work_dir / ".pre-commit")
+            shutil.copytree(project_root / "configs", work_dir / "configs")
 
             # Copy git submodules if they exist
             if (project_root / "hooks").exists():

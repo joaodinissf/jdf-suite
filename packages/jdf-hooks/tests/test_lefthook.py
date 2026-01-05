@@ -157,7 +157,7 @@ def setup_workspace(work_dir, project_root, zip_path):
 
     # Copy lefthook configuration
     shutil.copy2(project_root / "lefthook.yml", work_dir)
-    shutil.copytree(project_root / ".pre-commit", work_dir / ".pre-commit")
+    shutil.copytree(project_root / "configs", work_dir / "configs")
 
     # Copy git submodules if they exist
     if (project_root / "hooks").exists():
