@@ -644,6 +644,27 @@ line-length = 88
 
 ## Quick Reference for Common Tasks
 
+### Always Use uv for Python Commands
+
+⚠️ **IMPORTANT**: Always use `uv run python` instead of bare `python` commands to ensure consistent Python environment across different systems.
+
+```bash
+# ✅ CORRECT - Use uv
+uv run python tests/test_precommit.py
+uv run python tests/test_lefthook.py
+uv run python -m sensible_hooks setup
+
+# ❌ INCORRECT - Avoid bare python
+python tests/test_precommit.py
+python -m sensible_hooks setup
+```
+
+**Why this matters**:
+
+- `uv run python` creates a consistent virtual environment
+- Works across different systems regardless of system Python installation
+- Ensures reproducible results in CI and local development
+
 ### Adding Python Linter
 
 1. Add to `.pre-commit-config.yaml`:
