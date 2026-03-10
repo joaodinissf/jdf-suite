@@ -8,7 +8,7 @@ requires-python = ">=3.12"
 authors = [{ name = "João Dinis Ferreira", email = "hello@joaof.eu" }]
 keywords = ["pre-commit", "lefthook", "git", "hooks", "linting", "formatting"]
 classifiers = [
-  "Development Status :: 4 - Beta",
+  "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",

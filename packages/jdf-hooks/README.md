@@ -8,14 +8,12 @@ A comprehensive Git hooks framework with an **interactive CLI** to set up hooks 
 
 ## Quick Start
 
-> **Note**: This package is not yet published on PyPI. For now, install directly from GitHub:
->
-> ```bash
-> uvx --from git+https://github.com/joaodinissf/jdf-hooks jdf-hooks setup
-> ```
-
 ```bash
 # Set up hooks in your project
+uvx jdf-hooks setup
+
+# Or install globally
+pip install jdf-hooks
 cd your-project
 jdf-hooks setup
 ```
@@ -328,8 +326,7 @@ jdf-hooks/
 │   └── sql/
 ├── tests/                  # Test suite
 ├── docs/                   # Documentation
-├── .pre-commit-config.yaml # Pre-commit hooks config
-├── lefthook.yml            # Lefthook config
+├── lefthook.yml            # Lefthook config (project-specific)
 └── pyproject.toml          # Package definition
 ```
 
@@ -345,7 +342,7 @@ jobs:
   pre-commit:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - uses: actions/setup-python@v6
     - uses: pre-commit/action@v4.0.0
 ```
@@ -360,7 +357,7 @@ jobs:
   lefthook:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Install lefthook
       run: npm install -g lefthook
     - name: Install tools
@@ -443,7 +440,7 @@ Contributions welcome! Please:
 
 1. Keep lefthook and pre-commit configurations in sync
 2. Update `AGENTS.md` when adding new hooks
-3. Add test files to `tests/example_files.zip` for new languages
+3. Add test files to `tests/integration/example_files/` for new languages
 4. Update this README with new tools/hooks
 5. Test both configurations before submitting
 
