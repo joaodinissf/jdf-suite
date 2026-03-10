@@ -1,4 +1,4 @@
-"""Entry point for python -m sensible_hooks."""
+"""Entry point for python -m jdf_hooks."""
 
 from .cli import main
 

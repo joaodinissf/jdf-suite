@@ -1,7 +1,7 @@
-# Sensible Pre-Commit Hooks
+# JDF Hooks
 
-[![CI Status](https://img.shields.io/github/actions/workflow/status/joaodinissf/Sensible-Pre-Commit-Hooks/ci.yml?branch=main&label=CI&logo=github)](https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/sensible-hooks?logo=python&logoColor=white)](https://pypi.org/project/sensible-hooks/)
+[![CI Status](https://img.shields.io/github/actions/workflow/status/joaodinissf/jdf-hooks/ci.yml?branch=main&label=CI&logo=github)](https://github.com/joaodinissf/jdf-hooks/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/jdf-hooks?logo=python&logoColor=white)](https://pypi.org/project/jdf-hooks/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A comprehensive Git hooks framework with an **interactive CLI** to set up hooks for any project. Supports both **lefthook** and **pre-commit** for fast local development with standardized CI/CD validation.
@@ -11,13 +11,13 @@ A comprehensive Git hooks framework with an **interactive CLI** to set up hooks 
 > **Note**: This package is not yet published on PyPI. For now, install directly from GitHub:
 >
 > ```bash
-> uvx --from git+https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks sensible-hooks setup
+> uvx --from git+https://github.com/joaodinissf/jdf-hooks jdf-hooks setup
 > ```
 
 ```bash
 # Set up hooks in your project
 cd your-project
-sensible-hooks setup
+jdf-hooks setup
 ```
 
 The CLI will:
@@ -116,13 +116,13 @@ This repository supports **both** hook managers to get the best of both worlds:
 
 ```bash
 # Install the CLI tool
-pip install sensible-hooks
+pip install jdf-hooks
 
 # Navigate to your project
 cd your-project
 
 # Run the interactive setup
-sensible-hooks setup
+jdf-hooks setup
 ```
 
 ### Manual Installation
@@ -316,8 +316,8 @@ Refer to `AGENTS.md` for guidelines on keeping both configurations in sync.
 ## Project Structure
 
 ```text
-sensible-hooks/
-├── src/sensible_hooks/     # Python CLI package
+jdf-hooks/
+├── src/jdf_hooks/     # Python CLI package
 │   ├── cli.py              # Interactive CLI
 │   ├── detect.py           # Language detection
 │   └── generate.py         # Config generation
@@ -376,27 +376,18 @@ jobs:
 
 ## Testing
 
-Test the pre-commit configuration:
+Run the automated test suite:
 
 ```bash
-uv run python tests/test_precommit.py
-uv run python tests/test_precommit.py --verbose  # Show full diff
+uv run pytest tests/test_generate.py
 ```
 
-Test the lefthook configuration:
+Run integration tests (requires actual tools installed):
 
 ```bash
-uv run python tests/test_lefthook.py
-uv run python tests/test_lefthook.py --verbose  # Show full diff
+uv run python tests/integration/test_precommit.py --verbose
+uv run python tests/integration/test_lefthook.py --verbose
 ```
-
-Both test suites:
-
-- Create a temporary workspace
-- Extract example files with intentional issues
-- Run all hooks
-- Show the diff of changes made
-- Verify hooks work correctly
 
 ## Troubleshooting
 
@@ -471,4 +462,4 @@ Built with:
 
 ---
 
-**Version**: 4.0.1 | **Hybrid Approach**: Lefthook (local) + Pre-commit (CI)
+**Version**: 5.0.0 | **Hybrid Approach**: Lefthook (local) + Pre-commit (CI)

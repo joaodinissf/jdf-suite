@@ -1,0 +1,21 @@
+# ============================================================================
+# GENERAL FILE CHECKS
+# ============================================================================
+- repo: https://github.com/google/keep-sorted
+  rev: v0.8.0
+  hooks:
+  - id: keep-sorted
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v6.0.0
+  hooks:
+  - id: check-yaml
+  - id: end-of-file-fixer
+  - id: trailing-whitespace
+    exclude: \.(md|markdown)$
+  - id: mixed-line-ending
+    args: [--fix=lf]
+  - id: detect-private-key
+  - id: detect-aws-credentials
+    args: [--allow-missing-credentials]
+  - id: check-added-large-files
+    args: [--maxkb=1000]

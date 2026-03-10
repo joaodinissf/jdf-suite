@@ -1,0 +1,17 @@
+# ============================================================================
+# RUST
+# ============================================================================
+- repo: local
+  hooks:
+  - id: rustfmt
+    name: rustfmt (Rust)
+    entry: rustfmt --edition 2024
+    language: system
+    types: [rust]
+    require_serial: true
+  - id: clippy
+    name: clippy (Rust)
+    entry: bash -c 'RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --all-features'
+    language: system
+    types: [rust]
+    pass_filenames: false

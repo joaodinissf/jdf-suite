@@ -1,8 +1,8 @@
 # ============================================================================
 # PROJECT-SPECIFIC LEFTHOOK CONFIGURATION
 # ============================================================================
-# This is the local dev hooks config for the sensible-hooks project itself.
-# For the multi-language template library, see src/sensible_hooks/templates/
+# This is the local dev hooks config for the jdf-hooks project itself.
+# For the multi-language template library, see src/jdf_hooks/templates/
 # ============================================================================
 pre-commit:
   jobs:
@@ -22,5 +22,5 @@ pre-commit:
         run: pyright {staged_files}
         glob: '*.py'
       - name: ty
-        run: ty check {staged_files}
+        run: ty check --force-exclude {staged_files}
         glob: '*.py'

@@ -1,7 +1,7 @@
 [project]
-name = "sensible-hooks"
-version = "4.0.1"
-description = "Interactive CLI to set up sensible pre-commit hooks for any project"
+name = "jdf-hooks"
+version = "5.0.0"
+description = "Interactive CLI to set up JDF hooks for any project"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.12"
@@ -21,22 +21,22 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks"
-Repository = "https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks"
-Documentation = "https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks#readme"
+Homepage = "https://github.com/joaodinissf/jdf-hooks"
+Repository = "https://github.com/joaodinissf/jdf-hooks"
+Documentation = "https://github.com/joaodinissf/jdf-hooks#readme"
 
 [project.scripts]
-sensible-hooks = "sensible_hooks.cli:main"
+jdf-hooks = "jdf_hooks.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff", "pyright"]
+dev = ["pytest", "pyyaml", "ruff", "pyright"]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/sensible_hooks"]
+packages = ["src/jdf_hooks"]
 
 [tool.hatch.build.targets.sdist]
 include = ["/src"]
@@ -44,6 +44,7 @@ include = ["/src"]
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+extend-exclude = ["tests/integration/example_files"]
 
 [tool.ruff.lint]
 select = [
@@ -77,3 +78,7 @@ max-statements = 50
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.12"
+exclude = ["tests/integration/example_files"]
+
+[tool.ty.src]
+exclude = ["tests/integration/example_files/"]

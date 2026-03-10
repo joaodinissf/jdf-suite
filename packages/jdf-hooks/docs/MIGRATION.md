@@ -185,7 +185,7 @@ Or reference this repository directly in your `.pre-commit-config.yaml`:
 
 ```yaml
 repos:
-  - repo: https://github.com/yourusername/sensible-pre-commit-hooks
+  - repo: https://github.com/yourusername/jdf-hooks
     rev: v2.0.0  # Use specific version
     hooks:
       - id: your-hook-id
@@ -434,8 +434,8 @@ ty has limited configuration options. Switch to pyright/mypy for more control.
 ## Getting Help
 
 - **Documentation**: See [README.md](README.md)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/sensible-pre-commit-hooks/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/sensible-pre-commit-hooks/discussions)
+- **Issues**: [GitHub Issues](https://github.com/yourusername/jdf-hooks/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/yourusername/jdf-hooks/discussions)
 - **Lefthook Docs**: <https://lefthook.dev>
 - **Pre-commit Docs**: <https://pre-commit.com>
 - **ty Docs**: <https://docs.astral.sh/ty>

@@ -1,0 +1,17 @@
+# ============================================================================
+# TOML
+# ============================================================================
+# Uses system-installed taplo (cargo install taplo-cli)
+# Matches lefthook configuration for consistency
+- repo: local
+  hooks:
+  - id: taplo-format
+    name: taplo format (TOML)
+    entry: taplo format --config configs/toml/taplo.toml
+    language: system
+    types: [toml]
+  - id: taplo-lint
+    name: taplo lint (TOML)
+    entry: taplo lint --config configs/toml/taplo.toml
+    language: system
+    types: [toml]

@@ -1,0 +1,22 @@
+name: test-project
+version: 1.0.0
+description: A test project configuration
+
+dependencies:
+- package1
+- package2
+- package3
+
+config:
+  database:
+    host: localhost
+    port: 5432
+    name: testdb
+  api:
+    timeout: 30
+    retries: 3
+
+scripts:
+  build: npm run build
+  test: npm test
+  deploy: docker deploy

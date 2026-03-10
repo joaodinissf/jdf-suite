@@ -1,0 +1,12 @@
+# ============================================================================
+# SQL
+# ============================================================================
+  - group:
+      parallel: true
+      jobs:
+      - name: sqlfluff-fix
+        run: sqlfluff fix --config configs/sql/.sqlfluff {staged_files}
+        glob: '*.sql'
+      - name: sqlfluff-lint
+        run: sqlfluff lint --config configs/sql/.sqlfluff {staged_files}
+        glob: '*.sql'

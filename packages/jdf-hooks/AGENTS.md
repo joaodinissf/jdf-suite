@@ -4,9 +4,9 @@ This document helps AI assistants (Claude, GitHub Copilot, GPT, etc.) understand
 
 ## Project Overview
 
-**Name**: Sensible Pre-Commit Hooks
+**Name**: JDF Hooks
 **Purpose**: A comprehensive Git hooks framework with interactive CLI, supporting both **lefthook** and **pre-commit**
-**Version**: 4.0.1 (Python CLI + bundled templates for uvx support)
+**Version**: 5.0.0 (Fragment-based templates + CLI UX + automated tests)
 
 ### What This Repository Provides
 
@@ -45,16 +45,19 @@ This repository supports **two hook managers** with identical functionality:
 
 | File | Purpose |
 | ---- | ------- |
-| `src/sensible_hooks/` | Python CLI package |
-| `src/sensible_hooks/cli.py` | Interactive CLI entry point |
-| `src/sensible_hooks/detect.py` | Language detection |
-| `src/sensible_hooks/generate.py` | Config file generation |
-| `src/sensible_hooks/templates/` | Bundled template library (all languages) |
-| `src/sensible_hooks/templates/configs/` | Shared tool configurations (markdownlint, sqlfluff, taplo, yamlfix) |
+| `src/jdf_hooks/` | Python CLI package |
+| `src/jdf_hooks/cli.py` | Interactive CLI entry point |
+| `src/jdf_hooks/detect.py` | Language detection |
+| `src/jdf_hooks/generate.py` | Config file generation |
+| `src/jdf_hooks/templates/` | Bundled template library (shipped in wheel) |
+| `src/jdf_hooks/templates/precommit/*.yml` | Per-language pre-commit fragments (11 files) |
+| `src/jdf_hooks/templates/lefthook/*.yml` | Per-language lefthook fragments (11 files) |
+| `src/jdf_hooks/templates/configs/` | Shared tool configurations (markdownlint, sqlfluff, taplo, yamlfix) |
 | `lefthook.yml` | This project's own lefthook config (Python-only) |
 | `.pre-commit-config.yaml` | This project's own pre-commit config (Python-only) |
-| `tests/test_precommit.py` | Pre-commit test suite |
-| `tests/test_lefthook.py` | Lefthook test suite |
+| `tests/test_generate.py` | Automated pytest test suite |
+| `tests/integration/test_precommit.py` | Pre-commit integration test |
+| `tests/integration/test_lefthook.py` | Lefthook integration test |
 | `docs/` | Documentation (INTEGRATION.md, MIGRATION.md, UPDATE.md) |
 | `README.md` | User-facing documentation |
 | `pyproject.toml` | Package definition and tool configs |
@@ -115,10 +118,10 @@ These modify the same files and conflict if run concurrently.
 
 ### Rule #3: Tool Configuration Consistency
 
-Both hook managers use the **same** tool configurations in `src/sensible_hooks/templates/configs/`:
+Both hook managers use the **same** tool configurations in `src/jdf_hooks/templates/configs/`:
 
 ```text
-src/sensible_hooks/templates/configs/
+src/jdf_hooks/templates/configs/
 ├── markdown/markdownlint.json
 ├── sql/.sqlfluff
 ├── toml/taplo.toml
@@ -127,7 +130,7 @@ src/sensible_hooks/templates/configs/
 
 When modifying tool behavior:
 
-- ✅ Edit config files in `src/sensible_hooks/templates/configs/`
+- ✅ Edit config files in `src/jdf_hooks/templates/configs/`
 - ❌ Don't add tool-specific flags to just one hook manager
 
 ### Rule #4: Test Both Configurations
@@ -135,11 +138,12 @@ When modifying tool behavior:
 Before committing changes:
 
 ```bash
-# Test pre-commit
-uv run python tests/test_precommit.py --verbose
+# Automated tests (fast, no external tools)
+uv run pytest tests/test_generate.py
 
-# Test lefthook
-uv run python tests/test_lefthook.py --verbose
+# Integration tests (require tools installed)
+uv run python tests/integration/test_precommit.py --verbose
+uv run python tests/integration/test_lefthook.py --verbose
 
 # Validate configurations
 pre-commit validate-config
@@ -200,7 +204,7 @@ git push && git push origin v3.0.0
 
 **Documentation updates** (for major/minor releases only):
 
-- ✅ `src/sensible_hooks/__init__.py` - `__version__ = "X.Y.Z"`
+- ✅ `src/jdf_hooks/__init__.py` - `__version__ = "X.Y.Z"`
 - ✅ `README.md` - Footer: `**Version**: X.Y.Z`
 - ✅ `AGENTS.md` - Project Overview: `**Version**: X.Y.Z`
 - ✅ `pyproject.toml` - `version = "X.Y.Z"`
@@ -581,24 +585,26 @@ line-length = 88
 
 ```text
 .
-├── src/sensible_hooks/         # Python CLI package
+├── src/jdf_hooks/         # Python CLI package
 │   ├── __init__.py
 │   ├── __main__.py
 │   ├── cli.py                  # Interactive CLI
 │   ├── detect.py               # Language detection
-│   ├── generate.py             # Config generation
+│   ├── generate.py             # Config generation (fragment-based)
 │   └── templates/              # Bundled template library (shipped in wheel)
-│       ├── .pre-commit-config.yaml  # Multi-language pre-commit template
-│       ├── lefthook.yml             # Multi-language lefthook template
-│       └── configs/                 # Shared tool configurations
+│       ├── precommit/          # Per-language pre-commit fragments (11 files)
+│       ├── lefthook/           # Per-language lefthook fragments (11 files)
+│       └── configs/            # Shared tool configurations
 │           ├── markdown/markdownlint.json
 │           ├── sql/.sqlfluff
 │           ├── toml/taplo.toml
 │           └── yaml/yamlfix.toml
 ├── tests/                      # Test suite
+│   ├── test_generate.py        # Automated pytest tests
 │   ├── example_files.zip       # Badly-formatted test files
-│   ├── test_precommit.py       # Pre-commit test suite
-│   └── test_lefthook.py        # Lefthook test suite
+│   └── integration/            # Integration tests (require actual tools)
+│       ├── test_precommit.py
+│       └── test_lefthook.py
 ├── docs/                       # Documentation
 │   ├── INTEGRATION.md
 │   ├── MIGRATION.md
@@ -636,19 +642,27 @@ line-length = 88
   - Updated version consistency across all docs
   - Added version management guidelines to AGENTS.md
 - **v3.0.0**: Python CLI + repository restructure
-  - Added interactive Python CLI (`sensible-hooks setup`)
-  - Restructured as proper Python package (`src/sensible_hooks/`)
+  - Added interactive Python CLI (`jdf-hooks setup`)
+  - Restructured as proper Python package (`src/jdf_hooks/`)
   - Renamed `.pre-commit/` to `configs/` (visible directory)
   - Renamed `test/` to `tests/` (Python convention)
   - Moved documentation to `docs/` directory
   - Removed `install.sh` (replaced by CLI)
   - Package installable via pip/pipx/uv
 - **v4.0.0**: Bundle templates as package data for uvx support
-  - Breaking: moved templates into `src/sensible_hooks/templates/`
+  - Breaking: moved templates into `src/jdf_hooks/templates/`
   - Breaking: `get_repo_root()` replaced by `get_templates_dir()`
   - Root configs are now project-specific (Python-only)
-  - `uvx --from git+... sensible-hooks setup` now works
+  - `uvx --from git+... jdf-hooks setup` now works
   - Templates shipped in wheel, no source checkout required
+- **v5.0.0**: Fragment-based templates + CLI UX + automated tests
+  - Breaking: monolithic templates replaced by per-language fragment files
+  - Breaking: `extract_sections()` and `LANGUAGE_SECTIONS` removed
+  - New: `load_fragments()` and `LANGUAGE_FRAGMENTS` for fragment-based generation
+  - New: overwrite confirmation prompt before writing files
+  - New: prominent "Run this now:" install guidance after setup
+  - New: automated pytest test suite (`tests/test_generate.py`)
+  - Old manual tests moved to `tests/integration/`
 
 ---
 
@@ -662,11 +676,11 @@ line-length = 88
 # ✅ CORRECT - Use uv
 uv run python tests/test_precommit.py
 uv run python tests/test_lefthook.py
-uv run python -m sensible_hooks setup
+uv run python -m jdf_hooks setup
 
 # ❌ INCORRECT - Avoid bare python
 python tests/test_precommit.py
-python -m sensible_hooks setup
+python -m jdf_hooks setup
 ```
 
 **Why this matters**:
@@ -735,7 +749,7 @@ python -m sensible_hooks setup
 
 - **Lefthook docs**: <https://lefthook.dev/>
 - **Pre-commit docs**: <https://pre-commit.com/>
-- **Issue tracker**: <https://github.com/joaodinissf/sensible-pre-commit-hooks/issues>
+- **Issue tracker**: <https://github.com/joaodinissf/jdf-hooks/issues>
 - **This file**: Reference for AI assistants and contributors
 
 ---

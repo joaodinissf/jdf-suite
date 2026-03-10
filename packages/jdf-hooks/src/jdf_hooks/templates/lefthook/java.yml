@@ -1,0 +1,18 @@
+# ============================================================================
+# JAVA
+# ============================================================================
+  - group:
+      parallel: true
+      jobs:
+      - name: google-java-format
+        run: bash -c 'for file in "$@"; do hooks/gjfpc-hook/format.sh -i "$file"; done' -- {staged_files}
+        glob: '*.java'
+      - name: pmd
+        run: pmd check -d {staged_files} --no-cache
+        glob: '*.java'
+      - name: cpd
+        run: cpd --minimum-tokens 50 --files {staged_files}
+        glob: '*.java'
+      - name: checkstyle
+        run: checkstyle -c configs/java/google_checks.xml {staged_files}
+        glob: '*.java'

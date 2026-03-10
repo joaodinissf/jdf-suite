@@ -1,4 +1,4 @@
-# Integration Guide: Add Sensible Hooks to Your Project
+# Integration Guide: Add JDF Hooks to Your Project
 
 This guide explains how to integrate these Git hooks into your existing project.
 
@@ -9,14 +9,14 @@ This guide explains how to integrate these Git hooks into your existing project.
 cd /path/to/your/project
 
 # For lefthook (recommended for local development)
-curl -O https://raw.githubusercontent.com/joaodinissf/Sensible-Pre-Commit-Hooks/v2.2.0/lefthook.yml
+curl -O https://raw.githubusercontent.com/joaodinissf/jdf-hooks/v2.2.0/lefthook.yml
 
 # For pre-commit (recommended for CI/CD)
-curl -O https://raw.githubusercontent.com/joaodinissf/Sensible-Pre-Commit-Hooks/v2.2.0/.pre-commit-config.yaml
+curl -O https://raw.githubusercontent.com/joaodinissf/jdf-hooks/v2.2.0/.pre-commit-config.yaml
 
 # 2. Copy shared configurations
 mkdir -p .pre-commit
-curl -L https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks/archive/v2.2.0.tar.gz | \
+curl -L https://github.com/joaodinissf/jdf-hooks/archive/v2.2.0.tar.gz | \
   tar xz --strip-components=1 "*/\.pre-commit"
 
 # 3. Install hooks
@@ -61,17 +61,17 @@ Done! Your project now has comprehensive Git hooks.
 cd /path/to/your/project
 
 # Copy lefthook config
-curl -O https://raw.githubusercontent.com/joaodinissf/Sensible-Pre-Commit-Hooks/v2.2.0/lefthook.yml
+curl -O https://raw.githubusercontent.com/joaodinissf/jdf-hooks/v2.2.0/lefthook.yml
 
 # Copy pre-commit config
-curl -O https://raw.githubusercontent.com/joaodinissf/Sensible-Pre-Commit-Hooks/v2.2.0/.pre-commit-config.yaml
+curl -O https://raw.githubusercontent.com/joaodinissf/jdf-hooks/v2.2.0/.pre-commit-config.yaml
 
 # Copy shared configs
 mkdir -p .pre-commit
 cd .pre-commit
 for dir in python rust java markdown yaml toml sql; do
   mkdir -p $dir
-  curl -O "https://raw.githubusercontent.com/joaodinissf/Sensible-Pre-Commit-Hooks/v2.2.0/.pre-commit/$dir/*"
+  curl -O "https://raw.githubusercontent.com/joaodinissf/jdf-hooks/v2.2.0/.pre-commit/$dir/*"
 done
 ```
 
@@ -81,7 +81,7 @@ done
 cd /path/to/your/project
 
 # Add as submodule
-git submodule add https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks.git .git-hooks
+git submodule add https://github.com/joaodinissf/jdf-hooks.git .git-hooks
 
 # Symlink configs
 ln -s .git-hooks/lefthook.yml lefthook.yml
@@ -98,7 +98,7 @@ Create `.pre-commit-config.yaml`:
 
 ```yaml
 repos:
-  - repo: https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks
+  - repo: https://github.com/joaodinissf/jdf-hooks
     rev: v2.2.0
     hooks:
       - id: pycln
@@ -573,7 +573,7 @@ pre-commit:
 - **Documentation:** [README.md](README.md)
 - **Migration:** [MIGRATION.md](MIGRATION.md)
 - **Updates:** [UPDATE.md](UPDATE.md)
-- **Issues:** [GitHub Issues](https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks/issues)
+- **Issues:** [GitHub Issues](https://github.com/joaodinissf/jdf-hooks/issues)
 
 ---
 

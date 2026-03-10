@@ -1,4 +1,4 @@
-"""Interactive CLI for setting up sensible pre-commit hooks."""
+"""Interactive CLI for setting up JDF hooks."""
 
 import argparse
 import shutil
@@ -20,7 +20,7 @@ RESET = "\033[0m"
 
 def print_banner() -> None:
     """Print the CLI banner."""
-    print(f"\n{BOLD}Sensible Pre-Commit Hooks{RESET} v{__version__}")
+    print(f"\n{BOLD}JDF Hooks{RESET} v{__version__}")
     print("=" * 50)
 
 
@@ -144,6 +144,12 @@ def select_hook_manager() -> str:
 
 def print_next_steps(hook_manager: str, languages: set[str]) -> None:
     """Print guidance for next steps after setup."""
+    # Prominent install command guidance
+    if hook_manager in ("lefthook", "both"):
+        print(f"\n  {BOLD}{GREEN}Run this now:{RESET}  lefthook install")
+    if hook_manager in ("pre-commit", "both"):
+        print(f"\n  {BOLD}{GREEN}Run this now:{RESET}  pre-commit install")
+
     print(f"\n{BOLD}Next steps:{RESET}\n")
 
     if hook_manager in ("lefthook", "both"):
@@ -229,6 +235,28 @@ def setup_command(args: argparse.Namespace) -> int:
     # Hook manager selection
     hook_manager = select_hook_manager()
 
+    # Check for existing files that would be overwritten
+    existing_files: list[str] = []
+    if (target_dir / "lefthook.yml").exists():
+        existing_files.append("lefthook.yml")
+    if (target_dir / ".pre-commit-config.yaml").exists():
+        existing_files.append(".pre-commit-config.yaml")
+    if (target_dir / "configs").is_dir():
+        existing_files.append("configs/")
+
+    if existing_files:
+        print(f"\n{YELLOW}The following files/directories already exist:{RESET}")
+        for f in existing_files:
+            print(f"  - {f}")
+        try:
+            answer = input("Overwrite? [y/N]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            return 1
+        if answer not in ("y", "yes"):
+            print("Aborted.")
+            return 1
+
     # Generate configs
     print(f"\n{BLUE}Generating configuration files...{RESET}\n")
 
@@ -257,8 +285,8 @@ def setup_command(args: argparse.Namespace) -> int:
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser."""
     parser = argparse.ArgumentParser(
-        prog="sensible-hooks",
-        description="Interactive CLI to set up sensible pre-commit hooks for any project.",
+        prog="jdf-hooks",
+        description="Interactive CLI to set up JDF hooks for any project.",
     )
     parser.add_argument(
         "--version",

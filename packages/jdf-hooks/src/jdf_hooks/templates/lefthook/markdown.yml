@@ -1,0 +1,9 @@
+# ============================================================================
+# MARKDOWN
+# ============================================================================
+  - group:
+      parallel: true
+      jobs:
+      - name: markdownlint
+        run: markdownlint --fix --config configs/markdown/markdownlint.json {staged_files}
+        glob: '*.md'
