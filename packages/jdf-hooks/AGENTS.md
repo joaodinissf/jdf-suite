@@ -6,7 +6,7 @@ This document helps AI assistants (Claude, GitHub Copilot, GPT, etc.) understand
 
 **Name**: JDF Hooks
 **Purpose**: A comprehensive Git hooks framework with interactive CLI, supporting both **lefthook** and **pre-commit**
-**Version**: 5.0.0 (Fragment-based templates + CLI UX + automated tests)
+**Version**: 1.0.0 (Fragment-based templates + CLI UX + automated tests)
 
 ### What This Repository Provides
 
@@ -655,7 +655,7 @@ line-length = 88
   - Root configs are now project-specific (Python-only)
   - `uvx --from git+... jdf-hooks setup` now works
   - Templates shipped in wheel, no source checkout required
-- **v5.0.0**: Fragment-based templates + CLI UX + automated tests
+- **v1.0.0**: Fragment-based templates + CLI UX + automated tests (first public PyPI release)
   - Breaking: monolithic templates replaced by per-language fragment files
   - Breaking: `extract_sections()` and `LANGUAGE_SECTIONS` removed
   - New: `load_fragments()` and `LANGUAGE_FRAGMENTS` for fragment-based generation

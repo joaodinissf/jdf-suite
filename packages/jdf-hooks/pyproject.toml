@@ -1,6 +1,6 @@
 [project]
 name = "jdf-hooks"
-version = "5.0.0"
+version = "1.0.0"
 description = "Interactive CLI to set up JDF hooks for any project"
 readme = "README.md"
 license = { text = "MIT" }

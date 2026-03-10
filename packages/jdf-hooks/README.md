@@ -462,4 +462,4 @@ Built with:
 
 ---
 
-**Version**: 5.0.0 | **Hybrid Approach**: Lefthook (local) + Pre-commit (CI)
+**Version**: 1.0.0 | **Hybrid Approach**: Lefthook (local) + Pre-commit (CI)
