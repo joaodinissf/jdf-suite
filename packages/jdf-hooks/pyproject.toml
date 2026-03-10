@@ -1,6 +1,6 @@
 [project]
 name = "sensible-hooks"
-version = "4.0.0"
+version = "4.0.1"
 description = "Interactive CLI to set up sensible pre-commit hooks for any project"
 readme = "README.md"
 license = { text = "MIT" }

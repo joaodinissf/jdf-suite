@@ -6,7 +6,7 @@ This document helps AI assistants (Claude, GitHub Copilot, GPT, etc.) understand
 
 **Name**: Sensible Pre-Commit Hooks
 **Purpose**: A comprehensive Git hooks framework with interactive CLI, supporting both **lefthook** and **pre-commit**
-**Version**: 4.0.0 (Python CLI + bundled templates for uvx support)
+**Version**: 4.0.1 (Python CLI + bundled templates for uvx support)
 
 ### What This Repository Provides
 

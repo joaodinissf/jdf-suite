@@ -8,12 +8,13 @@ A comprehensive Git hooks framework with an **interactive CLI** to set up hooks 
 
 ## Quick Start
 
-```bash
-# Install the CLI
-pip install sensible-hooks
-# or: pipx install sensible-hooks
-# or: uv tool install sensible-hooks
+> **Note**: This package is not yet published on PyPI. For now, install directly from GitHub:
+>
+> ```bash
+> uvx --from git+https://github.com/joaodinissf/Sensible-Pre-Commit-Hooks sensible-hooks setup
+> ```
 
+```bash
 # Set up hooks in your project
 cd your-project
 sensible-hooks setup
@@ -470,4 +471,4 @@ Built with:
 
 ---
 
-**Version**: 4.0.0 | **Hybrid Approach**: Lefthook (local) + Pre-commit (CI)
+**Version**: 4.0.1 | **Hybrid Approach**: Lefthook (local) + Pre-commit (CI)
