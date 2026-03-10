@@ -1,6 +1,6 @@
 [project]
 name = "sensible-hooks"
-version = "3.0.0"
+version = "4.0.0"
 description = "Interactive CLI to set up sensible pre-commit hooks for any project"
 readme = "README.md"
 license = { text = "MIT" }
@@ -39,7 +39,7 @@ build-backend = "hatchling.build"
 packages = ["src/sensible_hooks"]
 
 [tool.hatch.build.targets.sdist]
-include = ["/src", "/configs", "/.pre-commit-config.yaml", "/lefthook.yml"]
+include = ["/src"]
 
 [tool.ruff]
 line-length = 120

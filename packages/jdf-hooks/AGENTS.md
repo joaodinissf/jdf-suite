@@ -6,7 +6,7 @@ This document helps AI assistants (Claude, GitHub Copilot, GPT, etc.) understand
 
 **Name**: Sensible Pre-Commit Hooks
 **Purpose**: A comprehensive Git hooks framework with interactive CLI, supporting both **lefthook** and **pre-commit**
-**Version**: 3.0.0 (Python CLI + hybrid architecture)
+**Version**: 4.0.0 (Python CLI + bundled templates for uvx support)
 
 ### What This Repository Provides
 
@@ -49,9 +49,10 @@ This repository supports **two hook managers** with identical functionality:
 | `src/sensible_hooks/cli.py` | Interactive CLI entry point |
 | `src/sensible_hooks/detect.py` | Language detection |
 | `src/sensible_hooks/generate.py` | Config file generation |
-| `lefthook.yml` | Lefthook configuration (fast local dev) |
-| `.pre-commit-config.yaml` | Pre-commit configuration (CI/standardization) |
-| `configs/` | Shared tool configurations (markdownlint, sqlfluff, taplo, yamlfix) |
+| `src/sensible_hooks/templates/` | Bundled template library (all languages) |
+| `src/sensible_hooks/templates/configs/` | Shared tool configurations (markdownlint, sqlfluff, taplo, yamlfix) |
+| `lefthook.yml` | This project's own lefthook config (Python-only) |
+| `.pre-commit-config.yaml` | This project's own pre-commit config (Python-only) |
 | `tests/test_precommit.py` | Pre-commit test suite |
 | `tests/test_lefthook.py` | Lefthook test suite |
 | `docs/` | Documentation (INTEGRATION.md, MIGRATION.md, UPDATE.md) |
@@ -114,10 +115,10 @@ These modify the same files and conflict if run concurrently.
 
 ### Rule #3: Tool Configuration Consistency
 
-Both hook managers use the **same** tool configurations in `configs/`:
+Both hook managers use the **same** tool configurations in `src/sensible_hooks/templates/configs/`:
 
 ```text
-configs/
+src/sensible_hooks/templates/configs/
 ├── markdown/markdownlint.json
 ├── sql/.sqlfluff
 ├── toml/taplo.toml
@@ -126,7 +127,7 @@ configs/
 
 When modifying tool behavior:
 
-- ✅ Edit config files in `configs/`
+- ✅ Edit config files in `src/sensible_hooks/templates/configs/`
 - ❌ Don't add tool-specific flags to just one hook manager
 
 ### Rule #4: Test Both Configurations
@@ -585,12 +586,15 @@ line-length = 88
 │   ├── __main__.py
 │   ├── cli.py                  # Interactive CLI
 │   ├── detect.py               # Language detection
-│   └── generate.py             # Config generation
-├── configs/                    # Shared tool configurations
-│   ├── markdown/markdownlint.json
-│   ├── sql/.sqlfluff
-│   ├── toml/taplo.toml
-│   └── yaml/yamlfix.toml
+│   ├── generate.py             # Config generation
+│   └── templates/              # Bundled template library (shipped in wheel)
+│       ├── .pre-commit-config.yaml  # Multi-language pre-commit template
+│       ├── lefthook.yml             # Multi-language lefthook template
+│       └── configs/                 # Shared tool configurations
+│           ├── markdown/markdownlint.json
+│           ├── sql/.sqlfluff
+│           ├── toml/taplo.toml
+│           └── yaml/yamlfix.toml
 ├── tests/                      # Test suite
 │   ├── example_files.zip       # Badly-formatted test files
 │   ├── test_precommit.py       # Pre-commit test suite
@@ -605,8 +609,8 @@ line-length = 88
 │   └── workflows/
 │       ├── ci.yml              # Tests both configs
 │       └── release.yml         # Auto-release on tags
-├── .pre-commit-config.yaml     # Pre-commit configuration
-├── lefthook.yml                # Lefthook configuration
+├── .pre-commit-config.yaml     # Project-specific pre-commit (Python-only)
+├── lefthook.yml                # Project-specific lefthook (Python-only)
 ├── pyproject.toml              # Package definition
 ├── README.md                   # User documentation
 ├── AGENTS.md                   # This file
@@ -639,6 +643,12 @@ line-length = 88
   - Moved documentation to `docs/` directory
   - Removed `install.sh` (replaced by CLI)
   - Package installable via pip/pipx/uv
+- **v4.0.0**: Bundle templates as package data for uvx support
+  - Breaking: moved templates into `src/sensible_hooks/templates/`
+  - Breaking: `get_repo_root()` replaced by `get_templates_dir()`
+  - Root configs are now project-specific (Python-only)
+  - `uvx --from git+... sensible-hooks setup` now works
+  - Templates shipped in wheel, no source checkout required
 
 ---
 

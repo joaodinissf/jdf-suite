@@ -27,33 +27,9 @@ LANGUAGE_CONFIGS: dict[str, list[str]] = {
 }
 
 
-def get_repo_root() -> Path:
-    """Find the repository root directory.
-
-    This works both when running from source and when installed as a package.
-    """
-    # First, try to find from the module location
-    module_dir = Path(__file__).parent
-
-    # Check if we're in src/sensible_hooks (source layout)
-    if (module_dir.parent.parent / ".pre-commit-config.yaml").exists():
-        return module_dir.parent.parent
-
-    # Check if we're installed and have package data
-    # Package data would be at sensible_hooks/configs, etc.
-    if (module_dir / "configs").exists():
-        return module_dir
-
-    # Fallback: try current working directory
-    cwd = Path.cwd()
-    if (cwd / ".pre-commit-config.yaml").exists():
-        return cwd
-
-    raise FileNotFoundError(
-        "Could not find sensible-hooks repository. "
-        "Make sure you're running from the repo directory or have "
-        "installed the package."
-    )
+def get_templates_dir() -> Path:
+    """Return the path to the bundled templates directory."""
+    return Path(__file__).parent / "templates"
 
 
 def extract_sections(content: str, languages: set[str]) -> str:
@@ -137,22 +113,22 @@ def extract_sections(content: str, languages: set[str]) -> str:
 def generate_precommit_config(
     target_dir: Path,
     languages: set[str],
-    repo_root: Path | None = None,
+    templates_dir: Path | None = None,
 ) -> Path:
     """Generate .pre-commit-config.yaml for the target project.
 
     Args:
         target_dir: Directory to write the config file to.
         languages: Set of languages to include hooks for.
-        repo_root: Optional repo root (auto-detected if not provided).
+        templates_dir: Optional templates directory (auto-detected if not provided).
 
     Returns:
         Path to the generated config file.
     """
-    if repo_root is None:
-        repo_root = get_repo_root()
+    if templates_dir is None:
+        templates_dir = get_templates_dir()
 
-    source_config = repo_root / ".pre-commit-config.yaml"
+    source_config = templates_dir / ".pre-commit-config.yaml"
     content = source_config.read_text()
 
     # Update the header comment
@@ -188,22 +164,22 @@ repos:
 def generate_lefthook_config(
     target_dir: Path,
     languages: set[str],
-    repo_root: Path | None = None,
+    templates_dir: Path | None = None,
 ) -> Path:
     """Generate lefthook.yml for the target project.
 
     Args:
         target_dir: Directory to write the config file to.
         languages: Set of languages to include hooks for.
-        repo_root: Optional repo root (auto-detected if not provided).
+        templates_dir: Optional templates directory (auto-detected if not provided).
 
     Returns:
         Path to the generated config file.
     """
-    if repo_root is None:
-        repo_root = get_repo_root()
+    if templates_dir is None:
+        templates_dir = get_templates_dir()
 
-    source_config = repo_root / "lefthook.yml"
+    source_config = templates_dir / "lefthook.yml"
     content = source_config.read_text()
 
     # Update the header comment
@@ -237,26 +213,26 @@ def generate_lefthook_config(
 def copy_config_files(
     target_dir: Path,
     languages: set[str],
-    repo_root: Path | None = None,
+    templates_dir: Path | None = None,
 ) -> list[Path]:
     """Copy necessary config files for selected languages.
 
     Args:
         target_dir: Directory to copy config files to.
         languages: Set of languages that need config files.
-        repo_root: Optional repo root (auto-detected if not provided).
+        templates_dir: Optional templates directory (auto-detected if not provided).
 
     Returns:
         List of paths to copied config files.
     """
-    if repo_root is None:
-        repo_root = get_repo_root()
+    if templates_dir is None:
+        templates_dir = get_templates_dir()
 
     copied_files: list[Path] = []
 
     for lang in languages:
         for config_path in LANGUAGE_CONFIGS.get(lang, []):
-            source = repo_root / config_path
+            source = templates_dir / config_path
             if source.exists():
                 # Create target directory structure
                 target = target_dir / config_path
@@ -273,7 +249,7 @@ def generate_configs(
     target_dir: Path,
     languages: set[str],
     hook_manager: str,
-    repo_root: Path | None = None,
+    templates_dir: Path | None = None,
 ) -> dict[str, list[Path]]:
     """Generate all necessary config files for the target project.
 
@@ -281,26 +257,26 @@ def generate_configs(
         target_dir: Directory to write config files to.
         languages: Set of languages to include.
         hook_manager: One of "lefthook", "pre-commit", or "both".
-        repo_root: Optional repo root (auto-detected if not provided).
+        templates_dir: Optional templates directory (auto-detected if not provided).
 
     Returns:
         Dictionary with "configs" and "hook_files" keys listing created files.
     """
-    if repo_root is None:
-        repo_root = get_repo_root()
+    if templates_dir is None:
+        templates_dir = get_templates_dir()
 
     result: dict[str, list[Path]] = {"hook_files": [], "configs": []}
 
     # Generate hook manager config(s)
     if hook_manager in ("lefthook", "both"):
-        path = generate_lefthook_config(target_dir, languages, repo_root)
+        path = generate_lefthook_config(target_dir, languages, templates_dir)
         result["hook_files"].append(path)
 
     if hook_manager in ("pre-commit", "both"):
-        path = generate_precommit_config(target_dir, languages, repo_root)
+        path = generate_precommit_config(target_dir, languages, templates_dir)
         result["hook_files"].append(path)
 
     # Copy language-specific config files
-    result["configs"] = copy_config_files(target_dir, languages, repo_root)
+    result["configs"] = copy_config_files(target_dir, languages, templates_dir)
 
     return result

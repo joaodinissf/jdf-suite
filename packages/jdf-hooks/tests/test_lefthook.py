@@ -155,9 +155,10 @@ def setup_workspace(work_dir, project_root, zip_path):
     run_command("git config user.email 'test@example.com'", cwd=work_dir)
     run_command("git config user.name 'Test User'", cwd=work_dir)
 
-    # Copy lefthook configuration
-    shutil.copy2(project_root / "lefthook.yml", work_dir)
-    shutil.copytree(project_root / "configs", work_dir / "configs")
+    # Copy lefthook configuration from package templates
+    templates_dir = project_root / "src" / "sensible_hooks" / "templates"
+    shutil.copy2(templates_dir / "lefthook.yml", work_dir)
+    shutil.copytree(templates_dir / "configs", work_dir / "configs")
 
     # Copy git submodules if they exist
     if (project_root / "hooks").exists():

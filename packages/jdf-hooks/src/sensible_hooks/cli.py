@@ -7,7 +7,7 @@ from pathlib import Path
 
 from . import __version__
 from .detect import LANGUAGE_DETECTORS, detect_languages, get_language_display
-from .generate import generate_configs, get_repo_root
+from .generate import generate_configs, get_templates_dir
 
 # ANSI color codes
 GREEN = "\033[92m"
@@ -122,7 +122,7 @@ def select_hook_manager() -> str:
     print(f"\n{BOLD}Select hook manager:{RESET}\n")
     print("  1. lefthook   (fast local development)")
     print("  2. pre-commit (CI/CD standardization)")
-    print("  3. Both       (recommended)")
+    print("  3. Both")
     print()
 
     while True:
@@ -232,13 +232,12 @@ def setup_command(args: argparse.Namespace) -> int:
     # Generate configs
     print(f"\n{BLUE}Generating configuration files...{RESET}\n")
 
-    try:
-        repo_root = get_repo_root()
-    except FileNotFoundError as e:
-        print_error(str(e))
+    templates_dir = get_templates_dir()
+    if not templates_dir.exists():
+        print_error(f"Templates directory not found: {templates_dir}")
         return 1
 
-    result = generate_configs(target_dir, languages, hook_manager, repo_root)
+    result = generate_configs(target_dir, languages, hook_manager, templates_dir)
 
     # Report created files
     for path in result["hook_files"]:
