@@ -44,13 +44,6 @@ This repository supports **both** hook managers to get the best of both worlds:
 - **CI/CD**: Use **pre-commit** for reproducible, standardized validation
 - **Contributors**: Install both (5-10x faster locally, same results in CI)
 
-## Documentation
-
-- **[docs/INTEGRATION.md](https://github.com/joaodinissf/jdf-hooks/blob/main/docs/INTEGRATION.md)** - Add these hooks to your existing project
-- **[docs/MIGRATION.md](https://github.com/joaodinissf/jdf-hooks/blob/main/docs/MIGRATION.md)** - Migrate from other hook managers
-- **[docs/UPDATE.md](https://github.com/joaodinissf/jdf-hooks/blob/main/docs/UPDATE.md)** - Keep dependencies up to date
-- **[AGENTS.md](https://github.com/joaodinissf/jdf-hooks/blob/main/AGENTS.md)** - Guidelines for AI assistants
-
 ## Supported Languages & Tools
 
 ### Python
