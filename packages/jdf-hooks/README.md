@@ -2,7 +2,7 @@
 
 [![CI Status](https://img.shields.io/github/actions/workflow/status/joaodinissf/jdf-hooks/ci.yml?branch=main&label=CI&logo=github)](https://github.com/joaodinissf/jdf-hooks/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/jdf-hooks?logo=python&logoColor=white)](https://pypi.org/project/jdf-hooks/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/joaodinissf/jdf-hooks/blob/main/LICENSE)
 
 A comprehensive Git hooks framework with an **interactive CLI** to set up hooks for any project. Supports both **lefthook** and **pre-commit** for fast local development with standardized CI/CD validation.
 
@@ -46,10 +46,10 @@ This repository supports **both** hook managers to get the best of both worlds:
 
 ## Documentation
 
-- **[docs/INTEGRATION.md](docs/INTEGRATION.md)** - Add these hooks to your existing project
-- **[docs/MIGRATION.md](docs/MIGRATION.md)** - Migrate from other hook managers
-- **[docs/UPDATE.md](docs/UPDATE.md)** - Keep dependencies up to date
-- **[AGENTS.md](AGENTS.md)** - Guidelines for AI assistants
+- **[docs/INTEGRATION.md](https://github.com/joaodinissf/jdf-hooks/blob/main/docs/INTEGRATION.md)** - Add these hooks to your existing project
+- **[docs/MIGRATION.md](https://github.com/joaodinissf/jdf-hooks/blob/main/docs/MIGRATION.md)** - Migrate from other hook managers
+- **[docs/UPDATE.md](https://github.com/joaodinissf/jdf-hooks/blob/main/docs/UPDATE.md)** - Keep dependencies up to date
+- **[AGENTS.md](https://github.com/joaodinissf/jdf-hooks/blob/main/AGENTS.md)** - Guidelines for AI assistants
 
 ## Supported Languages & Tools
 
