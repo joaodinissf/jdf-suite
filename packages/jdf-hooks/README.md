@@ -110,16 +110,17 @@ This repository supports **both** hook managers to get the best of both worlds:
 
 ## Installation
 
-### Using the CLI (Recommended)
+### Using uvx (Recommended — no install needed)
 
 ```bash
-# Install the CLI tool
-pip install jdf-hooks
-
-# Navigate to your project
 cd your-project
+uvx jdf-hooks setup
+```
 
-# Run the interactive setup
+### Alternative: install globally
+
+```bash
+pip install jdf-hooks
 jdf-hooks setup
 ```
 
