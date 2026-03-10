@@ -33,7 +33,7 @@ This repository supports **two hook managers** with identical functionality:
    - 5-10x faster commits
    - Requires tools pre-installed
 
-2. **pre-commit** (`.pre-commit-config.yaml`) - Standardized CI/CD
+2. **pre-commit** (generated `.pre-commit-config.yaml`) - Standardized CI/CD
    - Hermetic environments
    - Automatic tool installation
    - Industry standard
@@ -54,11 +54,9 @@ This repository supports **two hook managers** with identical functionality:
 | `src/jdf_hooks/templates/lefthook/*.yml` | Per-language lefthook fragments (11 files) |
 | `src/jdf_hooks/templates/configs/` | Shared tool configurations (markdownlint, sqlfluff, taplo, yamlfix) |
 | `lefthook.yml` | This project's own lefthook config (Python-only) |
-| `.pre-commit-config.yaml` | This project's own pre-commit config (Python-only) |
 | `tests/test_generate.py` | Automated pytest test suite |
 | `tests/integration/test_precommit.py` | Pre-commit integration test |
 | `tests/integration/test_lefthook.py` | Lefthook integration test |
-| `docs/` | Documentation (INTEGRATION.md, MIGRATION.md, UPDATE.md) |
 | `README.md` | User-facing documentation |
 | `pyproject.toml` | Package definition and tool configs |
 | `.github/workflows/ci.yml` | CI testing both configurations |
@@ -431,7 +429,7 @@ Both test suites (`tests/test_precommit.py` and `tests/test_lefthook.py`):
 
 1. Check tool installation
 2. Create temporary workspace
-3. Extract `tests/example_files.zip` (intentionally badly-formatted files)
+3. Use `tests/integration/example_files/` (intentionally badly-formatted files)
 4. Run hooks
 5. Verify files are fixed consistently
 
@@ -601,21 +599,15 @@ line-length = 88
 │           └── yaml/yamlfix.toml
 ├── tests/                      # Test suite
 │   ├── test_generate.py        # Automated pytest tests
-│   ├── example_files.zip       # Badly-formatted test files
 │   └── integration/            # Integration tests (require actual tools)
 │       ├── test_precommit.py
 │       └── test_lefthook.py
-├── docs/                       # Documentation
-│   ├── INTEGRATION.md
-│   ├── MIGRATION.md
-│   └── UPDATE.md
 ├── hooks/
 │   └── gjfpc-hook/             # Git submodule for Java formatting
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml              # Tests both configs
 │       └── release.yml         # Auto-release on tags
-├── .pre-commit-config.yaml     # Project-specific pre-commit (Python-only)
 ├── lefthook.yml                # Project-specific lefthook (Python-only)
 ├── pyproject.toml              # Package definition
 ├── README.md                   # User documentation
@@ -628,34 +620,11 @@ line-length = 88
 
 ## Version History
 
-- **v1.x**: Pre-commit only
-- **v2.0.0**: Hybrid architecture (lefthook + pre-commit)
-  - Breaking change: Dual tool support
-  - Added lefthook.yml
-  - Added ty as experimental option
-  - Complete documentation rewrite
-- **v2.1.0**: Enhanced integration documentation
-  - Added comprehensive INTEGRATION.md guide
-  - Improved README structure with documentation links
-- **v2.2.0**: Documentation polish and badges
-  - Added CI status, version, and license badges
-  - Updated version consistency across all docs
-  - Added version management guidelines to AGENTS.md
-- **v3.0.0**: Python CLI + repository restructure
-  - Added interactive Python CLI (`jdf-hooks setup`)
-  - Restructured as proper Python package (`src/jdf_hooks/`)
-  - Renamed `.pre-commit/` to `configs/` (visible directory)
-  - Renamed `test/` to `tests/` (Python convention)
-  - Moved documentation to `docs/` directory
-  - Removed `install.sh` (replaced by CLI)
-  - Package installable via pip/pipx/uv
-- **v4.0.0**: Bundle templates as package data for uvx support
-  - Breaking: moved templates into `src/jdf_hooks/templates/`
-  - Breaking: `get_repo_root()` replaced by `get_templates_dir()`
-  - Root configs are now project-specific (Python-only)
-  - `uvx --from git+... jdf-hooks setup` now works
-  - Templates shipped in wheel, no source checkout required
-- **v1.0.0**: Fragment-based templates + CLI UX + automated tests (first public PyPI release)
+> **Note**: Version was reset to 1.0.0 for the first public PyPI release. Pre-release
+> versions (v1.x–v4.x below) were internal development milestones under the old
+> "sensible-hooks" name and are not published on PyPI.
+
+- **v1.0.0** (PyPI): Fragment-based templates + CLI UX + automated tests (first public release)
   - Breaking: monolithic templates replaced by per-language fragment files
   - Breaking: `extract_sections()` and `LANGUAGE_SECTIONS` removed
   - New: `load_fragments()` and `LANGUAGE_FRAGMENTS` for fragment-based generation
@@ -663,6 +632,13 @@ line-length = 88
   - New: prominent "Run this now:" install guidance after setup
   - New: automated pytest test suite (`tests/test_generate.py`)
   - Old manual tests moved to `tests/integration/`
+
+### Pre-release history (internal, not on PyPI)
+
+- **v4.0.0**: Bundle templates as package data for uvx support
+- **v3.0.0**: Python CLI + repository restructure
+- **v2.0.0**: Hybrid architecture (lefthook + pre-commit)
+- **v1.x**: Pre-commit only
 
 ---
 

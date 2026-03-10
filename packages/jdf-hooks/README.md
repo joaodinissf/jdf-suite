@@ -301,7 +301,7 @@ Both lefthook and pre-commit use the same tool configurations from `configs/`:
 ### Customizing Hooks
 
 **For Lefthook**: Edit `lefthook.yml`
-**For Pre-commit**: Edit `.pre-commit-config.yaml`
+**For Pre-commit**: Edit the generated `.pre-commit-config.yaml` in your project
 
 Refer to `AGENTS.md` for guidelines on keeping both configurations in sync.
 
@@ -319,7 +319,6 @@ jdf-hooks/
 │   ├── toml/
 │   └── sql/
 ├── tests/                  # Test suite
-├── docs/                   # Documentation
 ├── lefthook.yml            # Lefthook config (project-specific)
 └── pyproject.toml          # Package definition
 ```
