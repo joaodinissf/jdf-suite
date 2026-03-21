@@ -55,10 +55,17 @@ export async function createWindow(sw, urls) {
 
 /**
  * Create a tab group from the given tab IDs. Returns group ID.
+ * Specifies windowId via the first tab to prevent Chrome from moving
+ * tabs to the focused window during grouping.
  */
 export async function createTabGroup(sw, tabIds, title, color = 'blue') {
   return await sw.evaluate(async ({ tabIds, title, color }) => {
-    const groupId = await chrome.tabs.group({ tabIds });
+    // Get the window of the first tab to keep tabs in their window
+    const tab = await chrome.tabs.get(tabIds[0]);
+    const groupId = await chrome.tabs.group({
+      tabIds,
+      createProperties: { windowId: tab.windowId }
+    });
     await chrome.tabGroups.update(groupId, { title, color });
     return groupId;
   }, { tabIds, title, color });

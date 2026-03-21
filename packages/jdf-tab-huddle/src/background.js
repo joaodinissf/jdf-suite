@@ -620,21 +620,22 @@ async function sortWindowTabs(windowId, respectGroups = true) {
         const urlB = b.pendingUrl || b.url;
         return urlA.localeCompare(urlB);
       });
-      
-      // Move tabs to sorted positions
-      for (let i = 0; i < unpinnedTabs.length; i++) {
-        await chrome.tabs.move(unpinnedTabs[i].id, {
-          windowId,
-          index: pinnedTabs.length + i
-        });
+
+      // Move tabs to sorted positions as a batch (omit windowId — tabs are
+      // already in this window)
+      if (unpinnedTabs.length > 0) {
+        await chrome.tabs.move(
+          unpinnedTabs.map(t => t.id),
+          { index: pinnedTabs.length }
+        );
       }
       return;
     }
-    
+
     // Group-aware sorting logic
     const ungroupedTabs = [];
     const groupedTabsMap = new Map();
-    
+
     for (const tab of unpinnedTabs) {
       if (tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
         ungroupedTabs.push(tab);
@@ -645,14 +646,14 @@ async function sortWindowTabs(windowId, respectGroups = true) {
         groupedTabsMap.get(tab.groupId).push(tab);
       }
     }
-    
+
     // Sort ungrouped tabs by URL
     ungroupedTabs.sort((a, b) => {
       const urlA = a.pendingUrl || a.url;
       const urlB = b.pendingUrl || b.url;
       return urlA.localeCompare(urlB);
     });
-    
+
     // Sort tabs within each group by URL
     for (const [_groupId, groupTabs] of groupedTabsMap.entries()) {
       groupTabs.sort((a, b) => {
@@ -661,27 +662,28 @@ async function sortWindowTabs(windowId, respectGroups = true) {
         return urlA.localeCompare(urlB);
       });
     }
-    
+
     // Determine the final order: pinned tabs, then ungrouped tabs, then grouped tabs
     let currentIndex = pinnedTabs.length;
-    
-    // Move ungrouped tabs first
-    for (let i = 0; i < ungroupedTabs.length; i++) {
-      await chrome.tabs.move(ungroupedTabs[i].id, {
-        windowId,
-        index: currentIndex + i
-      });
+
+    // Move ungrouped tabs first as a batch (omit windowId — tabs are already
+    // in this window, and passing windowId can trigger Chrome's cross-window
+    // group migration)
+    if (ungroupedTabs.length > 0) {
+      await chrome.tabs.move(
+        ungroupedTabs.map(t => t.id),
+        { index: currentIndex }
+      );
     }
     currentIndex += ungroupedTabs.length;
-    
-    // Move grouped tabs while maintaining group boundaries
+
+    // Move grouped tabs as a batch per group to avoid Chrome's group migration
+    // behavior that can occur with sequential single-tab moves
     for (const [_groupId, groupTabs] of groupedTabsMap.entries()) {
-      for (let i = 0; i < groupTabs.length; i++) {
-        await chrome.tabs.move(groupTabs[i].id, {
-          windowId,
-          index: currentIndex + i
-        });
-      }
+      await chrome.tabs.move(
+        groupTabs.map(t => t.id),
+        { index: currentIndex }
+      );
       currentIndex += groupTabs.length;
     }
     
