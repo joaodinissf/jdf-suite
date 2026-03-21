@@ -12,11 +12,13 @@
     "validate": "node -e \"JSON.parse(require('fs').readFileSync('src/manifest.json', 'utf8')); console.log('✅ manifest.json is valid')\"",
     "package": "npm run validate && zip -r tab-organizer-$(node -p \"require('./package.json').version\").zip src -x 'node_modules/*' 'tests/*' '*.md' 'package*.json' 'pnpm-lock.yaml' '.git/*' '.github/*'",
     "dev": "echo '🚀 Load the src/ folder in Chrome Developer Mode'",
+    "test:e2e": "npx playwright test --config=e2e/playwright.config.js",
     "ci": "npm run lint && npm run test && npm run validate",
     "build": "npm run validate"
   },
   "devDependencies": {
     "@eslint/js": "^9.31.0",
+    "@playwright/test": "^1.58.2",
     "eslint": "^9.31.0",
     "jest": "^27.5.1",
     "jest-chrome": "^0.8.0",

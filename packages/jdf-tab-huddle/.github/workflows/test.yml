@@ -71,6 +71,33 @@ jobs:
     - name: Run linter
       run: pnpm run lint
 
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: latest
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: latest
+        cache: 'pnpm'
+
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+
+    - name: Install Playwright browsers
+      run: npx playwright install --with-deps chromium
+
+    - name: Run E2E tests
+      run: xvfb-run --auto-servernum pnpm test:e2e
+
   build:
     runs-on: ubuntu-latest
     
