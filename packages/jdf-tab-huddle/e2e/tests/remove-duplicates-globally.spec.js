@@ -164,11 +164,11 @@ test('group-aware global dedup deduplicates within same group across windows', a
   await createTabGroup(sw, [w2TabIds[0]], 'News', 'blue');
   await sleep(200);
 
-  const popup = await openPopup(context, extensionId);
-  await sleep(300); // ensure updateUIForWindowCount completes
-  await clickPopupButton(popup, 'removeDuplicatesGlobally-groups');
-  await sleep(2000);
-  await popup.close();
+  // Invoke handler directly (multi-window buttons may be hidden in popup)
+  await sw.evaluate(async (respectGroups) => {
+    await new Promise((resolve) => handleRemoveDuplicatesGlobally(respectGroups, resolve));
+  }, true);
+  await sleep(1500);
 
   // Global dedup with single array: seenMap is shared urlSeen, so same URL
   // across different groups (even different windows) IS deduped.

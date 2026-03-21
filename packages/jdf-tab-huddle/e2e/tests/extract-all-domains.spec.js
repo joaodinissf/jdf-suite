@@ -88,22 +88,24 @@ test('21: Single-tab domains in misc window', async ({ sw, context, extensionId 
   }
   await sleep(300);
 
-  const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'extractAllDomains-groups');
+  // Invoke handler directly (no confirmation needed for <=5 windows: 2 domains + 1 misc = 3)
+  await sw.evaluate(async (respectGroups) => {
+    await new Promise((resolve) => handleExtractAllDomains(respectGroups, resolve));
+  }, true);
   await sleep(2000);
 
   const allWindows = await getAllWindows(sw);
-  const nonPopupWindows = allWindows.filter(w =>
-    !w.tabs.some(t => t.url.includes('popup.html'))
-  );
 
   // 2 domain windows + 1 misc window = 3 windows
-  expect(nonPopupWindows.length).toBe(3);
+  expect(allWindows.length).toBe(3);
 
   // Find the misc window (has tabs from different domains)
-  const miscWindow = nonPopupWindows.find(w => {
+  const miscWindow = allWindows.find(w => {
     const tabs = w.tabs.filter(t => !t.pinned);
-    const domains = new Set(tabs.map(t => new URL(t.url).hostname));
+    if (tabs.length === 0) return false;
+    const domains = new Set(tabs.map(t => {
+      try { return new URL(t.url).hostname; } catch { return t.url; }
+    }));
     return domains.size > 1;
   });
   expect(miscWindow).toBeTruthy();
@@ -111,8 +113,6 @@ test('21: Single-tab domains in misc window', async ({ sw, context, extensionId 
   // Misc window should have 3 tabs (one from each single-tab domain)
   const miscTabs = miscWindow.tabs.filter(t => !t.pinned);
   expect(miscTabs.length).toBe(3);
-
-  await popup.close();
 });
 
 test('22: Confirmation >5 windows - confirm', async ({ sw, context, extensionId }) => {
@@ -183,28 +183,26 @@ test('23: Confirmation >5 windows - cancel', async ({ sw, context, extensionId }
   const tabsBefore = await getWindowTabs(sw, windowId);
   const tabCountBefore = tabsBefore.length;
 
-  const popup = await openPopup(context, extensionId);
+  // Invoke handler directly - will trigger confirmation dialog
+  sw.evaluate(async (respectGroups) => {
+    handleExtractAllDomains(respectGroups, () => {});
+  }, true);
 
-  const [dialogPage] = await Promise.all([
-    context.waitForEvent('page'),
-    clickPopupButton(popup, 'extractAllDomains-groups'),
-  ]);
+  // Find and interact with the dialog
+  const dialogPage = await waitForCondition(async () => {
+    const pages = context.pages();
+    const dialog = pages.find(p => p.url().includes('confirmation-dialog.html'));
+    if (dialog) return dialog;
+    throw new Error('Dialog not found');
+  }, 10000);
 
   await dialogPage.waitForSelector('#cancelButton');
   await dialogPage.click('#cancelButton');
   await sleep(1000);
 
-  // After cancel, should still have roughly the same window structure
-  // The dialog tab gets closed by the extension, but no extraction happens
-  const allWindows = await getAllWindows(sw);
-  const nonPopupWindows = allWindows.filter(w =>
-    !w.tabs.some(t => t.url.includes('popup.html'))
-  );
-
-  // Should still be 1 main window (no extraction happened)
-  expect(nonPopupWindows.length).toBe(1);
-
-  await popup.close();
+  // No extraction should have happened
+  const tabCountAfter = (await getWindowTabs(sw, windowId)).length;
+  expect(tabCountAfter).toBe(tabCountBefore);
 });
 
 test('24: No confirmation when <=5 windows', async ({ sw, context, extensionId }) => {
