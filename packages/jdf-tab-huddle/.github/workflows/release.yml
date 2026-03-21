@@ -56,15 +56,15 @@ jobs:
       
     - name: Build and package extension
       run: pnpm run package
-      
+
     - name: List packaged files
       run: ls -la *.zip
-      
+
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          tab-organizer-${{ github.ref_name }}.zip
+          tab-organizer-*.zip
         body: |
           ## Tab Organizer ${{ github.ref_name }}
           

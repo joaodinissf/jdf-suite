@@ -7,7 +7,8 @@
 **Runs on:** Ubuntu Latest with Node.js 18 & 20
 
 **Jobs:**
-- **Test**: Runs complete test suite with coverage
+- **Test**: Runs unit test suite with coverage
+- **E2E**: Runs 63 Playwright tests against real Chromium via `xvfb-run`
 - **Lint**: Runs ESLint with Chrome extension rules
 - **Build**: Validates manifest.json and extension structure
 
@@ -24,7 +25,8 @@
 ### Required Configuration ✅
 - [x] GitHub Actions workflows created
 - [x] Package.json scripts configured
-- [x] Test suite ready (58 tests, 100% passing)
+- [x] Unit test suite ready (58 tests, 100% passing)
+- [x] E2E test suite ready (63 Playwright tests, 100% passing)
 - [x] Manifest.json validation
 - [x] ESLint configured with Chrome extension rules
 
@@ -56,7 +58,8 @@ git tag v1.2.0 && git push origin v1.2.0  # Triggers release workflow
 
 ### Test Workflow Features:
 - ✅ **Multi-Node Testing**: Tests on Node.js 18 & 20
-- ✅ **Comprehensive Testing**: Runs all 58 tests
+- ✅ **Unit Testing**: Runs all 58 Jest tests
+- ✅ **E2E Testing**: Runs 63 Playwright tests against real Chromium
 - ✅ **Coverage Reporting**: Generates coverage reports
 - ✅ **Manifest Validation**: Validates Chrome extension manifest
 - ✅ **Structure Checking**: Verifies extension file structure
