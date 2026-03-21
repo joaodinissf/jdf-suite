@@ -117,26 +117,21 @@ test('11: Groups preserved per window (groups mode)', async ({ sw, context, exte
   }, true);
   await sleep(1000);
 
-  // Verify at least one window still has groups after sort.
-  // NOTE: Known issue - sortWindowTabs can inadvertently move grouped tabs
-  // between windows when chrome.tabs.move reorders tabs by index,
-  // causing group membership to shift. We verify groups exist somewhere
-  // and tabs within each group are sorted.
+  // Both windows should retain their groups (fix for #30)
   const tabs1 = await getWindowTabs(sw, windowId1);
-  const tabs2 = await getWindowTabs(sw, win2.windowId);
-  const allTabs = [...tabs1, ...tabs2];
-  const allGrouped = allTabs.filter(t => t.groupId !== -1 && !t.pinned);
-  expect(allGrouped.length).toBeGreaterThan(0);
+  const groups1 = tabs1.filter(t => t.groupId !== -1 && !t.pinned);
+  expect(groups1.length).toBe(3); // 3 tabs in Win1 Group
 
-  // Verify each group's tabs are internally sorted by URL
-  const byGroup = new Map();
-  for (const t of allGrouped) {
-    if (!byGroup.has(t.groupId)) byGroup.set(t.groupId, []);
-    byGroup.get(t.groupId).push(t.url);
-  }
-  for (const [, urls] of byGroup) {
-    expect(urls).toEqual([...urls].sort((a, b) => a.localeCompare(b)));
-  }
+  // Tabs within the group should be sorted by URL
+  const group1Urls = groups1.map(t => t.url);
+  expect(group1Urls).toEqual([...group1Urls].sort((a, b) => a.localeCompare(b)));
+
+  const tabs2 = await getWindowTabs(sw, win2.windowId);
+  const groups2 = tabs2.filter(t => t.groupId !== -1 && !t.pinned);
+  expect(groups2.length).toBe(3); // 3 tabs in Win2 Group
+
+  const group2Urls = groups2.map(t => t.url);
+  expect(group2Urls).toEqual([...group2Urls].sort((a, b) => a.localeCompare(b)));
 });
 
 test('12: Single window = same as sort current (both modes)', async ({ sw, context, extensionId }) => {
