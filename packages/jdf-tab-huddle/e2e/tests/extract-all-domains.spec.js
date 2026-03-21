@@ -332,8 +332,8 @@ test('27: Groups preserved across domain windows', async ({ sw, context, extensi
 
   // Create a group for the example.com tabs
   await createTabGroup(sw, [tabIds[0], tabIds[1]], 'Examples', 'green');
-  // Create a group for the github.com tabs
-  await createTabGroup(sw, [tabIds[2], tabIds[3]], 'GitHub', 'red');
+  // Create a group for the example.net tabs
+  await createTabGroup(sw, [tabIds[2], tabIds[3]], 'NetGroup', 'red');
 
   const initialTabs = await getWindowTabs(sw, windowId);
   const blankTab = initialTabs.find(t => t.url === 'about:blank');
@@ -361,12 +361,12 @@ test('27: Groups preserved across domain windows', async ({ sw, context, extensi
   const exampleGroups = await getTabGroups(sw, exampleWindow.id);
   expect(exampleGroups.some(g => g.title === 'Examples')).toBe(true);
 
-  const githubWindow = nonPopupWindows.find(w =>
-    w.tabs.some(t => t.url.includes('github.com'))
+  const netWindow = nonPopupWindows.find(w =>
+    w.tabs.some(t => t.url.includes('example.net'))
   );
-  expect(githubWindow).toBeTruthy();
-  const githubGroups = await getTabGroups(sw, githubWindow.id);
-  expect(githubGroups.some(g => g.title === 'GitHub')).toBe(true);
+  expect(netWindow).toBeTruthy();
+  const netGroups = await getTabGroups(sw, netWindow.id);
+  expect(netGroups.some(g => g.title === 'NetGroup')).toBe(true);
 
   await popup.close();
 });
