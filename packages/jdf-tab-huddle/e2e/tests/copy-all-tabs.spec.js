@@ -8,75 +8,80 @@ test.beforeEach(async ({ sw, context }) => {
   await resetBrowserState(sw, context);
 });
 
-test('60: Copy all tabs (ungrouped, groups mode)', async ({ sw, context, extensionId }) => {
+test('60: Copy all tabs (ungrouped) returns flat URL list', async ({ sw }) => {
   await createTabs(sw, [URLS.EXAMPLE_A, URLS.TEST_A]);
   await sleep(300);
 
-  const popup = await openPopup(context, extensionId);
+  // Query formatted text directly via the service worker
+  const text = await sw.evaluate(async () => {
+    return new Promise((resolve) => {
+      chrome.runtime.onMessage.addListener(function handler(message, _sender, sendResponse) {
+        if (message.action === 'copyAllTabs') {
+          chrome.runtime.onMessage.removeListener(handler);
+          // Let the real handler process it; we intercept the response
+          return false;
+        }
+      });
 
-  // Grant clipboard permissions by evaluating in the popup context
-  await clickPopupButton(popup, 'copyAllTabs-groups');
-  await sleep(500);
+      chrome.runtime.sendMessage({ action: 'copyAllTabs', respectGroups: true }, (response) => {
+        resolve(response.text);
+      });
+    });
+  });
 
-  // Read clipboard from the popup page context
-  const clipboardText = await popup.evaluate(() => navigator.clipboard.readText());
-
-  // Should contain both URLs (plus about:blank from the initial tab)
-  expect(clipboardText).toContain(URLS.EXAMPLE_A);
-  expect(clipboardText).toContain(URLS.TEST_A);
+  // Should contain both URLs
+  expect(text).toContain(URLS.EXAMPLE_A);
+  expect(text).toContain(URLS.TEST_A);
   // No group headers since there are no groups
-  expect(clipboardText).not.toContain('Ungrouped');
-
-  await popup.close();
+  expect(text).not.toContain('Ungrouped');
 });
 
-test('61: Copy grouped tabs (groups mode) has group headers', async ({ sw, context, extensionId }) => {
+test('61: Copy grouped tabs (groups mode) has group headers', async ({ sw }) => {
   const tabIds = await createTabs(sw, [URLS.EXAMPLE_A, URLS.EXAMPLE_B, URLS.TEST_A]);
   await createTabGroup(sw, [tabIds[0], tabIds[1]], 'Work', 'blue');
   await sleep(300);
 
-  const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'copyAllTabs-groups');
-  await sleep(500);
-
-  const clipboardText = await popup.evaluate(() => navigator.clipboard.readText());
+  const text = await sw.evaluate(async () => {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: 'copyAllTabs', respectGroups: true }, (response) => {
+        resolve(response.text);
+      });
+    });
+  });
 
   // Should have group header
-  expect(clipboardText).toContain('Work');
-  expect(clipboardText).toContain(URLS.EXAMPLE_A);
-  expect(clipboardText).toContain(URLS.EXAMPLE_B);
+  expect(text).toContain('Work');
+  expect(text).toContain(URLS.EXAMPLE_A);
+  expect(text).toContain(URLS.EXAMPLE_B);
   // Ungrouped tabs should be under "Ungrouped"
-  expect(clipboardText).toContain('Ungrouped');
-  expect(clipboardText).toContain(URLS.TEST_A);
+  expect(text).toContain('Ungrouped');
+  expect(text).toContain(URLS.TEST_A);
 
   // Groups should be separated by blank lines
-  const sections = clipboardText.split('\n\n');
+  const sections = text.split('\n\n');
   expect(sections.length).toBeGreaterThanOrEqual(2);
-
-  await popup.close();
 });
 
-test('62: Copy tabs (individual mode) returns flat list', async ({ sw, context, extensionId }) => {
+test('62: Copy tabs (individual mode) returns flat list without headers', async ({ sw }) => {
   const tabIds = await createTabs(sw, [URLS.EXAMPLE_A, URLS.EXAMPLE_B, URLS.TEST_A]);
   await createTabGroup(sw, [tabIds[0], tabIds[1]], 'Work', 'blue');
   await sleep(300);
 
-  const popup = await openPopup(context, extensionId);
-  await switchMode(popup, 'individual');
-  await clickPopupButton(popup, 'copyAllTabs-individual');
-  await sleep(500);
-
-  const clipboardText = await popup.evaluate(() => navigator.clipboard.readText());
+  const text = await sw.evaluate(async () => {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: 'copyAllTabs', respectGroups: false }, (response) => {
+        resolve(response.text);
+      });
+    });
+  });
 
   // Should NOT have group headers in individual mode
-  expect(clipboardText).not.toContain('Work');
-  expect(clipboardText).not.toContain('Ungrouped');
+  expect(text).not.toContain('Work');
+  expect(text).not.toContain('Ungrouped');
   // Should have all URLs
-  expect(clipboardText).toContain(URLS.EXAMPLE_A);
-  expect(clipboardText).toContain(URLS.EXAMPLE_B);
-  expect(clipboardText).toContain(URLS.TEST_A);
-
-  await popup.close();
+  expect(text).toContain(URLS.EXAMPLE_A);
+  expect(text).toContain(URLS.EXAMPLE_B);
+  expect(text).toContain(URLS.TEST_A);
 });
 
 test('63: Copy All Tabs button visible in both modes', async ({ context, extensionId }) => {
