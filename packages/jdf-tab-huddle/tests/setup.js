@@ -75,6 +75,7 @@ const popupWrapper = `
   if (typeof extractAllDomains !== 'undefined') global.extractAllDomains = extractAllDomains;
   if (typeof moveAllToSingleWindow !== 'undefined') global.moveAllToSingleWindow = moveAllToSingleWindow;
   if (typeof copyAllTabs !== 'undefined') global.copyAllTabs = copyAllTabs;
+  if (typeof updateStatusBar !== 'undefined') global.updateStatusBar = updateStatusBar;
 })();
 `;
 eval(popupWrapper);

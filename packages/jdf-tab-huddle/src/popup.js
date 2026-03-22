@@ -10,6 +10,9 @@ document.addEventListener('DOMContentLoaded', function () {
   
   // Update UI based on number of windows
   updateUIForWindowCount();
+
+  // Update status bar
+  updateStatusBar();
 });
 
 // Tab switching functionality
@@ -229,5 +232,28 @@ function updateUIForWindowCount() {
         }
       });
     }
+  });
+}
+
+// Update status bar with tab/window/group counts
+function updateStatusBar() {
+  chrome.windows.getAll({ populate: true }, function (windows) {
+    const totalTabs = windows.reduce((sum, w) => sum + w.tabs.length, 0);
+    const totalWindows = windows.length;
+
+    chrome.tabGroups.query({}, function (groups) {
+      const totalGroups = groups.length;
+      const parts = [
+        totalTabs + (totalTabs === 1 ? ' tab' : ' tabs'),
+        totalWindows + (totalWindows === 1 ? ' window' : ' windows')
+      ];
+      if (totalGroups > 0) {
+        parts.push(totalGroups + (totalGroups === 1 ? ' group' : ' groups'));
+      }
+      const statusBar = document.getElementById('statusBar');
+      if (statusBar) {
+        statusBar.textContent = parts.join(' \u00b7 ');
+      }
+    });
   });
 }
