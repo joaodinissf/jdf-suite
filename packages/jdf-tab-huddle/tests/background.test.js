@@ -144,6 +144,64 @@ describe('Background Script', () => {
     });
   });
 
+  describe('formatTabsAsText', () => {
+    test('should return empty string for empty tab list', () => {
+      expect(formatTabsAsText([], true)).toBe('');
+      expect(formatTabsAsText([], false)).toBe('');
+    });
+
+    test('should return flat URL list when respectGroups is false', () => {
+      const tabs = [
+        { id: 1, url: 'https://example.com/b', groupId: 1, groupInfo: { title: 'Group' } },
+        { id: 2, url: 'https://example.com/a', groupId: -1, groupInfo: null },
+      ];
+      const result = formatTabsAsText(tabs, false);
+      expect(result).toBe('https://example.com/b\nhttps://example.com/a');
+    });
+
+    test('should return URLs without headers when no groups exist and respectGroups is true', () => {
+      const tabs = [
+        { id: 1, url: 'https://example.com/a', groupId: -1, groupInfo: null },
+        { id: 2, url: 'https://test.com/b', groupId: -1, groupInfo: null },
+      ];
+      const result = formatTabsAsText(tabs, true);
+      expect(result).toBe('https://example.com/a\nhttps://test.com/b');
+    });
+
+    test('should group tabs with headers when groups exist', () => {
+      const tabs = [
+        { id: 1, url: 'https://example.com/b', groupId: 1, groupInfo: { title: 'Work' } },
+        { id: 2, url: 'https://example.com/a', groupId: 1, groupInfo: { title: 'Work' } },
+        { id: 3, url: 'https://other.com/x', groupId: 2, groupInfo: { title: 'Fun' } },
+        { id: 4, url: 'https://misc.com/z', groupId: -1, groupInfo: null },
+      ];
+      const result = formatTabsAsText(tabs, true);
+      expect(result).toBe(
+        'Work\nhttps://example.com/a\nhttps://example.com/b\n\n' +
+        'Fun\nhttps://other.com/x\n\n' +
+        'Ungrouped\nhttps://misc.com/z'
+      );
+    });
+
+    test('should use "Untitled Group" for groups with empty title', () => {
+      const tabs = [
+        { id: 1, url: 'https://example.com/a', groupId: 1, groupInfo: { title: '' } },
+        { id: 2, url: 'https://test.com/b', groupId: -1, groupInfo: null },
+      ];
+      const result = formatTabsAsText(tabs, true);
+      expect(result).toContain('Untitled Group');
+      expect(result).toContain('https://example.com/a');
+    });
+
+    test('should use pendingUrl when url is not available', () => {
+      const tabs = [
+        { id: 1, pendingUrl: 'https://pending.com/a', url: undefined, groupId: -1, groupInfo: null },
+      ];
+      const result = formatTabsAsText(tabs, false);
+      expect(result).toBe('https://pending.com/a');
+    });
+  });
+
   describe('Message handling', () => {
     test('should handle log message correctly', () => {
       const mockSendResponse = jest.fn();

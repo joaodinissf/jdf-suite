@@ -118,6 +118,19 @@
       margin-top: 8px;
       font-style: italic;
     }
+
+    .copy-feedback {
+      font-size: 11px;
+      text-align: center;
+      margin-top: 4px;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      height: 16px;
+    }
+
+    .copy-feedback.visible {
+      opacity: 1;
+    }
   </style>
 </head>
 
@@ -157,6 +170,14 @@
         <button id="removeDuplicatesGlobally-groups">All Windows<br>All Tabs</button>
       </div>
     </div>
+
+    <div class="section">
+      <h3 class="section-header">Copy</h3>
+      <div class="button-row">
+        <button id="copyAllTabs-groups">Copy All Tabs</button>
+      </div>
+      <div id="copyFeedback-groups" class="copy-feedback">Copied!</div>
+    </div>
   </div>
 
   <div id="individual-content" class="tab-content">
@@ -186,6 +207,14 @@
         <button id="removeDuplicatesAllWindows-individual">All Windows<br>Per Window</button>
         <button id="removeDuplicatesGlobally-individual">All Windows<br>All Tabs</button>
       </div>
+    </div>
+
+    <div class="section">
+      <h3 class="section-header">Copy</h3>
+      <div class="button-row">
+        <button id="copyAllTabs-individual">Copy All Tabs</button>
+      </div>
+      <div id="copyFeedback-individual" class="copy-feedback">Copied!</div>
     </div>
   </div>
 

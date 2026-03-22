@@ -14,6 +14,7 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 - **Extract Domain**: Move all tabs from the current domain into a new window
 - **Extract All Domains**: Organize all domains into separate windows
 - **Move All to Single Window**: Consolidate all tabs into one window
+- **Copy All Tabs**: Copy all open tab URLs to clipboard, paragraph-separated by tab group
 
 ### Duplicate Management
 - **Remove Duplicates (Window)**: Remove duplicates within current window
@@ -40,8 +41,8 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 ### For Developers
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (58 tests)
-pnpm test:e2e          # Run E2E tests (63 tests, requires Chromium)
+pnpm test              # Run unit tests (66 tests)
+pnpm test:e2e          # Run E2E tests (68 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
 pnpm run package       # Create extension zip
@@ -71,14 +72,14 @@ tab-sorter-extractor/
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Confirmation dialog for large operations
 │   └── icons/                     # Extension icons
-├── tests/                         # Jest unit tests (58 tests)
+├── tests/                         # Jest unit tests (66 tests)
 │   ├── setup.js                   # Test setup with jest-chrome mocks
 │   ├── background.test.js         # Background script logic tests
 │   ├── popup.test.js              # Popup UI tests
 │   ├── focused.test.js            # Core functionality tests
 │   ├── confirmation-dialog.test.js
 │   └── simple.test.js             # Framework verification
-├── e2e/                           # Playwright E2E tests (63 tests)
+├── e2e/                           # Playwright E2E tests (68 tests)
 │   ├── playwright.config.js       # Playwright configuration
 │   ├── fixtures/extension.js      # Custom fixture loading extension into Chromium
 │   ├── helpers/                   # Tab management, popup interaction, assertions
@@ -92,14 +93,14 @@ tab-sorter-extractor/
 ## Testing
 
 ### Unit Tests (Jest + jest-chrome)
-58 tests across 5 suites covering core logic with mocked Chrome APIs:
+66 tests across 5 suites covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report
 ```
 
 ### E2E Tests (Playwright + real Chromium)
-63 tests across 10 spec files that load the extension into a real browser:
+68 tests across 11 spec files that load the extension into a real browser:
 
 | Spec File | Tests | Coverage |
 |---|---|---|
@@ -111,6 +112,7 @@ pnpm run test:coverage   # With coverage report
 | remove-duplicates-all-windows | 4 | Per-window independent dedup |
 | remove-duplicates-globally | 6 | Cross-window dedup |
 | move-all-to-single-window | 7 | Consolidation, group recreation |
+| copy-all-tabs | 5 | Clipboard copy, group headers, feedback |
 | popup-ui | 6 | Mode switching, button visibility |
 | confirmation-dialog | 4 | Confirm/cancel flow |
 
@@ -145,6 +147,7 @@ See [`docs/CI-CD.md`](docs/CI-CD.md) for details.
 
 ## Version History
 
+- **v2.3.0**: Copy All Tabs feature — copy all open tab URLs to clipboard, paragraph-separated by tab group
 - **v2.2.1**: Documentation update, release workflow fix
 - **v2.2.0**: Comprehensive E2E test suite with Playwright, sortWindowTabs batch-move improvement
 - **v2.1.0**: Popup UI optimization for single window

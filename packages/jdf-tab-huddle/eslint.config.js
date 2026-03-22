@@ -14,6 +14,7 @@ export default [
         window: 'readonly',
         URL: 'readonly',
         URLSearchParams: 'readonly',
+        navigator: 'readonly',
         setTimeout: 'readonly',
         Map: 'readonly',
         Promise: 'readonly',
@@ -84,6 +85,9 @@ export default [
         removeDuplicatesGlobally: 'readonly',
         extractAllDomains: 'readonly',
         moveAllToSingleWindow: 'readonly',
+        copyAllTabs: 'readonly',
+        formatTabsAsText: 'readonly',
+        handleCopyAllTabs: 'readonly',
         updateContent: 'readonly',
         setupEventListeners: 'readonly',
         respond: 'readonly'

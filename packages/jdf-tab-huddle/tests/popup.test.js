@@ -12,6 +12,8 @@ document.body.innerHTML = `
   <button id="sortCurrentWindow-groups">Sort Current Window</button>
   <button id="removeDuplicatesWindow-groups">Remove Duplicates</button>
   <button id="extractDomain-groups">Extract Domain</button>
+  <button id="copyAllTabs-groups">Copy All Tabs</button>
+  <div id="copyFeedback-groups" class="copy-feedback">Copied!</div>
 `;
 
 // Load the popup script
@@ -156,6 +158,26 @@ describe('Popup Script', () => {
       
       expect(chrome.tabs.query).toHaveBeenCalledWith(
         { active: true, currentWindow: true },
+        expect.any(Function)
+      );
+    });
+  });
+
+  describe('Copy All Tabs', () => {
+    test('copyAllTabs should send correct message with respectGroups true', () => {
+      copyAllTabs(true);
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        { action: 'copyAllTabs', respectGroups: true },
+        expect.any(Function)
+      );
+    });
+
+    test('copyAllTabs should send correct message with respectGroups false', () => {
+      copyAllTabs(false);
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        { action: 'copyAllTabs', respectGroups: false },
         expect.any(Function)
       );
     });
