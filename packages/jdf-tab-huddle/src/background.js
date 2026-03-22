@@ -728,19 +728,18 @@ function formatTabsAsText(tabs, respectGroups = true) {
 
   const sections = [];
 
-  // Add grouped sections
+  // Add grouped sections (URLs only, no headers)
   for (const [_groupId, group] of groups.entries()) {
-    const title = (group.info && group.info.title) || 'Untitled Group';
     const urls = group.tabs.map(tab => tab.pendingUrl || tab.url);
     urls.sort();
-    sections.push(title + '\n' + urls.join('\n'));
+    sections.push(urls.join('\n'));
   }
 
   // Add ungrouped section
   if (ungrouped.length > 0) {
     const urls = ungrouped.map(tab => tab.pendingUrl || tab.url);
     urls.sort();
-    sections.push('Ungrouped\n' + urls.join('\n'));
+    sections.push(urls.join('\n'));
   }
 
   return sections.join('\n\n');
