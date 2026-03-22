@@ -168,7 +168,7 @@ describe('Background Script', () => {
       expect(result).toBe('https://example.com/a\nhttps://test.com/b');
     });
 
-    test('should group tabs with headers when groups exist', () => {
+    test('should paragraph-separate groups without headers when groups exist', () => {
       const tabs = [
         { id: 1, url: 'https://example.com/b', groupId: 1, groupInfo: { title: 'Work' } },
         { id: 2, url: 'https://example.com/a', groupId: 1, groupInfo: { title: 'Work' } },
@@ -177,20 +177,14 @@ describe('Background Script', () => {
       ];
       const result = formatTabsAsText(tabs, true);
       expect(result).toBe(
-        'Work\nhttps://example.com/a\nhttps://example.com/b\n\n' +
-        'Fun\nhttps://other.com/x\n\n' +
-        'Ungrouped\nhttps://misc.com/z'
+        'https://example.com/a\nhttps://example.com/b\n\n' +
+        'https://other.com/x\n\n' +
+        'https://misc.com/z'
       );
-    });
-
-    test('should use "Untitled Group" for groups with empty title', () => {
-      const tabs = [
-        { id: 1, url: 'https://example.com/a', groupId: 1, groupInfo: { title: '' } },
-        { id: 2, url: 'https://test.com/b', groupId: -1, groupInfo: null },
-      ];
-      const result = formatTabsAsText(tabs, true);
-      expect(result).toContain('Untitled Group');
-      expect(result).toContain('https://example.com/a');
+      // Should not contain group names
+      expect(result).not.toContain('Work');
+      expect(result).not.toContain('Fun');
+      expect(result).not.toContain('Ungrouped');
     });
 
     test('should use pendingUrl when url is not available', () => {
