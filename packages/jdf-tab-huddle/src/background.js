@@ -137,6 +137,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   } else if (message.action === 'moveAllToSingleWindow') {
     handleMoveAllToSingleWindow(message, sendResponse);
     return true; // Keep message channel open for async response
+  } else if (message.action === 'copyAllTabs') {
+    handleCopyAllTabs(message.respectGroups, sendResponse);
+    return true; // Keep message channel open for async response
   }
 });
 
@@ -689,6 +692,71 @@ async function sortWindowTabs(windowId, respectGroups = true) {
     
   } catch (error) {
     console.error('[Tab Organizer] Error sorting window tabs:', error);
+  }
+}
+
+// Format tabs as text for clipboard copy
+function formatTabsAsText(tabs, respectGroups = true) {
+  if (tabs.length === 0) return '';
+
+  if (!respectGroups) {
+    return tabs.map(tab => tab.pendingUrl || tab.url).join('\n');
+  }
+
+  // Check if any tabs actually belong to a group
+  const hasAnyGroups = tabs.some(tab => tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE);
+
+  if (!hasAnyGroups) {
+    // No groups at all — just list URLs without headers
+    return tabs.map(tab => tab.pendingUrl || tab.url).join('\n');
+  }
+
+  // Organize tabs by group
+  const groups = new Map();
+  const ungrouped = [];
+
+  for (const tab of tabs) {
+    if (tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
+      ungrouped.push(tab);
+    } else {
+      if (!groups.has(tab.groupId)) {
+        groups.set(tab.groupId, { info: tab.groupInfo, tabs: [] });
+      }
+      groups.get(tab.groupId).tabs.push(tab);
+    }
+  }
+
+  const sections = [];
+
+  // Add grouped sections
+  for (const [_groupId, group] of groups.entries()) {
+    const title = (group.info && group.info.title) || 'Untitled Group';
+    const urls = group.tabs.map(tab => tab.pendingUrl || tab.url);
+    urls.sort();
+    sections.push(title + '\n' + urls.join('\n'));
+  }
+
+  // Add ungrouped section
+  if (ungrouped.length > 0) {
+    const urls = ungrouped.map(tab => tab.pendingUrl || tab.url);
+    urls.sort();
+    sections.push('Ungrouped\n' + urls.join('\n'));
+  }
+
+  return sections.join('\n\n');
+}
+
+async function handleCopyAllTabs(respectGroups = true, sendResponse) {
+  try {
+    console.log('[Tab Organizer] Copying all tabs', respectGroups ? '(preserving groups)' : '(individual tabs)');
+
+    const tabs = await getTabsWithGroupInfo();
+    const text = formatTabsAsText(tabs, respectGroups);
+
+    sendResponse({ success: true, text });
+  } catch (error) {
+    console.error('[Tab Organizer] Error in copyAllTabs:', error);
+    sendResponse({ success: false, error: error.message });
   }
 }
 

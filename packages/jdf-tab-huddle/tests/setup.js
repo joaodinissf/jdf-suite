@@ -49,6 +49,8 @@ const backgroundWrapper = `
   if (typeof handleExtractDomain !== 'undefined') global.handleExtractDomain = handleExtractDomain;
   if (typeof handleExtractAllDomains !== 'undefined') global.handleExtractAllDomains = handleExtractAllDomains;
   if (typeof handleMoveAllToSingleWindow !== 'undefined') global.handleMoveAllToSingleWindow = handleMoveAllToSingleWindow;
+  if (typeof formatTabsAsText !== 'undefined') global.formatTabsAsText = formatTabsAsText;
+  if (typeof handleCopyAllTabs !== 'undefined') global.handleCopyAllTabs = handleCopyAllTabs;
 })();
 `;
 eval(backgroundWrapper);
@@ -72,6 +74,7 @@ const popupWrapper = `
   if (typeof removeDuplicatesGlobally !== 'undefined') global.removeDuplicatesGlobally = removeDuplicatesGlobally;
   if (typeof extractAllDomains !== 'undefined') global.extractAllDomains = extractAllDomains;
   if (typeof moveAllToSingleWindow !== 'undefined') global.moveAllToSingleWindow = moveAllToSingleWindow;
+  if (typeof copyAllTabs !== 'undefined') global.copyAllTabs = copyAllTabs;
 })();
 `;
 eval(popupWrapper);

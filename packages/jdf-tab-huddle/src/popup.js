@@ -86,7 +86,8 @@ function setupEventListeners() {
   document.getElementById('extractDomain-groups').addEventListener('click', () => extractDomain(true));
   document.getElementById('extractAllDomains-groups').addEventListener('click', () => extractAllDomains(true));
   document.getElementById('moveAllToSingleWindow-groups').addEventListener('click', () => moveAllToSingleWindow(true));
-  
+  document.getElementById('copyAllTabs-groups').addEventListener('click', () => copyAllTabs(true));
+
   // Individual mode listeners
   document.getElementById('sortAllWindows-individual').addEventListener('click', () => sortAllWindows(false));
   document.getElementById('sortCurrentWindow-individual').addEventListener('click', () => sortCurrentWindow(false));
@@ -96,6 +97,7 @@ function setupEventListeners() {
   document.getElementById('extractDomain-individual').addEventListener('click', () => extractDomain(false));
   document.getElementById('extractAllDomains-individual').addEventListener('click', () => extractAllDomains(false));
   document.getElementById('moveAllToSingleWindow-individual').addEventListener('click', () => moveAllToSingleWindow(false));
+  document.getElementById('copyAllTabs-individual').addEventListener('click', () => copyAllTabs(false));
 }
 
 // Simple logging helper
@@ -176,6 +178,28 @@ function moveAllToSingleWindow(respectGroups = true) {
       activeTabId: activeTab.id,
       respectGroups
     });
+  });
+}
+
+// Copy all tab URLs to clipboard
+function copyAllTabs(respectGroups = true) {
+  const mode = respectGroups ? 'groups' : 'individual';
+  chrome.runtime.sendMessage({ action: 'copyAllTabs', respectGroups }, function (response) {
+    if (chrome.runtime.lastError) {
+      log('Error copying tabs:', chrome.runtime.lastError.message);
+      return;
+    }
+    if (response && response.success && response.text) {
+      navigator.clipboard.writeText(response.text).then(() => {
+        const feedback = document.getElementById('copyFeedback-' + mode);
+        if (feedback) {
+          feedback.classList.add('visible');
+          setTimeout(() => feedback.classList.remove('visible'), 1500);
+        }
+      }).catch(err => {
+        log('Clipboard write failed:', err);
+      });
+    }
   });
 }
 

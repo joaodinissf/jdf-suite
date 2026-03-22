@@ -162,7 +162,7 @@ test('59: All buttons have correct IDs', async ({ sw, context, extensionId }) =>
   await sleep(300);
 
   const allButtonIds = [
-    // Groups mode (8 buttons)
+    // Groups mode (9 buttons)
     'sortAllWindows-groups',
     'sortCurrentWindow-groups',
     'extractDomain-groups',
@@ -171,7 +171,8 @@ test('59: All buttons have correct IDs', async ({ sw, context, extensionId }) =>
     'removeDuplicatesWindow-groups',
     'removeDuplicatesAllWindows-groups',
     'removeDuplicatesGlobally-groups',
-    // Individual mode (8 buttons)
+    'copyAllTabs-groups',
+    // Individual mode (9 buttons)
     'sortAllWindows-individual',
     'sortCurrentWindow-individual',
     'extractDomain-individual',
@@ -180,9 +181,10 @@ test('59: All buttons have correct IDs', async ({ sw, context, extensionId }) =>
     'removeDuplicatesWindow-individual',
     'removeDuplicatesAllWindows-individual',
     'removeDuplicatesGlobally-individual',
+    'copyAllTabs-individual',
   ];
 
-  expect(allButtonIds).toHaveLength(16);
+  expect(allButtonIds).toHaveLength(18);
 
   for (const id of allButtonIds) {
     const button = popup.locator(`#${id}`);
