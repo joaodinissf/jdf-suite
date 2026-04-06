@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Tab Organizer - AI Setup</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 30px;
+      background: #667eea;
+      color: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    h2 {
+      margin-top: 0;
+      margin-bottom: 20px;
+      text-align: center;
+      font-size: 24px;
+    }
+
+    .warning {
+      background: rgba(255, 255, 255, 0.15);
+      padding: 18px;
+      border-radius: 8px;
+      margin: 20px 0;
+      border-left: 4px solid #ffc107;
+      line-height: 1.6;
+    }
+
+    .warning strong {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+
+    .warning ul {
+      margin: 10px 0 0 0;
+      padding-left: 20px;
+    }
+
+    .warning li {
+      margin-bottom: 6px;
+    }
+
+    .warning-collapsed {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .warning-collapsed .warning-body {
+      display: none;
+    }
+
+    .expired-notice {
+      background: rgba(255, 193, 7, 0.25);
+      padding: 14px 18px;
+      border-radius: 8px;
+      margin: 20px 0;
+      border-left: 4px solid #ffc107;
+      font-weight: 600;
+    }
+
+    .form-section {
+      background: rgba(255, 255, 255, 0.15);
+      padding: 18px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .form-group label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      opacity: 0.9;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+      font-size: 14px;
+      box-sizing: border-box;
+      transition: border-color 0.2s ease;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+
+    .form-group select option {
+      background: #667eea;
+      color: white;
+    }
+
+    .key-input-wrapper {
+      position: relative;
+    }
+
+    .key-input-wrapper input {
+      padding-right: 44px;
+    }
+
+    .key-toggle {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: white;
+      cursor: pointer;
+      font-size: 18px;
+      padding: 4px;
+      opacity: 0.7;
+      min-width: auto;
+    }
+
+    .key-toggle:hover {
+      opacity: 1;
+    }
+
+    .key-status {
+      margin-top: 6px;
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    .model-cost {
+      font-size: 11px;
+      opacity: 0.7;
+      margin-top: 4px;
+    }
+
+    .actions {
+      text-align: center;
+      margin-top: 30px;
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+    }
+
+    button {
+      padding: 14px 28px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      min-width: 150px;
+      transition: all 0.2s ease;
+    }
+
+    .confirm {
+      background: #28a745;
+      color: white;
+      box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+    }
+
+    .cancel {
+      background: #6c757d;
+      color: white;
+      box-shadow: 0 2px 8px rgba(108, 117, 125, 0.3);
+    }
+
+    .danger {
+      background: #dc3545;
+      color: white;
+      box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+    }
+
+    .confirm:hover {
+      background: #218838;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4);
+    }
+
+    .cancel:hover {
+      background: #5a6268;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px rgba(108, 117, 125, 0.4);
+    }
+
+    .danger:hover {
+      background: #c82333;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4);
+    }
+
+    .error-msg {
+      background: rgba(220, 53, 69, 0.3);
+      padding: 10px 14px;
+      border-radius: 6px;
+      margin-top: 15px;
+      font-size: 13px;
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <h2 id="pageTitle">✨ AI Tab Grouping Setup</h2>
+
+  <div id="expiredNotice" class="expired-notice" style="display: none;">
+    ⚠️ Your API key has expired. Please re-enter it below.
+  </div>
+
+  <div id="warningSection" class="warning">
+    <strong>⚠️ Important: You are responsible for your API key</strong>
+    <div class="warning-body">
+      <p>This extension stores your OpenRouter API key locally in your browser using basic encoding. It is <strong>not encrypted</strong>. Anyone with access to your computer could potentially retrieve it.</p>
+      <ul>
+        <li>Only use API keys with spending limits set on OpenRouter</li>
+        <li>Set a short expiry time (default: 24 hours) so the key auto-expires</li>
+        <li>Never share your browser profile with untrusted users</li>
+      </ul>
+      <p>By proceeding, you accept full responsibility for the security of your API key.</p>
+    </div>
+  </div>
+
+  <div class="form-section">
+    <div class="form-group">
+      <label for="apiKeyInput">OpenRouter API Key</label>
+      <div class="key-input-wrapper">
+        <input type="password" id="apiKeyInput" placeholder="sk-or-..." autocomplete="off">
+        <button class="key-toggle" id="keyToggle" title="Show/hide key">👁</button>
+      </div>
+      <div id="keyStatus" class="key-status"></div>
+    </div>
+
+    <div class="form-group">
+      <label for="modelSelect">Model</label>
+      <select id="modelSelect"></select>
+      <div id="modelCost" class="model-cost"></div>
+    </div>
+
+    <div class="form-group">
+      <label for="expirySelect">Key Expires After</label>
+      <select id="expirySelect"></select>
+    </div>
+  </div>
+
+  <div id="errorMsg" class="error-msg"></div>
+
+  <div class="actions">
+    <button class="confirm" id="saveButton">Save & Organize</button>
+    <button class="cancel" id="cancelButton">Cancel</button>
+    <button class="danger" id="deleteButton" style="display: none;">Delete Key</button>
+  </div>
+
+  <script src="ai-setup.js"></script>
+</body>
+
+</html>

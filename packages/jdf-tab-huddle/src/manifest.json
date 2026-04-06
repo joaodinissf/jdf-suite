@@ -1,13 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Tab Organizer",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Sort and organize tabs by URL and domain",
   "permissions": [
     "tabs",
     "windows",
     "tabGroups",
     "storage"
+  ],
+  "host_permissions": [
+    "https://openrouter.ai/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -29,7 +32,11 @@
     {
       "resources": [
         "confirmation-dialog.html",
-        "confirmation-dialog.js"
+        "confirmation-dialog.js",
+        "ai-setup.html",
+        "ai-setup.js",
+        "ai-proposal.html",
+        "ai-proposal.js"
       ],
       "matches": [
         "<all_urls>"

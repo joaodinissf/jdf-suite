@@ -7,9 +7,12 @@ document.addEventListener('DOMContentLoaded', function () {
   
   // Setup event listeners for both modes
   setupEventListeners();
-  
+
   // Update UI based on number of windows
   updateUIForWindowCount();
+
+  // Update AI button visibility (show cog if key is set)
+  updateAiButtonState();
 
   // Update status bar
   updateStatusBar();
@@ -101,6 +104,12 @@ function setupEventListeners() {
   document.getElementById('extractAllDomains-individual').addEventListener('click', () => extractAllDomains(false));
   document.getElementById('moveAllToSingleWindow-individual').addEventListener('click', () => moveAllToSingleWindow(false));
   document.getElementById('copyAllTabs-individual').addEventListener('click', () => copyAllTabs(false));
+
+  // AI listeners (both modes)
+  document.getElementById('aiOrganize-groups').addEventListener('click', () => aiOrganize(true));
+  document.getElementById('aiOrganize-individual').addEventListener('click', () => aiOrganize(false));
+  document.getElementById('aiSettings-groups').addEventListener('click', () => openAiSettings());
+  document.getElementById('aiSettings-individual').addEventListener('click', () => openAiSettings());
 }
 
 // Simple logging helper
@@ -232,6 +241,56 @@ function updateUIForWindowCount() {
         }
       });
     }
+  });
+}
+
+// AI Organize
+function aiOrganize(respectGroups = true) {
+  const mode = respectGroups ? 'groups' : 'individual';
+  const feedback = document.getElementById('aiFeedback-' + mode);
+
+  if (feedback) {
+    feedback.textContent = 'Analyzing tabs...';
+    feedback.classList.add('visible');
+  }
+
+  chrome.runtime.sendMessage({ action: 'aiGroupTabs', respectGroups }, function (response) {
+    if (chrome.runtime.lastError) {
+      log('Error in AI organize:', chrome.runtime.lastError.message);
+      if (feedback) {
+        feedback.textContent = 'Error: ' + chrome.runtime.lastError.message;
+        setTimeout(() => feedback.classList.remove('visible'), 3000);
+      }
+      return;
+    }
+    if (response && !response.success) {
+      if (feedback) {
+        feedback.textContent = response.error || 'Something went wrong.';
+        setTimeout(() => feedback.classList.remove('visible'), 3000);
+      }
+      return;
+    }
+    // Success — setup page or proposal page will open in a new tab
+    if (feedback) {
+      feedback.classList.remove('visible');
+    }
+  });
+}
+
+function openAiSettings() {
+  sendAction('openAiSettings');
+}
+
+// Show/hide the AI settings cog based on whether a key is configured
+function updateAiButtonState() {
+  chrome.runtime.sendMessage({ action: 'loadAiConfig' }, function (response) {
+    if (chrome.runtime.lastError || !response) return;
+
+    const hasKey = response.config && response.config.key;
+    const cogs = document.querySelectorAll('.ai-cog-btn');
+    cogs.forEach(cog => {
+      cog.style.display = hasKey ? 'block' : 'none';
+    });
   });
 }
 

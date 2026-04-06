@@ -1,6 +1,317 @@
 // Background service worker for persistent logging
 console.log('Tab Organizer service worker starting...');
 
+// ============================================================
+// AI Tab Grouping — Constants and Helpers
+// ============================================================
+
+const AI_MODELS = [
+  { id: 'qwen/qwen3.5-flash-20260224', name: 'Qwen 3.5 Flash', cost: '$0.065/M in' },
+  { id: 'google/gemini-3.1-flash-lite-preview-20260303', name: 'Gemini 3.1 Flash Lite', cost: '$0.25/M in' },
+];
+const DEFAULT_MODEL = AI_MODELS[0].id;
+
+const EXPIRY_PRESETS = [
+  { label: '1 hour', value: 3600000 },
+  { label: '24 hours', value: 86400000 },
+  { label: '7 days', value: 604800000 },
+  { label: '30 days', value: 2592000000 },
+  { label: 'Never expires', value: null },
+];
+const DEFAULT_EXPIRY = 86400000; // 24 hours
+
+const VALID_TAB_GROUP_COLORS = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
+
+function encodeKey(plaintext) {
+  return btoa(plaintext);
+}
+
+function decodeKey(encoded) {
+  return atob(encoded);
+}
+
+function isKeyExpired(aiConfig) {
+  if (!aiConfig || !aiConfig.key) return true;
+  if (aiConfig.expiresAt === null) return false;
+  return Date.now() > aiConfig.expiresAt;
+}
+
+async function saveAiConfig(config) {
+  const expiresAt = config.expiryDuration !== null
+    ? Date.now() + config.expiryDuration
+    : null;
+
+  const aiConfig = {
+    key: encodeKey(config.key),
+    model: config.model || DEFAULT_MODEL,
+    expiresAt,
+    expiryDuration: config.expiryDuration,
+    setupComplete: true,
+  };
+
+  await chrome.storage.local.set({ aiConfig });
+  return aiConfig;
+}
+
+async function loadAiConfig() {
+  const result = await chrome.storage.local.get(['aiConfig']);
+  return result.aiConfig || null;
+}
+
+// Temporary storage for the AI proposal between the API call and the proposal page
+let pendingAiProposal = null;
+
+// ============================================================
+// AI Tab Grouping — Prompt Building and Response Parsing
+// ============================================================
+
+function stripQueryParams(url) {
+  try {
+    const u = new URL(url);
+    return u.origin + u.pathname;
+  } catch (_e) {
+    return url;
+  }
+}
+
+function buildAiPrompt(tabs) {
+  // Pre-sort tabs by domain for easier clustering
+  const sortedTabs = [...tabs].sort((a, b) => {
+    const domainA = lexHost(a.url);
+    const domainB = lexHost(b.url);
+    return domainA.localeCompare(domainB);
+  });
+
+  const tabLines = sortedTabs.map(tab => {
+    const domain = lexHost(tab.url);
+    const title = tab.title || '(no title)';
+    const cleanUrl = stripQueryParams(tab.pendingUrl || tab.url);
+    return `[id:${tab.id}] ${domain} — "${title}" — ${cleanUrl}`;
+  }).join('\n');
+
+  const systemMessage = {
+    role: 'system',
+    content: 'You organize browser tabs into logical groups. Return ONLY valid JSON, no other text.'
+  };
+
+  const userMessage = {
+    role: 'user',
+    content: `Group these browser tabs into logical categories based on their content and purpose.
+Each group should have a short descriptive name (2-4 words max).
+
+Return JSON in this exact format:
+{"groups": [{"name": "Group Name", "color": "blue", "tabIds": [1, 2, 3]}]}
+
+Available colors: ${VALID_TAB_GROUP_COLORS.join(', ')}
+
+Every tab must be assigned to exactly one group. Do not omit any tabs.
+
+Tabs (sorted by domain):
+${tabLines}`
+  };
+
+  return [systemMessage, userMessage];
+}
+
+async function callOpenRouter(apiKey, model, messages) {
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': chrome.runtime.getURL(''),
+      'X-Title': 'Tab Organizer',
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
+    }),
+  });
+
+  if (!response.ok) {
+    const status = response.status;
+    if (status === 401) throw new Error('Invalid API key. Please check your OpenRouter key.');
+    if (status === 429) throw new Error('Rate limited. Please try again in a moment.');
+    if (status === 402) throw new Error('Insufficient credits. Please add credits on OpenRouter.');
+    throw new Error(`OpenRouter API error (${status})`);
+  }
+
+  const data = await response.json();
+
+  if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+    throw new Error('Unexpected API response format');
+  }
+
+  return data.choices[0].message.content;
+}
+
+function parseAiResponse(responseText, originalTabs) {
+  // Extract JSON — handle markdown code fences
+  let jsonStr = responseText.trim();
+  const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) {
+    jsonStr = fenceMatch[1].trim();
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch (_e) {
+    return { success: false, error: 'AI returned invalid JSON. Please try again.' };
+  }
+
+  if (!parsed.groups || !Array.isArray(parsed.groups)) {
+    return { success: false, error: 'AI response missing "groups" array.' };
+  }
+
+  const validTabIds = new Set(originalTabs.map(t => t.id));
+  const assignedTabIds = new Set();
+  const groups = [];
+
+  for (const group of parsed.groups) {
+    if (!group.name || !Array.isArray(group.tabIds)) continue;
+
+    // Validate and filter tab IDs
+    const validIds = group.tabIds
+      .filter(id => validTabIds.has(id) && !assignedTabIds.has(id));
+    validIds.forEach(id => assignedTabIds.add(id));
+
+    if (validIds.length === 0) continue;
+
+    // Normalize color
+    const color = VALID_TAB_GROUP_COLORS.includes(group.color) ? group.color : 'grey';
+
+    groups.push({
+      name: String(group.name).slice(0, 40),
+      color,
+      tabIds: validIds,
+    });
+  }
+
+  // Collect unassigned tabs into "Ungrouped"
+  const unassignedIds = originalTabs
+    .map(t => t.id)
+    .filter(id => !assignedTabIds.has(id));
+
+  return {
+    success: true,
+    groups,
+    ungroupedTabIds: unassignedIds,
+  };
+}
+
+// ============================================================
+// AI Tab Grouping — Message Handlers
+// ============================================================
+
+async function handleAiGroupTabs(message, sendResponse) {
+  try {
+    const config = await loadAiConfig();
+
+    // No key or expired → open setup page
+    if (!config || !config.key || isKeyExpired(config)) {
+      const mode = config && config.key ? 'expired' : 'setup';
+      const url = chrome.runtime.getURL(`ai-setup.html?mode=${mode}`);
+      await chrome.tabs.create({ url, active: true });
+      sendResponse({ success: true, action: 'setup' });
+      return;
+    }
+
+    // Gather tabs from current window
+    const currentWindow = await chrome.windows.getCurrent();
+    const tabs = await getTabsWithGroupInfo(currentWindow.id);
+    const unpinnedTabs = tabs.filter(t => !t.pinned);
+
+    if (unpinnedTabs.length === 0) {
+      sendResponse({ success: false, error: 'No unpinned tabs to organize.' });
+      return;
+    }
+
+    // Build prompt, call API, parse response
+    const messages = buildAiPrompt(unpinnedTabs);
+    console.log('[Tab Organizer] AI request model:', config.model);
+    console.log('[Tab Organizer] AI request messages:', JSON.stringify(messages, null, 2));
+    const apiKey = decodeKey(config.key);
+    const responseText = await callOpenRouter(apiKey, config.model, messages);
+    console.log('[Tab Organizer] AI raw response:', responseText);
+    const result = parseAiResponse(responseText, unpinnedTabs);
+    console.log('[Tab Organizer] AI parsed proposal:', JSON.stringify(result, null, 2));
+
+    if (!result.success) {
+      sendResponse({ success: false, error: result.error });
+      return;
+    }
+
+    // Build tab metadata map for the proposal page
+    const tabMeta = unpinnedTabs.map(t => ({
+      id: t.id,
+      title: t.title || '(no title)',
+      url: t.pendingUrl || t.url,
+      favIconUrl: t.favIconUrl || '',
+    }));
+
+    // Store proposal for the proposal page to pick up
+    pendingAiProposal = {
+      groups: result.groups,
+      ungroupedTabIds: result.ungroupedTabIds,
+      tabs: tabMeta,
+      windowId: currentWindow.id,
+      debug: {
+        model: config.model,
+        messages,
+        rawResponse: responseText,
+      },
+    };
+
+    // Open proposal page
+    const proposalUrl = chrome.runtime.getURL('ai-proposal.html');
+    await chrome.tabs.create({ url: proposalUrl, active: true });
+
+    sendResponse({ success: true, action: 'proposal' });
+  } catch (error) {
+    console.error('[Tab Organizer] Error in AI group tabs:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+async function handleApplyAiProposal(message, sender, sendResponse) {
+  try {
+    const { groups, windowId } = message;
+
+    for (const group of groups) {
+      if (!group.tabIds || group.tabIds.length === 0) continue;
+
+      const groupId = await chrome.tabs.group({
+        tabIds: group.tabIds,
+        createProperties: { windowId },
+      });
+
+      await chrome.tabGroups.update(groupId, {
+        title: group.name || '',
+        color: VALID_TAB_GROUP_COLORS.includes(group.color) ? group.color : 'grey',
+      });
+    }
+
+    // Sort after grouping
+    await sortWindowTabs(windowId, true);
+
+    // Clean up
+    pendingAiProposal = null;
+
+    // Close the proposal tab
+    if (sender.tab) {
+      await chrome.tabs.remove(sender.tab.id);
+    }
+
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('[Tab Organizer] Error applying AI proposal:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
 // Tab Groups Helper Functions
 async function getTabGroupsInfo(windowId = null) {
   try {
@@ -140,6 +451,41 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   } else if (message.action === 'copyAllTabs') {
     handleCopyAllTabs(message.respectGroups, sendResponse);
     return true; // Keep message channel open for async response
+  } else if (message.action === 'aiGroupTabs') {
+    handleAiGroupTabs(message, sendResponse);
+    return true;
+  } else if (message.action === 'getAiProposal') {
+    sendResponse(pendingAiProposal || { error: 'No pending proposal. Please try again.' });
+  } else if (message.action === 'applyAiProposal') {
+    handleApplyAiProposal(message, _sender, sendResponse);
+    return true;
+  } else if (message.action === 'cancelAiProposal') {
+    pendingAiProposal = null;
+    if (_sender.tab) {
+      chrome.tabs.remove(_sender.tab.id);
+    }
+    sendResponse({ success: true });
+  } else if (message.action === 'saveAiConfig') {
+    saveAiConfig(message.config).then(saved => {
+      sendResponse({ success: true, config: saved });
+    }).catch(err => {
+      sendResponse({ success: false, error: err.message });
+    });
+    return true;
+  } else if (message.action === 'loadAiConfig') {
+    loadAiConfig().then(config => {
+      sendResponse({ config, models: AI_MODELS, expiryPresets: EXPIRY_PRESETS });
+    });
+    return true;
+  } else if (message.action === 'openAiSettings') {
+    const url = chrome.runtime.getURL('ai-setup.html?mode=edit');
+    chrome.tabs.create({ url, active: true });
+    sendResponse({ success: true });
+  } else if (message.action === 'deleteAiConfig') {
+    chrome.storage.local.remove('aiConfig').then(() => {
+      sendResponse({ success: true });
+    });
+    return true;
   }
 });
 
