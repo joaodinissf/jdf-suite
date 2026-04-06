@@ -1,5 +1,3 @@
-// Test setup file
-// Hand-rolled Chrome API mock (replaces jest-chrome)
 import { vi, beforeEach } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -7,22 +5,21 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+const messageListeners = [];
+
 global.chrome = {
   runtime: {
     sendMessage: vi.fn(),
-    onMessage: (() => {
-      const listeners = [];
-      return {
-        addListener: vi.fn((fn) => listeners.push(fn)),
-        removeListener: vi.fn((fn) => {
-          const i = listeners.indexOf(fn);
-          if (i >= 0) listeners.splice(i, 1);
-        }),
-        hasListener: (fn) => listeners.includes(fn),
-        hasListeners: () => listeners.length > 0,
-        callListeners: (...args) => listeners.forEach(fn => fn(...args)),
-      };
-    })(),
+    onMessage: {
+      addListener: vi.fn((fn) => messageListeners.push(fn)),
+      removeListener: vi.fn((fn) => {
+        const i = messageListeners.indexOf(fn);
+        if (i >= 0) messageListeners.splice(i, 1);
+      }),
+      hasListener: (fn) => messageListeners.includes(fn),
+      hasListeners: () => messageListeners.length > 0,
+      callListeners: (...args) => messageListeners.forEach(fn => fn(...args)),
+    },
     getURL: vi.fn((path) => `chrome-extension://test-id/${path}`),
     lastError: null,
   },
@@ -55,13 +52,7 @@ global.chrome = {
   },
 };
 
-// Mock console.log to avoid noise in tests
 global.console.log = vi.fn();
-
-// Reset all mocks before each test
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 // Load and execute background script, exposing functions globally
 const backgroundJs = readFileSync(resolve(__dirname, '../src/background.js'), 'utf8');
@@ -141,3 +132,12 @@ const confirmationWrapper = `
 })();
 `;
 eval(confirmationWrapper);
+
+// Snapshot base listeners registered during eval, reset to this state before each test
+const baseListeners = [...messageListeners];
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  messageListeners.length = 0;
+  messageListeners.push(...baseListeners);
+});

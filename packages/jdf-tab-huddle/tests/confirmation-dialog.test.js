@@ -1,8 +1,5 @@
-// Simplified tests for confirmation dialog behavior
 describe('Confirmation Dialog', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    
     // Setup minimal DOM for testing
     document.body.innerHTML = `
       <div id="windowCount">Loading...</div>

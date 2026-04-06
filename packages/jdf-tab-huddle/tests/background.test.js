@@ -1,9 +1,4 @@
-// Tests for background.js functionality
 describe('Background Script', () => {
-  beforeEach(() => {
-    // Reset chrome API mocks
-    vi.clearAllMocks();
-  });
 
   describe('lexHost function', () => {
     test('should extract hostname from regular URL', () => {
@@ -28,6 +23,9 @@ describe('Background Script', () => {
 
     test('should handle invalid URLs gracefully', () => {
       expect(lexHost('invalid-url')).toBe('invalid-url');
+      expect(lexHost('')).toBe('');
+      expect(lexHost(null)).toBe('');
+      expect(lexHost(undefined)).toBe('');
     });
   });
 

@@ -1,4 +1,3 @@
-// Simple working test to demonstrate the framework
 describe('Chrome Extension Testing Framework', () => {
   test('chrome APIs are properly mocked', () => {
     expect(chrome).toBeDefined();
@@ -71,22 +70,9 @@ describe('Chrome Extension Testing Framework', () => {
   });
 
   test('URL parsing utility works', () => {
-    // Test basic lexHost logic inline
-    function testLexHost(url) {
-      try {
-        const u = new URL(url);
-        if (u.protocol === 'chrome-extension:') return u.host;
-        if (u.protocol === 'file:') return 'file';
-        if (u.protocol === 'chrome:') return u.host || u.pathname.split('/')[0];
-        return u.hostname;
-      } catch (e) {
-        return url || '';
-      }
-    }
-    
-    expect(testLexHost('https://example.com/path')).toBe('example.com');
-    expect(testLexHost('chrome://settings/')).toBe('settings');
-    expect(testLexHost('file:///path/file.html')).toBe('file');
-    expect(testLexHost('chrome-extension://abc123/popup.html')).toBe('abc123');
+    expect(lexHost('https://example.com/path')).toBe('example.com');
+    expect(lexHost('chrome://settings/')).toBe('settings');
+    expect(lexHost('file:///path/file.html')).toBe('file');
+    expect(lexHost('chrome-extension://abc123/popup.html')).toBe('abc123');
   });
 });
