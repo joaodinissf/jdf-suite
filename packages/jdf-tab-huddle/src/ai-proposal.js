@@ -284,12 +284,13 @@ function setupActionButtons() {
 }
 
 function handleMessage(msg) {
-  if (msg.type === 'ai-status') {
+  if (!msg.type) return;
+  if (msg.type === 'ai-chunk') {
+    appendChunk(msg.text);
+  } else if (msg.type === 'ai-status') {
     showStatus(msg.text);
   } else if (msg.type === 'ai-debug') {
     initDebugSection(msg.model, msg.messages);
-  } else if (msg.type === 'ai-chunk') {
-    appendChunk(msg.text);
   } else if (msg.type === 'ai-proposal') {
     proposal = msg;
     tabMap = {};
