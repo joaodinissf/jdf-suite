@@ -6,8 +6,9 @@ console.log('Tab Organizer service worker starting...');
 // ============================================================
 
 const AI_MODELS = [
-  { id: 'qwen/qwen3.5-flash-20260224', name: 'Qwen 3.5 Flash', cost: '$0.065/M in' },
+  { id: 'anthropic/claude-haiku-4.5', name: 'Claude Haiku 4.5', cost: '$0.80/M in' },
   { id: 'google/gemini-3.1-flash-lite-preview-20260303', name: 'Gemini 3.1 Flash Lite', cost: '$0.25/M in' },
+  { id: 'qwen/qwen3.5-flash-20260224', name: 'Qwen 3.5 Flash', cost: '$0.065/M in' },
 ];
 const DEFAULT_MODEL = AI_MODELS[0].id;
 
@@ -139,6 +140,17 @@ async function callOpenRouter(apiKey, model, messages, onChunk) {
     throw new Error(`OpenRouter API error (${status})`);
   }
 
+  const contentType = response.headers.get('content-type') || '';
+
+  // If the response is not SSE, fall back to reading it as plain JSON
+  if (!contentType.includes('text/event-stream')) {
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    if (content && onChunk) onChunk(content);
+    return content;
+  }
+
+  // SSE streaming
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -154,8 +166,8 @@ async function callOpenRouter(apiKey, model, messages, onChunk) {
 
     for (const line of lines) {
       const trimmed = line.trim();
-      if (!trimmed || !trimmed.startsWith('data: ')) continue;
-      const payload = trimmed.slice(6);
+      if (!trimmed || !trimmed.startsWith('data:')) continue;
+      const payload = trimmed.startsWith('data: ') ? trimmed.slice(6) : trimmed.slice(5);
       if (payload === '[DONE]') continue;
 
       try {

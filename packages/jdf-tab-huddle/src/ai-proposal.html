@@ -169,7 +169,7 @@
 
     .actions {
       text-align: center;
-      margin-top: 24px;
+      margin: 0 0 20px 0;
       display: flex;
       gap: 15px;
       justify-content: center;
@@ -270,12 +270,12 @@
 
 <body>
   <h2>✨ AI Tab Grouping Proposal</h2>
-  <div id="content">
-    <div class="loading">Loading proposal...</div>
-  </div>
   <div id="actionsContainer" class="actions" style="display: none;">
     <button class="confirm" id="applyButton">✅ Apply</button>
     <button class="cancel" id="cancelButton">Cancel</button>
+  </div>
+  <div id="content">
+    <div class="loading">Loading proposal...</div>
   </div>
   <button class="debug-toggle" id="debugToggle">Show raw model I/O</button>
   <div class="debug-section" id="debugSection"></div>

@@ -218,27 +218,9 @@ function copyAllTabs(respectGroups = true) {
 // Update UI based on number of windows
 function updateUIForWindowCount() {
   chrome.windows.getAll({ populate: false }, function (windows) {
-    const windowCount = windows.length;
-    const isSingleWindow = windowCount === 1;
-    
-    if (isSingleWindow) {
-      // Elements that should be hidden when only one window exists
-      const multiWindowElements = [
-        'sortAllWindows-groups',
-        'sortAllWindows-individual',
-        'moveAllToSingleWindow-groups',
-        'moveAllToSingleWindow-individual',
-        'removeDuplicatesAllWindows-groups',
-        'removeDuplicatesAllWindows-individual',
-        'removeDuplicatesGlobally-groups',
-        'removeDuplicatesGlobally-individual'
-      ];
-      
-      multiWindowElements.forEach(elementId => {
-        const element = document.getElementById(elementId);
-        if (element) {
-          element.style.display = 'none';
-        }
+    if (windows.length === 1) {
+      document.querySelectorAll('.multi-window-section').forEach(section => {
+        section.style.display = 'none';
       });
     }
   });

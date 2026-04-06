@@ -83,6 +83,11 @@
     .button-row {
       display: flex;
       gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .button-row:last-child {
+      margin-bottom: 0;
     }
 
     button {
@@ -153,83 +158,77 @@
 
   <div id="groups-content" class="tab-content active">
     <div class="mode-indicator">Preserves Chrome tab groups</div>
-    
-    <div class="section">
-      <h3 class="section-header">Sort</h3>
-      <div class="button-row">
-        <button id="sortAllWindows-groups">Sort All Tabs</button>
-        <button id="sortCurrentWindow-groups">Sort Current Window</button>
-      </div>
-    </div>
 
     <div class="section">
-      <h3 class="section-header">Organize</h3>
+      <h3 class="section-header">This Window</h3>
       <div class="button-row">
-        <button id="extractDomain-groups">Extract Domain</button>
-        <button id="extractAllDomains-groups">All Domains</button>
-        <button id="moveAllToSingleWindow-groups">Merge Windows</button>
+        <button id="sortCurrentWindow-groups">Sort</button>
+        <button id="removeDuplicatesWindow-groups">Deduplicate</button>
       </div>
-    </div>
-
-    <div class="section">
-      <h3 class="section-header">Remove Duplicates</h3>
       <div class="button-row">
-        <button id="removeDuplicatesWindow-groups">Window</button>
-        <button id="removeDuplicatesAllWindows-groups">Per Window</button>
-        <button id="removeDuplicatesGlobally-groups">Global</button>
-      </div>
-    </div>
-
-    <div class="section">
-      <h3 class="section-header">Copy &amp; AI</h3>
-      <div class="button-row">
-        <button id="copyAllTabs-groups">Copy All Tabs</button>
         <button id="aiOrganize-groups">&#10024; Organize</button>
         <button id="aiSettings-groups" class="ai-cog-btn" style="display: none; flex: 0 0 40px; font-size: 14px;">&#9881;</button>
       </div>
+    </div>
+
+    <div class="section multi-window-section">
+      <h3 class="section-header">All Windows</h3>
+      <div class="button-row">
+        <button id="sortAllWindows-groups">Sort All</button>
+        <button id="removeDuplicatesAllWindows-groups">Dedup/Window</button>
+        <button id="removeDuplicatesGlobally-groups">Dedup Global</button>
+      </div>
+      <div class="button-row">
+        <button id="moveAllToSingleWindow-groups">Merge</button>
+        <button id="copyAllTabs-groups">Copy All Tabs</button>
+      </div>
       <div id="copyFeedback-groups" class="copy-feedback">Copied!</div>
-      <div id="aiFeedback-groups" class="copy-feedback"></div>
+    </div>
+
+    <div class="section multi-window-section">
+      <h3 class="section-header">Extract</h3>
+      <div class="button-row">
+        <button id="extractDomain-groups">Domain</button>
+        <button id="extractAllDomains-groups">All Domains</button>
+      </div>
     </div>
   </div>
 
   <div id="individual-content" class="tab-content">
     <div class="mode-indicator">Treats all tabs individually</div>
-    
-    <div class="section">
-      <h3 class="section-header">Sort</h3>
-      <div class="button-row">
-        <button id="sortAllWindows-individual">Sort All Tabs</button>
-        <button id="sortCurrentWindow-individual">Sort Current Window</button>
-      </div>
-    </div>
 
     <div class="section">
-      <h3 class="section-header">Organize</h3>
+      <h3 class="section-header">This Window</h3>
       <div class="button-row">
-        <button id="extractDomain-individual">Extract Domain</button>
-        <button id="extractAllDomains-individual">All Domains</button>
-        <button id="moveAllToSingleWindow-individual">Merge Windows</button>
+        <button id="sortCurrentWindow-individual">Sort</button>
+        <button id="removeDuplicatesWindow-individual">Deduplicate</button>
       </div>
-    </div>
-
-    <div class="section">
-      <h3 class="section-header">Remove Duplicates</h3>
       <div class="button-row">
-        <button id="removeDuplicatesWindow-individual">Window</button>
-        <button id="removeDuplicatesAllWindows-individual">Per Window</button>
-        <button id="removeDuplicatesGlobally-individual">Global</button>
-      </div>
-    </div>
-
-    <div class="section">
-      <h3 class="section-header">Copy &amp; AI</h3>
-      <div class="button-row">
-        <button id="copyAllTabs-individual">Copy All Tabs</button>
         <button id="aiOrganize-individual">&#10024; Organize</button>
         <button id="aiSettings-individual" class="ai-cog-btn" style="display: none; flex: 0 0 40px; font-size: 14px;">&#9881;</button>
       </div>
+    </div>
+
+    <div class="section multi-window-section">
+      <h3 class="section-header">All Windows</h3>
+      <div class="button-row">
+        <button id="sortAllWindows-individual">Sort All</button>
+        <button id="removeDuplicatesAllWindows-individual">Dedup/Window</button>
+        <button id="removeDuplicatesGlobally-individual">Dedup Global</button>
+      </div>
+      <div class="button-row">
+        <button id="moveAllToSingleWindow-individual">Merge</button>
+        <button id="copyAllTabs-individual">Copy All Tabs</button>
+      </div>
       <div id="copyFeedback-individual" class="copy-feedback">Copied!</div>
-      <div id="aiFeedback-individual" class="copy-feedback"></div>
+    </div>
+
+    <div class="section multi-window-section">
+      <h3 class="section-header">Extract</h3>
+      <div class="button-row">
+        <button id="extractDomain-individual">Domain</button>
+        <button id="extractAllDomains-individual">All Domains</button>
+      </div>
     </div>
   </div>
 
