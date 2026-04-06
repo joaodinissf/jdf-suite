@@ -140,10 +140,19 @@
     .status-bar {
       font-size: 10px;
       opacity: 0.6;
-      text-align: center;
       margin-top: 4px;
       padding-top: 6px;
       border-top: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .status-line {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 2px;
+    }
+
+    .status-label {
+      font-weight: 600;
     }
   </style>
 </head>
@@ -175,8 +184,8 @@
       <h3 class="section-header">All Windows</h3>
       <div class="button-row">
         <button id="sortAllWindows-groups">Sort All</button>
-        <button id="removeDuplicatesAllWindows-groups">Dedup/Window</button>
-        <button id="removeDuplicatesGlobally-groups">Dedup Global</button>
+        <button id="removeDuplicatesAllWindows-groups">Dedupe Window</button>
+        <button id="removeDuplicatesGlobally-groups">Dedupe Global</button>
       </div>
       <div class="button-row">
         <button id="moveAllToSingleWindow-groups">Merge</button>
@@ -213,8 +222,8 @@
       <h3 class="section-header">All Windows</h3>
       <div class="button-row">
         <button id="sortAllWindows-individual">Sort All</button>
-        <button id="removeDuplicatesAllWindows-individual">Dedup/Window</button>
-        <button id="removeDuplicatesGlobally-individual">Dedup Global</button>
+        <button id="removeDuplicatesAllWindows-individual">Dedupe Window</button>
+        <button id="removeDuplicatesGlobally-individual">Dedupe Global</button>
       </div>
       <div class="button-row">
         <button id="moveAllToSingleWindow-individual">Merge</button>
@@ -232,7 +241,10 @@
     </div>
   </div>
 
-  <div id="statusBar" class="status-bar"></div>
+  <div id="statusBar" class="status-bar">
+    <div class="status-line"><span class="status-label">This window:</span> <span id="statusThisWindow"></span></div>
+    <div class="status-line multi-window-section"><span class="status-label">All windows:</span> <span id="statusAllWindows"></span></div>
+  </div>
 
   <script src="popup.js"></script>
 </body>

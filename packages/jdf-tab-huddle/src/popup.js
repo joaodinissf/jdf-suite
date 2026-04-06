@@ -250,23 +250,34 @@ function updateAiButtonState() {
 
 // Update status bar with tab/window/group counts
 function updateStatusBar() {
-  chrome.windows.getAll({ populate: true }, function (windows) {
-    const totalTabs = windows.reduce((sum, w) => sum + w.tabs.length, 0);
-    const totalWindows = windows.length;
+  chrome.tabs.query({ currentWindow: true }, function (currentTabs) {
+    chrome.windows.getAll({ populate: true }, function (windows) {
+      chrome.tabGroups.query({}, function (allGroups) {
+        // This window
+        const currentWindowId = currentTabs[0]?.windowId;
+        const thisWindowTabs = currentTabs.length;
+        const thisWindowGroups = allGroups.filter(g => g.windowId === currentWindowId).length;
+        const thisParts = [thisWindowTabs + (thisWindowTabs === 1 ? ' tab' : ' tabs')];
+        if (thisWindowGroups > 0) {
+          thisParts.push(thisWindowGroups + (thisWindowGroups === 1 ? ' group' : ' groups'));
+        }
+        const thisEl = document.getElementById('statusThisWindow');
+        if (thisEl) thisEl.textContent = thisParts.join(' \u00b7 ');
 
-    chrome.tabGroups.query({}, function (groups) {
-      const totalGroups = groups.length;
-      const parts = [
-        totalTabs + (totalTabs === 1 ? ' tab' : ' tabs'),
-        totalWindows + (totalWindows === 1 ? ' window' : ' windows')
-      ];
-      if (totalGroups > 0) {
-        parts.push(totalGroups + (totalGroups === 1 ? ' group' : ' groups'));
-      }
-      const statusBar = document.getElementById('statusBar');
-      if (statusBar) {
-        statusBar.textContent = parts.join(' \u00b7 ');
-      }
+        // All windows
+        const totalTabs = windows.reduce((sum, w) => sum + w.tabs.length, 0);
+        const totalWindows = windows.length;
+        const totalGroups = allGroups.length;
+        const allParts = [
+          totalTabs + (totalTabs === 1 ? ' tab' : ' tabs'),
+          totalWindows + (totalWindows === 1 ? ' window' : ' windows')
+        ];
+        if (totalGroups > 0) {
+          allParts.push(totalGroups + (totalGroups === 1 ? ' group' : ' groups'));
+        }
+        const allEl = document.getElementById('statusAllWindows');
+        if (allEl) allEl.textContent = allParts.join(' \u00b7 ');
+      });
     });
   });
 }
