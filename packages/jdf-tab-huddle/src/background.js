@@ -274,7 +274,7 @@ async function handleAiGroupTabs(message, sendResponse) {
     send({ type: 'ai-status', text: 'Gathering tabs...' });
     const currentWindow = await chrome.windows.getCurrent();
     const tabs = await getTabsWithGroupInfo(currentWindow.id);
-    const unpinnedTabs = tabs.filter(t => !t.pinned);
+    const unpinnedTabs = tabs.filter(t => !t.pinned && t.id !== proposalTab.id);
 
     if (unpinnedTabs.length === 0) {
       send({ type: 'ai-error', error: 'No unpinned tabs to organize.' });
