@@ -51,6 +51,14 @@ const backgroundWrapper = `
   if (typeof handleMoveAllToSingleWindow !== 'undefined') global.handleMoveAllToSingleWindow = handleMoveAllToSingleWindow;
   if (typeof formatTabsAsText !== 'undefined') global.formatTabsAsText = formatTabsAsText;
   if (typeof handleCopyAllTabs !== 'undefined') global.handleCopyAllTabs = handleCopyAllTabs;
+  if (typeof encodeKey !== 'undefined') global.encodeKey = encodeKey;
+  if (typeof decodeKey !== 'undefined') global.decodeKey = decodeKey;
+  if (typeof isKeyExpired !== 'undefined') global.isKeyExpired = isKeyExpired;
+  if (typeof buildAiPrompt !== 'undefined') global.buildAiPrompt = buildAiPrompt;
+  if (typeof parseAiResponse !== 'undefined') global.parseAiResponse = parseAiResponse;
+  if (typeof stripQueryParams !== 'undefined') global.stripQueryParams = stripQueryParams;
+  if (typeof AI_MODELS !== 'undefined') global.AI_MODELS = AI_MODELS;
+  if (typeof VALID_TAB_GROUP_COLORS !== 'undefined') global.VALID_TAB_GROUP_COLORS = VALID_TAB_GROUP_COLORS;
 })();
 `;
 eval(backgroundWrapper);
@@ -76,6 +84,9 @@ const popupWrapper = `
   if (typeof moveAllToSingleWindow !== 'undefined') global.moveAllToSingleWindow = moveAllToSingleWindow;
   if (typeof copyAllTabs !== 'undefined') global.copyAllTabs = copyAllTabs;
   if (typeof updateStatusBar !== 'undefined') global.updateStatusBar = updateStatusBar;
+  if (typeof aiOrganize !== 'undefined') global.aiOrganize = aiOrganize;
+  if (typeof openAiSettings !== 'undefined') global.openAiSettings = openAiSettings;
+  if (typeof updateAiButtonState !== 'undefined') global.updateAiButtonState = updateAiButtonState;
 })();
 `;
 eval(popupWrapper);

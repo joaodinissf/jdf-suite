@@ -17,9 +17,17 @@ export default [
         navigator: 'readonly',
         setTimeout: 'readonly',
         Map: 'readonly',
+        Set: 'readonly',
         Promise: 'readonly',
         Object: 'readonly',
-        Array: 'readonly'
+        Array: 'readonly',
+        fetch: 'readonly',
+        btoa: 'readonly',
+        atob: 'readonly',
+        JSON: 'readonly',
+        String: 'readonly',
+        Date: 'readonly',
+        parseInt: 'readonly'
       }
     },
     rules: {
@@ -27,7 +35,7 @@ export default [
       // Relaxed rules for Chrome extension development
       'no-unused-vars': ['warn', { 
         argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_|^(lexHost|getCurrentMode)$', // Allow intentionally unused functions
+        varsIgnorePattern: '^_|^(lexHost|getCurrentMode|AI_MODELS|DEFAULT_MODEL|EXPIRY_PRESETS|DEFAULT_EXPIRY|VALID_TAB_GROUP_COLORS|encodeKey|decodeKey|isKeyExpired|saveAiConfig|loadAiConfig|pendingAiProposal|stripQueryParams|buildAiPrompt|callOpenRouter|parseAiResponse|handleAiGroupTabs|handleApplyAiProposal|aiOrganize|openAiSettings|updateAiButtonState|COLOR_MAP)$',
         caughtErrorsIgnorePattern: '^_' // Ignore unused error parameters prefixed with _
       }],
       'no-console': 'off', // Console is used for debugging in extensions
@@ -91,7 +99,18 @@ export default [
         handleCopyAllTabs: 'readonly',
         updateContent: 'readonly',
         setupEventListeners: 'readonly',
-        respond: 'readonly'
+        respond: 'readonly',
+        encodeKey: 'readonly',
+        decodeKey: 'readonly',
+        isKeyExpired: 'readonly',
+        buildAiPrompt: 'readonly',
+        parseAiResponse: 'readonly',
+        stripQueryParams: 'readonly',
+        AI_MODELS: 'readonly',
+        VALID_TAB_GROUP_COLORS: 'readonly',
+        aiOrganize: 'readonly',
+        openAiSettings: 'readonly',
+        updateAiButtonState: 'readonly'
       }
     },
     rules: {
