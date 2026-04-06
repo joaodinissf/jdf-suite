@@ -328,6 +328,10 @@ function showInstructionsInput() {
     const instructions = document.getElementById('userInstructions').value.trim();
     showStatus('Starting...');
 
+    // Show debug section by default
+    document.getElementById('debugSection').classList.add('visible');
+    document.getElementById('debugToggle').textContent = 'Hide raw model I/O';
+
     // Listen for pushed messages from background
     chrome.runtime.onMessage.addListener(handleMessage);
 
