@@ -49,17 +49,17 @@ export default [
     files: ['tests/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
-      sourceType: 'script',
+      sourceType: 'module',
       globals: {
-        // Jest globals
+        // Vitest globals
         describe: 'readonly',
         test: 'readonly',
         expect: 'readonly',
         beforeEach: 'readonly',
         afterEach: 'readonly',
-        jest: 'readonly',
+        vi: 'readonly',
         global: 'writable',
-        
+
         // Chrome extension globals
         chrome: 'readonly',
         console: 'readonly',
@@ -71,11 +71,9 @@ export default [
         Promise: 'readonly',
         Object: 'readonly',
         Array: 'readonly',
-        
+
         // Node.js globals for test setup
-        require: 'readonly',
         eval: 'readonly',
-        __dirname: 'readonly',
         
         // Extension functions (loaded by setup.js)
         lexHost: 'readonly',

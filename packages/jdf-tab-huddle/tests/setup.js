@@ -1,37 +1,74 @@
 // Test setup file
-// Assign jest-chrome to global scope
-Object.assign(global, require('jest-chrome'));
+// Hand-rolled Chrome API mock (replaces jest-chrome)
+import { vi, beforeEach } from 'vitest';
+import { readFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-// Mock console.log to avoid noise in tests
-global.console.log = jest.fn();
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Mock chrome APIs that aren't covered by jest-chrome
-Object.assign(chrome, {
-  tabGroups: {
-    TAB_GROUP_ID_NONE: -1,
-    query: jest.fn(),
-    update: jest.fn()
+global.chrome = {
+  runtime: {
+    sendMessage: vi.fn(),
+    onMessage: (() => {
+      const listeners = [];
+      return {
+        addListener: vi.fn((fn) => listeners.push(fn)),
+        removeListener: vi.fn((fn) => {
+          const i = listeners.indexOf(fn);
+          if (i >= 0) listeners.splice(i, 1);
+        }),
+        hasListener: (fn) => listeners.includes(fn),
+        hasListeners: () => listeners.length > 0,
+        callListeners: (...args) => listeners.forEach(fn => fn(...args)),
+      };
+    })(),
+    getURL: vi.fn((path) => `chrome-extension://test-id/${path}`),
+    lastError: null,
   },
   tabs: {
-    ...chrome.tabs,
-    group: jest.fn()
-  }
-});
+    query: vi.fn(),
+    move: vi.fn(),
+    group: vi.fn(),
+    create: vi.fn(),
+    remove: vi.fn(),
+    update: vi.fn(),
+    sendMessage: vi.fn(),
+  },
+  tabGroups: {
+    TAB_GROUP_ID_NONE: -1,
+    query: vi.fn(),
+    update: vi.fn(),
+  },
+  windows: {
+    getAll: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    getCurrent: vi.fn(),
+  },
+  storage: {
+    local: {
+      get: vi.fn(),
+      set: vi.fn(),
+      remove: vi.fn(),
+    },
+  },
+};
+
+// Mock console.log to avoid noise in tests
+global.console.log = vi.fn();
 
 // Reset all mocks before each test
 beforeEach(() => {
-  jest.clearAllMocks();
+  vi.clearAllMocks();
 });
 
-const fs = require('fs');
-const path = require('path');
-
 // Load and execute background script, exposing functions globally
-const backgroundJs = fs.readFileSync(path.resolve(__dirname, '../src/background.js'), 'utf8');
+const backgroundJs = readFileSync(resolve(__dirname, '../src/background.js'), 'utf8');
 const backgroundWrapper = `
 (function() {
   ${backgroundJs}
-  
+
   // Expose functions to global scope
   if (typeof lexHost !== 'undefined') global.lexHost = lexHost;
   if (typeof getTabGroupsInfo !== 'undefined') global.getTabGroupsInfo = getTabGroupsInfo;
@@ -63,12 +100,12 @@ const backgroundWrapper = `
 `;
 eval(backgroundWrapper);
 
-// Load and execute popup script, exposing functions globally  
-const popupJs = fs.readFileSync(path.resolve(__dirname, '../src/popup.js'), 'utf8');
+// Load and execute popup script, exposing functions globally
+const popupJs = readFileSync(resolve(__dirname, '../src/popup.js'), 'utf8');
 const popupWrapper = `
 (function() {
   ${popupJs}
-  
+
   // Expose functions to global scope
   if (typeof lexHost !== 'undefined') global.lexHost = lexHost;
   if (typeof getCurrentMode !== 'undefined') global.getCurrentMode = getCurrentMode;
@@ -92,11 +129,11 @@ const popupWrapper = `
 eval(popupWrapper);
 
 // Load and execute confirmation dialog script, exposing functions globally
-const confirmationJs = fs.readFileSync(path.resolve(__dirname, '../src/confirmation-dialog.js'), 'utf8');
+const confirmationJs = readFileSync(resolve(__dirname, '../src/confirmation-dialog.js'), 'utf8');
 const confirmationWrapper = `
 (function() {
   ${confirmationJs}
-  
+
   // Expose functions to global scope
   if (typeof updateContent !== 'undefined') global.updateContent = updateContent;
   if (typeof setupEventListeners !== 'undefined') global.setupEventListeners = setupEventListeners;

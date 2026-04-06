@@ -46,10 +46,10 @@ describe('Chrome Extension Testing Framework', () => {
   });
 
   test('chrome.runtime.onMessage mock works', () => {
-    const mockListener = jest.fn();
+    const mockListener = vi.fn();
     const mockMessage = { action: 'test' };
     const mockSender = {};
-    const mockSendResponse = jest.fn();
+    const mockSendResponse = vi.fn();
     
     chrome.runtime.onMessage.addListener(mockListener);
     expect(chrome.runtime.onMessage.hasListener(mockListener)).toBe(true);
