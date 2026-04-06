@@ -1,7 +1,7 @@
 // Focused tests for core functionality
 describe('Core Extension Functionality', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('URL Domain Extraction', () => {
@@ -165,7 +165,7 @@ describe('Core Extension Functionality', () => {
       };
       
       // Mock the function directly instead of its dependencies
-      global.analyzeDomainDistribution = jest.fn().mockResolvedValue(mockResult);
+      global.analyzeDomainDistribution = vi.fn().mockResolvedValue(mockResult);
       
       const result = await analyzeDomainDistribution();
       
@@ -182,7 +182,7 @@ describe('Core Extension Functionality', () => {
     });
 
     test('log messages should be handled correctly', () => {
-      const mockSendResponse = jest.fn();
+      const mockSendResponse = vi.fn();
       const logMessage = {
         type: 'log',
         data: { message: 'Test log', args: ['arg1'] }

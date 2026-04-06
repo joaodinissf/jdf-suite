@@ -2,7 +2,7 @@
 describe('Background Script', () => {
   beforeEach(() => {
     // Reset chrome API mocks
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('lexHost function', () => {
@@ -198,7 +198,7 @@ describe('Background Script', () => {
 
   describe('Message handling', () => {
     test('should handle log message correctly', () => {
-      const mockSendResponse = jest.fn();
+      const mockSendResponse = vi.fn();
       const message = { type: 'log', data: { message: 'test', args: [] } };
       
       chrome.runtime.onMessage.callListeners(message, {}, mockSendResponse);

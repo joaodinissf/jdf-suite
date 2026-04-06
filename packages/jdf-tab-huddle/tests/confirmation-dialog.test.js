@@ -1,7 +1,7 @@
 // Simplified tests for confirmation dialog behavior
 describe('Confirmation Dialog', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     
     // Setup minimal DOM for testing
     document.body.innerHTML = `
@@ -63,8 +63,8 @@ describe('Confirmation Dialog', () => {
       const cancelBtn = document.getElementById('cancelButton');
       
       // Mock addEventListener to verify it's called
-      confirmBtn.addEventListener = jest.fn();
-      cancelBtn.addEventListener = jest.fn();
+      confirmBtn.addEventListener = vi.fn();
+      cancelBtn.addEventListener = vi.fn();
       
       setupEventListeners();
       
@@ -79,7 +79,7 @@ describe('Confirmation Dialog', () => {
         throw new Error('Chrome API error');
       });
       
-      window.close = jest.fn();
+      window.close = vi.fn();
       
       expect(() => respond(true)).not.toThrow();
       expect(window.close).toHaveBeenCalled();

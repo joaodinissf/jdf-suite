@@ -1,6 +1,9 @@
 // Tests for popup.js functionality
-const fs = require('fs');
-const path = require('path');
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Mock DOM
 document.body.innerHTML = `
@@ -17,11 +20,11 @@ document.body.innerHTML = `
 `;
 
 // Load the popup script
-const popupScript = fs.readFileSync(path.join(__dirname, '../src/popup.js'), 'utf8');
+const popupScript = readFileSync(join(__dirname, '../src/popup.js'), 'utf8');
 
 describe('Popup Script', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     
     // Mock chrome storage
     chrome.storage.local.get.mockImplementation((keys, callback) => {
@@ -186,7 +189,7 @@ describe('Popup Script', () => {
   describe('Error handling', () => {
     test('should handle chrome.runtime.lastError in callbacks', () => {
       chrome.runtime.lastError = { message: 'Test error' };
-      const consoleSpy = jest.spyOn(console, 'log');
+      const consoleSpy = vi.spyOn(console, 'log');
       
       sortAllWindows(true);
       
