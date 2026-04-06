@@ -75,7 +75,7 @@ function stripQueryParams(url) {
   }
 }
 
-function buildAiPrompt(tabs) {
+function buildAiPrompt(tabs, instructions) {
   // Pre-sort tabs by domain for easier clustering
   const sortedTabs = [...tabs].sort((a, b) => {
     const domainA = lexHost(a.url);
@@ -106,7 +106,7 @@ Return JSON in this exact format:
 Available colors: ${VALID_TAB_GROUP_COLORS.join(', ')}
 
 Every tab must be assigned to exactly one group. Do not omit any tabs.
-
+${instructions ? '\nAdditional instructions from user: ' + instructions + '\n' : ''}
 Tabs (sorted by domain):
 ${tabLines}`
   };
@@ -263,8 +263,8 @@ async function handleAiGroupTabs(message, sendResponse) {
     const proposalTab = await chrome.tabs.create({ url: proposalUrl, active: true });
     sendResponse({ success: true, action: 'proposal' });
 
-    // Wait for the proposal page to signal it's ready
-    await new Promise(resolve => { aiProposalReadyResolve = resolve; });
+    // Wait for the proposal page to signal it's ready (with optional instructions)
+    const userInstructions = await new Promise(resolve => { aiProposalReadyResolve = resolve; });
 
     const send = (msg) => {
       chrome.tabs.sendMessage(proposalTab.id, msg).catch(() => {});
@@ -282,7 +282,7 @@ async function handleAiGroupTabs(message, sendResponse) {
     }
 
     // Build prompt and send debug info
-    const messages = buildAiPrompt(unpinnedTabs);
+    const messages = buildAiPrompt(unpinnedTabs, userInstructions);
     const modelName = AI_MODELS.find(m => m.id === config.model)?.name || config.model;
     send({ type: 'ai-debug', model: config.model, modelName, messages });
     send({ type: 'ai-status', text: 'Calling ' + modelName + '...' });
@@ -508,7 +508,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   } else if (message.action === 'aiProposalReady') {
     if (aiProposalReadyResolve) {
-      aiProposalReadyResolve();
+      aiProposalReadyResolve(message.instructions || '');
       aiProposalReadyResolve = null;
     }
     sendResponse({ success: true });

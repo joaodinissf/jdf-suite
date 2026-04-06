@@ -307,16 +307,46 @@ function handleMessage(msg) {
   }
 }
 
+function showInstructionsInput() {
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <div style="margin: 20px 0;">
+      <label style="display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px;">
+        How should your tabs be organized?
+      </label>
+      <textarea id="userInstructions" rows="3" placeholder='Leave blank for default grouping, or e.g. "group movies by decade of release"'
+        style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px;
+        background: rgba(255,255,255,0.1); color: white; font-size: 13px; font-family: inherit;
+        box-sizing: border-box; resize: vertical;"></textarea>
+    </div>
+    <div style="display: flex; gap: 15px; justify-content: center;">
+      <button class="confirm" id="startOrganize" style="min-width: 150px;">Organize</button>
+      <button class="cancel" id="cancelOrganize" style="min-width: 150px;">Cancel</button>
+    </div>`;
+
+  document.getElementById('startOrganize').addEventListener('click', () => {
+    const instructions = document.getElementById('userInstructions').value.trim();
+    showStatus('Starting...');
+
+    // Listen for pushed messages from background
+    chrome.runtime.onMessage.addListener(handleMessage);
+
+    // Tell background we're ready, with optional instructions
+    chrome.runtime.sendMessage({ action: 'aiProposalReady', instructions });
+  });
+
+  document.getElementById('cancelOrganize').addEventListener('click', () => {
+    window.close();
+  });
+
+  // Focus the textarea
+  document.getElementById('userInstructions').focus();
+}
+
 function init() {
-  showStatus('Starting...');
   setupDebugToggle();
   setupActionButtons();
-
-  // Listen for pushed messages from background
-  chrome.runtime.onMessage.addListener(handleMessage);
-
-  // Tell background we're ready
-  chrome.runtime.sendMessage({ action: 'aiProposalReady' });
+  showInstructionsInput();
 }
 
 if (document.readyState === 'loading') {
