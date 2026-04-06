@@ -220,18 +220,19 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-function renderDebug() {
-  if (!proposal || !proposal.debug) return;
-  const section = document.getElementById('debugSection');
-  const toggle = document.getElementById('debugToggle');
-  const d = proposal.debug;
+function showStatus(text) {
+  const content = document.getElementById('content');
+  content.innerHTML = `<div class="loading">${escapeHtml(text)}</div>`;
+}
 
-  const promptText = d.messages.map(m => `[${m.role}]\n${m.content}`).join('\n\n---\n\n');
+function initDebugSection(model, messages) {
+  const section = document.getElementById('debugSection');
+  const promptText = messages.map(m => `[${m.role}]\n${m.content}`).join('\n\n---\n\n');
 
   section.innerHTML = `
     <div class="debug-block">
       <h4>Model</h4>
-      <pre>${escapeHtml(d.model)}</pre>
+      <pre>${escapeHtml(model)}</pre>
     </div>
     <div class="debug-block">
       <h4>Prompt sent</h4>
@@ -239,18 +240,33 @@ function renderDebug() {
     </div>
     <div class="debug-block">
       <h4>Raw response</h4>
-      <pre>${escapeHtml(d.rawResponse)}</pre>
+      <pre id="rawResponsePre"></pre>
     </div>`;
 
+  // Show debug section during streaming
+  section.classList.add('visible');
+  document.getElementById('debugToggle').textContent = 'Hide raw model I/O';
+}
+
+function appendChunk(text) {
+  const pre = document.getElementById('rawResponsePre');
+  if (pre) {
+    pre.textContent += text;
+    pre.scrollTop = pre.scrollHeight;
+  }
+}
+
+function setupDebugToggle() {
+  const toggle = document.getElementById('debugToggle');
+  const section = document.getElementById('debugSection');
   toggle.addEventListener('click', () => {
     const visible = section.classList.toggle('visible');
     toggle.textContent = visible ? 'Hide raw model I/O' : 'Show raw model I/O';
   });
 }
 
-function setupEventListeners() {
+function setupActionButtons() {
   document.getElementById('applyButton').addEventListener('click', () => {
-    // Only send groups that have tabs
     const groupsToApply = proposal.groups
       .filter(g => g.tabIds.length > 0)
       .map(g => ({ name: g.name, color: g.color, tabIds: g.tabIds }));
@@ -267,32 +283,43 @@ function setupEventListeners() {
   });
 }
 
-async function init() {
-  const data = await chrome.runtime.sendMessage({ action: 'getAiProposal' });
-
-  if (!data || data.error) {
-    showError(data?.error || 'No proposal available. Please try again from the popup.');
-    return;
+function handleMessage(msg) {
+  if (msg.type === 'ai-status') {
+    showStatus(msg.text);
+  } else if (msg.type === 'ai-debug') {
+    initDebugSection(msg.model, msg.messages);
+  } else if (msg.type === 'ai-chunk') {
+    appendChunk(msg.text);
+  } else if (msg.type === 'ai-proposal') {
+    proposal = msg;
+    tabMap = {};
+    for (const t of proposal.tabs) {
+      tabMap[t.id] = t;
+    }
+    render();
+    // Collapse debug section now that the proposal is rendered
+    const section = document.getElementById('debugSection');
+    section.classList.remove('visible');
+    document.getElementById('debugToggle').textContent = 'Show raw model I/O';
+  } else if (msg.type === 'ai-error') {
+    showError(msg.error);
   }
+}
 
-  proposal = data;
+function init() {
+  showStatus('Starting...');
+  setupDebugToggle();
+  setupActionButtons();
 
-  // Build tab lookup map
-  tabMap = {};
-  for (const t of proposal.tabs) {
-    tabMap[t.id] = t;
-  }
+  // Listen for pushed messages from background
+  chrome.runtime.onMessage.addListener(handleMessage);
 
-  render();
-  renderDebug();
+  // Tell background we're ready
+  chrome.runtime.sendMessage({ action: 'aiProposalReady' });
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    init();
-    setupEventListeners();
-  });
+  document.addEventListener('DOMContentLoaded', init);
 } else {
   init();
-  setupEventListeners();
 }

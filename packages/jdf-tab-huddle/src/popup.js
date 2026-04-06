@@ -246,35 +246,7 @@ function updateUIForWindowCount() {
 
 // AI Organize
 function aiOrganize(respectGroups = true) {
-  const mode = respectGroups ? 'groups' : 'individual';
-  const feedback = document.getElementById('aiFeedback-' + mode);
-
-  if (feedback) {
-    feedback.textContent = 'Analyzing tabs...';
-    feedback.classList.add('visible');
-  }
-
-  chrome.runtime.sendMessage({ action: 'aiGroupTabs', respectGroups }, function (response) {
-    if (chrome.runtime.lastError) {
-      log('Error in AI organize:', chrome.runtime.lastError.message);
-      if (feedback) {
-        feedback.textContent = 'Error: ' + chrome.runtime.lastError.message;
-        setTimeout(() => feedback.classList.remove('visible'), 3000);
-      }
-      return;
-    }
-    if (response && !response.success) {
-      if (feedback) {
-        feedback.textContent = response.error || 'Something went wrong.';
-        setTimeout(() => feedback.classList.remove('visible'), 3000);
-      }
-      return;
-    }
-    // Success — setup page or proposal page will open in a new tab
-    if (feedback) {
-      feedback.classList.remove('visible');
-    }
-  });
+  sendAction('aiGroupTabs', { respectGroups });
 }
 
 function openAiSettings() {
