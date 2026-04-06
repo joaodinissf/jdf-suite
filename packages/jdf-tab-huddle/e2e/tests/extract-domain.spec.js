@@ -81,6 +81,9 @@ test('14: Pinned tabs not extracted', async ({ sw, context }) => {
     URLS.EXAMPLE_C,
   ]);
 
+  // Wait for tabs to finish loading
+  await sleep(500);
+
   // Pin the first example.com tab
   await pinTab(sw, tabIds[0]);
 
@@ -103,10 +106,12 @@ test('14: Pinned tabs not extracted', async ({ sw, context }) => {
       handleExtractDomain(params, resolve);
     });
   }, { tabId: targetTabId, url: targetUrl, respectGroups: true });
-  await sleep(1000);
 
   await waitForWindowCount(sw, 2);
+  // Wait for the internal setTimeout(200) sort to complete
+  await sleep(2000);
 
+  // Re-query windows to get updated tab positions
   const allWindows = await getAllWindows(sw);
   const newWindow = allWindows.find(w => w.tabs.some(t => t.id === targetTabId));
   expect(newWindow).toBeTruthy();
@@ -255,6 +260,9 @@ test('18: Individual mode drops groups', async ({ sw, context }) => {
     URLS.GITHUB_A,
   ]);
 
+  // Wait for tabs to finish loading
+  await sleep(500);
+
   // Group example.com tabs
   await createTabGroup(sw, [tabIds[1], tabIds[2]], 'ExGroup', 'blue');
 
@@ -276,6 +284,8 @@ test('18: Individual mode drops groups', async ({ sw, context }) => {
       handleExtractDomain(params, resolve);
     });
   }, { tabId: targetTabId, url: targetUrl, respectGroups: false });
+
+  await waitForWindowCount(sw, 2);
   await sleep(1500);
 
   const allWindows = await getAllWindows(sw);
