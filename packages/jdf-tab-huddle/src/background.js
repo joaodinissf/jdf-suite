@@ -58,8 +58,8 @@ async function loadAiConfig() {
   return result.aiConfig || null;
 }
 
-// Temporary storage for the AI proposal between the API call and the proposal page
-let pendingAiProposal = null;
+// Resolves when the proposal tab signals it is ready to receive messages
+let aiProposalReadyResolve = null;
 
 // ============================================================
 // AI Tab Grouping — Prompt Building and Response Parsing
@@ -113,7 +113,7 @@ ${tabLines}`
   return [systemMessage, userMessage];
 }
 
-async function callOpenRouter(apiKey, model, messages) {
+async function callOpenRouter(apiKey, model, messages, onChunk) {
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -127,6 +127,7 @@ async function callOpenRouter(apiKey, model, messages) {
       messages,
       temperature: 0.3,
       response_format: { type: 'json_object' },
+      stream: true,
     }),
   });
 
@@ -138,13 +139,39 @@ async function callOpenRouter(apiKey, model, messages) {
     throw new Error(`OpenRouter API error (${status})`);
   }
 
-  const data = await response.json();
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullText = '';
 
-  if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-    throw new Error('Unexpected API response format');
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop(); // keep incomplete line
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith('data: ')) continue;
+      const payload = trimmed.slice(6);
+      if (payload === '[DONE]') continue;
+
+      try {
+        const parsed = JSON.parse(payload);
+        const content = parsed.choices?.[0]?.delta?.content;
+        if (content) {
+          fullText += content;
+          if (onChunk) onChunk(content);
+        }
+      } catch (_e) {
+        // skip malformed SSE lines
+      }
+    }
   }
 
-  return data.choices[0].message.content;
+  return fullText;
 }
 
 function parseAiResponse(responseText, originalTabs) {
@@ -219,32 +246,51 @@ async function handleAiGroupTabs(message, sendResponse) {
       return;
     }
 
-    // Gather tabs from current window
+    // Open proposal tab immediately
+    const proposalUrl = chrome.runtime.getURL('ai-proposal.html');
+    const proposalTab = await chrome.tabs.create({ url: proposalUrl, active: true });
+    sendResponse({ success: true, action: 'proposal' });
+
+    // Wait for the proposal page to signal it's ready
+    await new Promise(resolve => { aiProposalReadyResolve = resolve; });
+
+    const send = (msg) => {
+      chrome.tabs.sendMessage(proposalTab.id, msg).catch(() => {});
+    };
+
+    // Gather tabs
+    send({ type: 'ai-status', text: 'Gathering tabs...' });
     const currentWindow = await chrome.windows.getCurrent();
     const tabs = await getTabsWithGroupInfo(currentWindow.id);
     const unpinnedTabs = tabs.filter(t => !t.pinned);
 
     if (unpinnedTabs.length === 0) {
-      sendResponse({ success: false, error: 'No unpinned tabs to organize.' });
+      send({ type: 'ai-error', error: 'No unpinned tabs to organize.' });
       return;
     }
 
-    // Build prompt, call API, parse response
+    // Build prompt and send debug info
     const messages = buildAiPrompt(unpinnedTabs);
-    console.log('[Tab Organizer] AI request model:', config.model);
-    console.log('[Tab Organizer] AI request messages:', JSON.stringify(messages, null, 2));
+    const modelName = AI_MODELS.find(m => m.id === config.model)?.name || config.model;
+    send({ type: 'ai-debug', model: config.model, modelName, messages });
+    send({ type: 'ai-status', text: 'Calling ' + modelName + '...' });
+
+    // Stream API call
     const apiKey = decodeKey(config.key);
-    const responseText = await callOpenRouter(apiKey, config.model, messages);
-    console.log('[Tab Organizer] AI raw response:', responseText);
+    const responseText = await callOpenRouter(apiKey, config.model, messages, (chunk) => {
+      send({ type: 'ai-chunk', text: chunk });
+    });
+
+    // Parse response
+    send({ type: 'ai-status', text: 'Parsing response...' });
     const result = parseAiResponse(responseText, unpinnedTabs);
-    console.log('[Tab Organizer] AI parsed proposal:', JSON.stringify(result, null, 2));
 
     if (!result.success) {
-      sendResponse({ success: false, error: result.error });
+      send({ type: 'ai-error', error: result.error });
       return;
     }
 
-    // Build tab metadata map for the proposal page
+    // Build tab metadata and send proposal
     const tabMeta = unpinnedTabs.map(t => ({
       id: t.id,
       title: t.title || '(no title)',
@@ -252,27 +298,24 @@ async function handleAiGroupTabs(message, sendResponse) {
       favIconUrl: t.favIconUrl || '',
     }));
 
-    // Store proposal for the proposal page to pick up
-    pendingAiProposal = {
+    send({
+      type: 'ai-proposal',
       groups: result.groups,
       ungroupedTabIds: result.ungroupedTabIds,
       tabs: tabMeta,
       windowId: currentWindow.id,
-      debug: {
-        model: config.model,
-        messages,
-        rawResponse: responseText,
-      },
-    };
-
-    // Open proposal page
-    const proposalUrl = chrome.runtime.getURL('ai-proposal.html');
-    await chrome.tabs.create({ url: proposalUrl, active: true });
-
-    sendResponse({ success: true, action: 'proposal' });
+    });
   } catch (error) {
     console.error('[Tab Organizer] Error in AI group tabs:', error);
-    sendResponse({ success: false, error: error.message });
+    // Try to send error to proposal tab if it's open
+    try {
+      const tabs = await chrome.tabs.query({ url: chrome.runtime.getURL('ai-proposal.html') });
+      if (tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: 'ai-error', error: error.message });
+      }
+    } catch (_e) {
+      // proposal tab may not exist
+    }
   }
 }
 
@@ -296,9 +339,6 @@ async function handleApplyAiProposal(message, sender, sendResponse) {
 
     // Sort after grouping
     await sortWindowTabs(windowId, true);
-
-    // Clean up
-    pendingAiProposal = null;
 
     // Close the proposal tab
     if (sender.tab) {
@@ -454,13 +494,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   } else if (message.action === 'aiGroupTabs') {
     handleAiGroupTabs(message, sendResponse);
     return true;
-  } else if (message.action === 'getAiProposal') {
-    sendResponse(pendingAiProposal || { error: 'No pending proposal. Please try again.' });
+  } else if (message.action === 'aiProposalReady') {
+    if (aiProposalReadyResolve) {
+      aiProposalReadyResolve();
+      aiProposalReadyResolve = null;
+    }
+    sendResponse({ success: true });
   } else if (message.action === 'applyAiProposal') {
     handleApplyAiProposal(message, _sender, sendResponse);
     return true;
   } else if (message.action === 'cancelAiProposal') {
-    pendingAiProposal = null;
     if (_sender.tab) {
       chrome.tabs.remove(_sender.tab.id);
     }

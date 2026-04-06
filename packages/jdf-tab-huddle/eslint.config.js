@@ -27,7 +27,8 @@ export default [
         JSON: 'readonly',
         String: 'readonly',
         Date: 'readonly',
-        parseInt: 'readonly'
+        parseInt: 'readonly',
+        TextDecoder: 'readonly'
       }
     },
     rules: {
@@ -35,7 +36,7 @@ export default [
       // Relaxed rules for Chrome extension development
       'no-unused-vars': ['warn', { 
         argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_|^(lexHost|getCurrentMode|AI_MODELS|DEFAULT_MODEL|EXPIRY_PRESETS|DEFAULT_EXPIRY|VALID_TAB_GROUP_COLORS|encodeKey|decodeKey|isKeyExpired|saveAiConfig|loadAiConfig|pendingAiProposal|stripQueryParams|buildAiPrompt|callOpenRouter|parseAiResponse|handleAiGroupTabs|handleApplyAiProposal|aiOrganize|openAiSettings|updateAiButtonState|COLOR_MAP)$',
+        varsIgnorePattern: '^_|^(lexHost|getCurrentMode|AI_MODELS|DEFAULT_MODEL|EXPIRY_PRESETS|DEFAULT_EXPIRY|VALID_TAB_GROUP_COLORS|encodeKey|decodeKey|isKeyExpired|saveAiConfig|loadAiConfig|aiProposalReadyResolve|stripQueryParams|buildAiPrompt|callOpenRouter|parseAiResponse|handleAiGroupTabs|handleApplyAiProposal|aiOrganize|openAiSettings|updateAiButtonState|COLOR_MAP|handleMessage)$',
         caughtErrorsIgnorePattern: '^_' // Ignore unused error parameters prefixed with _
       }],
       'no-console': 'off', // Console is used for debugging in extensions
