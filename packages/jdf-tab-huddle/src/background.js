@@ -259,7 +259,8 @@ async function handleAiGroupTabs(message, sendResponse) {
     }
 
     // Open proposal tab immediately
-    const proposalUrl = chrome.runtime.getURL('ai-proposal.html');
+    const respectParam = (message.respectGroups !== undefined ? message.respectGroups : true) ? 'true' : 'false';
+    const proposalUrl = chrome.runtime.getURL(`ai-proposal.html?respectGroups=${respectParam}`);
     const proposalTab = await chrome.tabs.create({ url: proposalUrl, active: true });
     sendResponse({ success: true, action: 'proposal' });
 
@@ -272,19 +273,29 @@ async function handleAiGroupTabs(message, sendResponse) {
 
     // Gather tabs
     send({ type: 'ai-status', text: 'Gathering tabs...' });
+    const respectGroups = message.respectGroups !== undefined ? message.respectGroups : true;
     const currentWindow = await chrome.windows.getCurrent();
     const tabs = await getTabsWithGroupInfo(currentWindow.id);
-    const unpinnedTabs = tabs.filter(t => !t.pinned && t.id !== proposalTab.id);
+
+    // In Tab Groups Mode: only organize ungrouped tabs. In Individual Mode: all tabs.
+    const unpinnedTabs = tabs.filter(t => {
+      if (t.pinned || t.id === proposalTab.id) return false;
+      if (respectGroups && t.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) return false;
+      return true;
+    });
 
     if (unpinnedTabs.length === 0) {
-      send({ type: 'ai-error', error: 'No unpinned tabs to organize.' });
+      const errorMsg = respectGroups
+        ? 'No ungrouped tabs to organize. Switch to Individual Mode to reorganize all tabs.'
+        : 'No unpinned tabs to organize.';
+      send({ type: 'ai-error', error: errorMsg });
       return;
     }
 
     // Build prompt and send debug info
     const messages = buildAiPrompt(unpinnedTabs, userInstructions);
     const modelName = AI_MODELS.find(m => m.id === config.model)?.name || config.model;
-    send({ type: 'ai-debug', model: config.model, modelName, messages });
+    send({ type: 'ai-debug', model: config.model, modelName, messages, respectGroups });
     send({ type: 'ai-status', text: 'Calling ' + modelName + '...' });
 
     // Stream API call
@@ -333,8 +344,14 @@ async function handleAiGroupTabs(message, sendResponse) {
 
 async function handleApplyAiProposal(message, sender, sendResponse) {
   try {
+    // Close the proposal tab first to reduce the number of tabs Chrome is managing
+    if (sender.tab) {
+      await chrome.tabs.remove(sender.tab.id);
+    }
+
     const { groups, windowId } = message;
 
+    // Apply groups with a small delay between each to avoid overwhelming Chrome
     for (const group of groups) {
       if (!group.tabIds || group.tabIds.length === 0) continue;
 
@@ -347,15 +364,13 @@ async function handleApplyAiProposal(message, sender, sendResponse) {
         title: group.name || '',
         color: VALID_TAB_GROUP_COLORS.includes(group.color) ? group.color : 'grey',
       });
+
+      // Let Chrome settle between group operations
+      await new Promise(r => setTimeout(r, 50));
     }
 
-    // Sort after grouping
+    // Sort after all groups are created
     await sortWindowTabs(windowId, true);
-
-    // Close the proposal tab
-    if (sender.tab) {
-      await chrome.tabs.remove(sender.tab.id);
-    }
 
     sendResponse({ success: true });
   } catch (error) {
