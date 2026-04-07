@@ -308,8 +308,15 @@ function handleMessage(msg) {
 }
 
 function showInstructionsInput() {
+  const params = new URLSearchParams(window.location.search);
+  const respectGroups = params.get('respectGroups') !== 'false';
+  const modeHint = respectGroups
+    ? 'Organizing <strong>ungrouped tabs only</strong> (Tab Groups Mode)'
+    : 'Reorganizing <strong>all tabs</strong> (Individual Mode)';
+
   const content = document.getElementById('content');
   content.innerHTML = `
+    <div style="font-size: 12px; opacity: 0.7; text-align: center; margin-bottom: 12px;">${modeHint}</div>
     <div style="margin: 20px 0;">
       <label style="display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px;">
         How should your tabs be organized?
