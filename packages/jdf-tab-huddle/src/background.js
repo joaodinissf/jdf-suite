@@ -518,6 +518,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   } else if (message.action === 'copyAllTabs') {
     handleCopyAllTabs(message.respectGroups, sendResponse);
     return true; // Keep message channel open for async response
+  } else if (message.action === 'flattenWindow') {
+    handleFlattenWindow(sendResponse);
+    return true; // Keep message channel open for async response
   } else if (message.action === 'aiGroupTabs') {
     handleAiGroupTabs(message, sendResponse);
     return true;
@@ -1159,6 +1162,26 @@ function formatTabsAsText(tabs, respectGroups = true) {
   }
 
   return sections.join('\n\n');
+}
+
+async function handleFlattenWindow(sendResponse) {
+  try {
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    const groupedTabIds = tabs
+      .filter(tab => tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE)
+      .map(tab => tab.id);
+
+    console.log('[Tab Organizer] Flattening current window,', groupedTabIds.length, 'grouped tabs');
+
+    if (groupedTabIds.length > 0) {
+      await chrome.tabs.ungroup(groupedTabIds);
+    }
+
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('[Tab Organizer] Error in flattenWindow:', error);
+    sendResponse({ success: false, error: error.message });
+  }
 }
 
 async function handleCopyAllTabs(respectGroups = true, sendResponse) {

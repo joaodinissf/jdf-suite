@@ -111,6 +111,7 @@ const popupWrapper = `
   if (typeof extractAllDomains !== 'undefined') global.extractAllDomains = extractAllDomains;
   if (typeof moveAllToSingleWindow !== 'undefined') global.moveAllToSingleWindow = moveAllToSingleWindow;
   if (typeof copyAllTabs !== 'undefined') global.copyAllTabs = copyAllTabs;
+  if (typeof flattenWindow !== 'undefined') global.flattenWindow = flattenWindow;
   if (typeof updateStatusBar !== 'undefined') global.updateStatusBar = updateStatusBar;
   if (typeof aiOrganize !== 'undefined') global.aiOrganize = aiOrganize;
   if (typeof openAiSettings !== 'undefined') global.openAiSettings = openAiSettings;
