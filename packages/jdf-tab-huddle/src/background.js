@@ -484,10 +484,40 @@ async function moveTabsWithGroups(tabsToMove, targetWindowId) {
   }
 }
 
+async function handleClumpOpenUrls(message, sender, sendResponse) {
+  try {
+    const urls = Array.isArray(message.urls) ? message.urls : [];
+    if (urls.length === 0) {
+      sendResponse({ success: true, opened: 0 });
+      return;
+    }
+    const senderTab = sender && sender.tab;
+    const baseIndex = senderTab && typeof senderTab.index === 'number' ? senderTab.index + 1 : 0;
+    const windowId = senderTab ? senderTab.windowId : undefined;
+    const openerTabId = senderTab ? senderTab.id : undefined;
+    for (let i = 0; i < urls.length; i++) {
+      const createProps = {
+        url: urls[i],
+        active: false,
+        index: baseIndex + i,
+      };
+      if (windowId !== undefined) createProps.windowId = windowId;
+      if (openerTabId !== undefined) createProps.openerTabId = openerTabId;
+      await chrome.tabs.create(createProps);
+    }
+    sendResponse({ success: true, opened: urls.length });
+  } catch (error) {
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'log') {
     console.log('[Tab Organizer]', message.data.message, ...message.data.args);
     sendResponse({ success: true });
+  } else if (message.action === 'clumpOpenUrls') {
+    handleClumpOpenUrls(message, _sender, sendResponse);
+    return true; // async response
   } else if (message.action === 'sortAllWindows') {
     handleSortAllWindows(message.respectGroups, sendResponse);
     return true; // Keep message channel open for async response

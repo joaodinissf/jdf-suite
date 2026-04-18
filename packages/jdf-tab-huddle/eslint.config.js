@@ -36,7 +36,7 @@ export default [
       // Relaxed rules for Chrome extension development
       'no-unused-vars': ['warn', { 
         argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_|^(lexHost|getCurrentMode|AI_MODELS|DEFAULT_MODEL|EXPIRY_PRESETS|DEFAULT_EXPIRY|VALID_TAB_GROUP_COLORS|encodeKey|decodeKey|isKeyExpired|saveAiConfig|loadAiConfig|aiProposalReadyResolve|stripQueryParams|buildAiPrompt|callOpenRouter|parseAiResponse|handleAiGroupTabs|handleApplyAiProposal|aiOrganize|openAiSettings|updateAiButtonState|COLOR_MAP|handleMessage)$',
+        varsIgnorePattern: '^_|^(lexHost|getCurrentMode|AI_MODELS|DEFAULT_MODEL|EXPIRY_PRESETS|DEFAULT_EXPIRY|VALID_TAB_GROUP_COLORS|encodeKey|decodeKey|isKeyExpired|saveAiConfig|loadAiConfig|aiProposalReadyResolve|stripQueryParams|buildAiPrompt|callOpenRouter|parseAiResponse|handleAiGroupTabs|handleApplyAiProposal|aiOrganize|openAiSettings|updateAiButtonState|COLOR_MAP|handleMessage|clumperResetStateForTest|clumperGetStateForTest)$',
         caughtErrorsIgnorePattern: '^_' // Ignore unused error parameters prefixed with _
       }],
       'no-console': 'off', // Console is used for debugging in extensions
@@ -71,6 +71,11 @@ export default [
         Promise: 'readonly',
         Object: 'readonly',
         Array: 'readonly',
+        Set: 'readonly',
+
+        // DOM globals (jsdom-provided at test time)
+        KeyboardEvent: 'readonly',
+        MouseEvent: 'readonly',
 
         // Node.js globals for test setup
         eval: 'readonly',
