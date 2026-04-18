@@ -23,6 +23,7 @@ let clumperDragging = false;
 let clumperDragStart = null; // {x, y} in page coords
 let clumperSelectionBox = null; // DOM element or null
 const clumperHighlights = new Set();
+let clumperPrevBodyUserSelect = null; // saved value of document.body.style.userSelect while suppressed
 
 // --- Pure helpers ---
 
@@ -161,9 +162,9 @@ function clumperUpdateSelectionBox(box, rect) {
 
 function clumperClearHighlights() {
   for (const link of clumperHighlights) {
-    link.style.background = link.dataset.jdfClumperPrevBackground || '';
+    link.style.backgroundColor = link.dataset.jdfClumperPrevBackgroundColor || '';
     link.style.outline = link.dataset.jdfClumperPrevOutline || '';
-    delete link.dataset.jdfClumperPrevBackground;
+    delete link.dataset.jdfClumperPrevBackgroundColor;
     delete link.dataset.jdfClumperPrevOutline;
   }
   clumperHighlights.clear();
@@ -175,12 +176,26 @@ function clumperHighlightLinksInRect(selRect) {
   for (const link of links) {
     if (!clumperIsOpenableUrl(link.getAttribute('href'))) continue;
     if (!clumperRectsOverlap(clumperPageRectOf(link), selRect)) continue;
-    link.dataset.jdfClumperPrevBackground = link.style.background;
+    link.dataset.jdfClumperPrevBackgroundColor = link.style.backgroundColor;
     link.dataset.jdfClumperPrevOutline = link.style.outline;
-    link.style.background = CLUMPER_LINK_HIGHLIGHT;
+    link.style.backgroundColor = CLUMPER_LINK_HIGHLIGHT;
     link.style.outline = `2px solid ${CLUMPER_COLOR}`;
     clumperHighlights.add(link);
   }
+}
+
+function clumperSuppressTextSelection() {
+  if (typeof document === 'undefined' || !document.body) return;
+  if (clumperPrevBodyUserSelect !== null) return; // already suppressed
+  clumperPrevBodyUserSelect = document.body.style.userSelect || '';
+  document.body.style.userSelect = 'none';
+}
+
+function clumperRestoreTextSelection() {
+  if (clumperPrevBodyUserSelect === null) return; // nothing to restore
+  if (typeof document === 'undefined' || !document.body) return;
+  document.body.style.userSelect = clumperPrevBodyUserSelect;
+  clumperPrevBodyUserSelect = null;
 }
 
 function clumperTeardown() {
@@ -191,6 +206,7 @@ function clumperTeardown() {
     clumperSelectionBox = null;
   }
   clumperClearHighlights();
+  clumperRestoreTextSelection();
 }
 
 // --- Event handlers ---
@@ -202,12 +218,18 @@ function clumperHandleKeyDown(event) {
   if (!clumperKeyMatches(event, CLUMPER_ACTIVATION_KEY)) return;
   if (!clumperModifierMatches(event, CLUMPER_ACTIVATION_MODIFIER)) return;
   clumperKeyHeld = true;
+  clumperSuppressTextSelection();
 }
 
 function clumperHandleKeyUp(event) {
   if (!clumperKeyMatches(event, CLUMPER_ACTIVATION_KEY)) return;
   clumperKeyHeld = false;
-  if (clumperDragging) clumperTeardown();
+  if (clumperDragging) {
+    clumperTeardown();
+  } else {
+    // Key released without a drag — still need to restore page's selection CSS
+    clumperRestoreTextSelection();
+  }
 }
 
 function clumperHandleEscape(event) {
