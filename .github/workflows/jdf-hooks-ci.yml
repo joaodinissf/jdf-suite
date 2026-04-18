@@ -1,0 +1,73 @@
+name: jdf-hooks CI
+on:
+  push:
+    branches: [main]
+    paths:
+    - packages/jdf-hooks/**
+    - .github/workflows/jdf-hooks-ci.yml
+  pull_request:
+    branches: [main]
+    paths:
+    - packages/jdf-hooks/**
+    - .github/workflows/jdf-hooks-ci.yml
+
+defaults:
+  run:
+    working-directory: packages/jdf-hooks
+
+jobs:
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+    - uses: astral-sh/setup-uv@v7
+    - run: uv run --extra dev pytest tests/test_generate.py -v
+
+  integration:
+    name: Integration (${{ matrix.manager }})
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        manager: [precommit, lefthook]
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '20'
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+    - uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Install shfmt
+      run: sudo apt-get update && sudo apt-get install -y shfmt
+    - uses: astral-sh/setup-uv@v7
+    - name: Install lefthook toolchain
+      if: matrix.manager == 'lefthook'
+      run: |
+        npm install -g lefthook prettier markdownlint-cli
+        uv tool install pycln isort ruff pyright ty yamlfix sqlfluff
+        cargo install taplo-cli
+    - name: Run integration test
+      run: uv run python tests/integration/test_${{ matrix.manager }}.py
+
+  validate-config:
+    name: Validate lefthook config
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - run: npm install -g lefthook
+    - name: Validate lefthook.yml
+      run: lefthook dump
+      working-directory: packages/jdf-hooks

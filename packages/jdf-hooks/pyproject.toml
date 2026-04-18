@@ -1,6 +1,6 @@
 [project]
 name = "jdf-hooks"
-version = "1.0.0"
+version = "1.0.1"
 description = "Interactive CLI to set up JDF hooks for any project"
 readme = "README.md"
 license = { text = "MIT" }
@@ -21,9 +21,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/joaodinissf/jdf-hooks"
-Repository = "https://github.com/joaodinissf/jdf-hooks"
-Documentation = "https://github.com/joaodinissf/jdf-hooks#readme"
+Homepage = "https://github.com/joaodinissf/jdf-suite/tree/main/packages/jdf-hooks"
+Repository = "https://github.com/joaodinissf/jdf-suite"
+Documentation = "https://github.com/joaodinissf/jdf-suite/tree/main/packages/jdf-hooks#readme"
 
 [project.scripts]
 jdf-hooks = "jdf_hooks.cli:main"

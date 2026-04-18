@@ -2,13 +2,17 @@
 
 This document helps AI assistants (Claude, GitHub Copilot, GPT, etc.) understand this project and work with it effectively.
 
+## Monorepo Context
+
+This package lives at `packages/jdf-hooks/` within the **jdf-suite** monorepo (<https://github.com/joaodinissf/jdf-suite>). Paths in this guide are relative to the package directory unless noted. CI and release workflows live at the monorepo root: `.github/workflows/jdf-hooks-ci.yml` (path-filtered to this package) and `.github/workflows/jdf-hooks-release.yml` (triggered by `jdf-hooks-v*` tags).
+
 ## Project Overview
 
 **Name**: JDF Hooks
 **Purpose**: A comprehensive Git hooks framework with interactive CLI, supporting both **lefthook** and **pre-commit**
-**Version**: 1.0.0 (Fragment-based templates + CLI UX + automated tests)
+**Version**: 1.0.1 (assimilation into jdf-suite monorepo)
 
-### What This Repository Provides
+### What This Package Provides
 
 A centralized collection of Git hooks for enforcing code quality across multiple languages and file types:
 
@@ -25,7 +29,7 @@ A centralized collection of Git hooks for enforcing code quality across multiple
 
 ### Architecture: Hybrid Approach
 
-This repository supports **two hook managers** with identical functionality:
+This package supports **two hook managers** with identical functionality:
 
 1. **lefthook** (`lefthook.yml`) - Fast local development
    - Parallel execution
@@ -59,7 +63,8 @@ This repository supports **two hook managers** with identical functionality:
 | `tests/integration/test_lefthook.py` | Lefthook integration test |
 | `README.md` | User-facing documentation |
 | `pyproject.toml` | Package definition and tool configs |
-| `.github/workflows/ci.yml` | CI testing both configurations |
+
+CI/release workflows live at the monorepo root — see Monorepo Context above.
 
 ---
 
@@ -240,7 +245,7 @@ git push && git push origin v3.0.0
 
 6. **Test both configs**: Run both test suites
 
-7. **Update CI** (if needed): Add tool installation to `.github/workflows/ci.yml`
+7. **Update CI** (if needed): Add tool installation to `.github/workflows/jdf-hooks-ci.yml` at the monorepo root
 
 ### Removing a Hook
 
@@ -458,11 +463,11 @@ git diff
 
 ## CI/CD Pipeline
 
-`.github/workflows/ci.yml` runs three jobs:
+`.github/workflows/jdf-hooks-ci.yml` at the monorepo root, path-filtered to `packages/jdf-hooks/**`, runs three jobs:
 
-1. **test-precommit**: Test pre-commit configuration
-2. **test-lefthook**: Test lefthook configuration
-3. **validate-configs**: Validate YAML syntax
+1. **unit-tests**: Run the pytest unit suite (`tests/test_generate.py`)
+2. **integration**: Matrix-driven — runs `tests/integration/test_precommit.py` and `tests/integration/test_lefthook.py` in parallel (`matrix.manager ∈ [precommit, lefthook]`)
+3. **validate-config**: `lefthook dump` to ensure `lefthook.yml` parses cleanly
 
 **When modifying hooks**:
 
@@ -624,6 +629,13 @@ line-length = 88
 > versions (v1.x–v4.x below) were internal development milestones under the old
 > "sensible-hooks" name and are not published on PyPI.
 
+- **v1.0.1** (PyPI): Assimilation into jdf-suite monorepo
+  - Package relocated from standalone `joaodinissf/jdf-hooks` to `joaodinissf/jdf-suite` under `packages/jdf-hooks/`
+  - URL references updated (pyproject metadata, generated config headers, README badges)
+  - Release pipeline: tags now `jdf-hooks-v*`, workflow `jdf-hooks-release.yml` at the monorepo root, PyPI trusted publisher rebound to the new repo
+  - CI reorganized: two duplicated integration jobs collapsed into one matrix job
+  - No functional changes to the CLI or generated configs
+
 - **v1.0.0** (PyPI): Fragment-based templates + CLI UX + automated tests (first public release)
   - Breaking: monolithic templates replaced by per-language fragment files
   - Breaking: `extract_sections()` and `LANGUAGE_SECTIONS` removed
@@ -725,7 +737,7 @@ python -m jdf_hooks setup
 
 - **Lefthook docs**: <https://lefthook.dev/>
 - **Pre-commit docs**: <https://pre-commit.com/>
-- **Issue tracker**: <https://github.com/joaodinissf/jdf-hooks/issues>
+- **Issue tracker**: <https://github.com/joaodinissf/jdf-suite/issues>
 - **This file**: Reference for AI assistants and contributors
 
 ---

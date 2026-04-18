@@ -1,8 +1,8 @@
 # JDF Hooks
 
-[![CI Status](https://img.shields.io/github/actions/workflow/status/joaodinissf/jdf-hooks/ci.yml?branch=main&label=CI&logo=github)](https://github.com/joaodinissf/jdf-hooks/actions/workflows/ci.yml)
+[![CI Status](https://img.shields.io/github/actions/workflow/status/joaodinissf/jdf-suite/jdf-hooks-ci.yml?branch=main&label=CI&logo=github)](https://github.com/joaodinissf/jdf-suite/actions/workflows/jdf-hooks-ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/jdf-hooks?logo=python&logoColor=white)](https://pypi.org/project/jdf-hooks/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/joaodinissf/jdf-hooks/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/joaodinissf/jdf-suite/blob/main/packages/jdf-hooks/LICENSE)
 
 A comprehensive Git hooks framework with an **interactive CLI** to set up hooks for any project. Supports both **lefthook** and **pre-commit** for fast local development with standardized CI/CD validation.
 
@@ -452,4 +452,4 @@ Built with:
 
 ---
 
-**Version**: 1.0.0 | **Hybrid Approach**: Lefthook (local) + Pre-commit (CI)
+**Version**: 1.0.1 | **Hybrid Approach**: Lefthook (local) + Pre-commit (CI)

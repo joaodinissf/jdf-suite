@@ -1,7 +1,7 @@
-name: Release
+name: jdf-hooks Release
 on:
   push:
-    tags: [v*]
+    tags: ['jdf-hooks-v*']
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -11,16 +11,16 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v6
       with:
-        fetch-depth: 0  # Get full history for changelog
+        fetch-depth: 0
     - name: Generate changelog
       id: changelog
       run: |
-        # Get commits since last tag
-        LAST_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+        # Find the previous jdf-hooks tag (second in the sorted list; first is the tag that triggered this run).
+        LAST_TAG=$(git tag --list 'jdf-hooks-v*' --sort=-v:refname | sed -n '2p')
         if [ -z "$LAST_TAG" ]; then
-          COMMITS=$(git log --pretty=format:"- %s" --no-merges)
+          COMMITS=$(git log --pretty=format:"- %s" --no-merges -- packages/jdf-hooks/)
         else
-          COMMITS=$(git log --pretty=format:"- %s" --no-merges ${LAST_TAG}..HEAD)
+          COMMITS=$(git log --pretty=format:"- %s" --no-merges "${LAST_TAG}"..HEAD -- packages/jdf-hooks/)
         fi
         {
           echo "changelog<<EOF"
@@ -30,7 +30,7 @@ jobs:
     - name: Create Release
       uses: softprops/action-gh-release@v2.5.0
       with:
-        name: Release ${{ github.ref_name }}
+        name: ${{ github.ref_name }}
         body: |
           ## Changes
           ${{ steps.changelog.outputs.changelog }}
@@ -48,5 +48,8 @@ jobs:
       uses: astral-sh/setup-uv@v7
     - name: Build
       run: uv build
+      working-directory: packages/jdf-hooks
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        packages-dir: packages/jdf-hooks/dist/
