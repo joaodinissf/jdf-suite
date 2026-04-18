@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Tab Organizer",
-  "version": "2.4.0",
+  "name": "Huddle",
+  "short_name": "Huddle",
+  "version": "0.1.0",
   "description": "Sort and organize tabs by URL and domain",
   "permissions": [
     "tabs",

@@ -1,4 +1,6 @@
-# Tab Organizer Chrome Extension
+# Huddle — Chrome Extension
+
+> Part of the [jdf-suite](https://github.com/joaodinissf/jdf-suite) monorepo. Slug: `jdf-tab-huddle`. Display name: **Huddle**.
 
 A powerful Chrome extension for organizing and managing tabs with advanced features including tab groups support, duplicate removal, and domain-based organization.
 
@@ -50,7 +52,7 @@ pnpm run package       # Create extension zip
 
 ## Usage
 
-Click the Tab Organizer icon in your Chrome toolbar to open the popup:
+Click the Huddle icon in your Chrome toolbar to open the popup:
 
 ### Tab Groups Mode (Default)
 - Operations preserve existing Chrome tab groups
@@ -65,14 +67,14 @@ Click the Tab Organizer icon in your Chrome toolbar to open the popup:
 ## Project Structure
 
 ```
-tab-sorter-extractor/
+packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ├── src/                           # Extension source code
 │   ├── manifest.json              # Chrome extension manifest (v3)
 │   ├── background.js              # Service worker with all action handlers
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Confirmation dialog for large operations
 │   └── icons/                     # Extension icons
-├── tests/                         # Jest unit tests (66 tests)
+├── tests/                         # Vitest unit tests (66 tests)
 │   ├── setup.js                   # Test setup with jest-chrome mocks
 │   ├── background.test.js         # Background script logic tests
 │   ├── popup.test.js              # Popup UI tests
@@ -92,7 +94,7 @@ tab-sorter-extractor/
 
 ## Testing
 
-### Unit Tests (Jest + jest-chrome)
+### Unit Tests (Vitest + jest-chrome shim)
 66 tests across 5 suites covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
@@ -122,15 +124,14 @@ pnpm test:e2e            # Run E2E tests (headed Chromium)
 
 ## CI/CD
 
-Automated workflows using GitHub Actions:
+CI lives at the monorepo root: [`.github/workflows/jdf-tab-huddle-ci.yml`](../../.github/workflows/jdf-tab-huddle-ci.yml) — runs pnpm install + lint + Vitest unit tests + manifest validation on every PR touching this package.
 
-- **Test**: Unit tests on push/PR
-- **E2E**: Playwright tests with `xvfb-run` on Ubuntu
-- **Lint**: ESLint checks
-- **Build**: Manifest and structure validation
-- **Release**: Automated on git tags (`v*`)
+- **Lint + tests on PR**: ✅ wired up in v0.1.0
+- **E2E (Playwright)**: deferred — tracked in [jdf-suite#6](https://github.com/joaodinissf/jdf-suite/issues/6)
+- **Release (CWS upload)**: deferred until v1.0.0 — tracked in [jdf-suite#7](https://github.com/joaodinissf/jdf-suite/issues/7)
+- **Tag pattern for future releases**: `jdf-tab-huddle-v*`
 
-See [`docs/CI-CD.md`](docs/CI-CD.md) for details.
+The in-package [`docs/CI-CD.md`](docs/CI-CD.md) describes the pre-migration standalone setup and is stale — treat as historical context only.
 
 ## Permissions
 
@@ -146,6 +147,10 @@ See [`docs/CI-CD.md`](docs/CI-CD.md) for details.
 - **Firefox**: Not supported (uses Chrome-specific APIs)
 
 ## Version History
+
+- **v0.1.0**: First release in the jdf-suite monorepo. Renamed to **Huddle** (`jdf-tab-huddle`); version reset from the pre-monorepo v2.x dev stream since nothing had ever shipped publicly. Unit tests migrated Jest → Vitest. CWS publishing deferred to v1.0.0 (see jdf-suite#7).
+
+### Pre-monorepo dev history (unpublished)
 
 - **v2.3.0**: Copy All Tabs feature — copy all open tab URLs to clipboard, paragraph-separated by tab group
 - **v2.2.1**: Documentation update, release workflow fix

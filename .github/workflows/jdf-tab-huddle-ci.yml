@@ -1,0 +1,39 @@
+name: jdf-tab-huddle CI
+on:
+  push:
+    branches: [main]
+    paths:
+    - packages/jdf-tab-huddle/**
+    - .github/workflows/jdf-tab-huddle-ci.yml
+  pull_request:
+    branches: [main]
+    paths:
+    - packages/jdf-tab-huddle/**
+    - .github/workflows/jdf-tab-huddle-ci.yml
+
+defaults:
+  run:
+    working-directory: packages/jdf-tab-huddle
+
+jobs:
+  lint-and-test:
+    name: Lint + unit tests + manifest validate
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 10
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+        cache: pnpm
+        cache-dependency-path: packages/jdf-tab-huddle/pnpm-lock.yaml
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+    - name: Lint
+      run: pnpm run lint
+    - name: Unit tests
+      run: pnpm test
+    - name: Validate manifest
+      run: pnpm run validate
