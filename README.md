@@ -11,4 +11,4 @@ A collection of developer tools by [João Dinis Ferreira](https://github.com/joa
 
 ## License
 
-MIT
+[MIT](LICENSE) — applies to the monorepo scaffolding. Each package under `packages/` also carries its own `LICENSE` file.
