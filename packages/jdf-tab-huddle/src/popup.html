@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Tab Organizer</title>
+  <style>
+    body {
+      width: 380px;
+      padding: 16px;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    h2 {
+      margin: 0 0 16px 0;
+      font-size: 18px;
+      font-weight: 600;
+      text-align: center;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    }
+
+    .tab-nav {
+      display: flex;
+      margin-bottom: 16px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+      padding: 4px;
+    }
+
+    .tab-button {
+      flex: 1;
+      padding: 8px 12px;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.7);
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      text-align: center;
+    }
+
+    .tab-button.active {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .tab-button:hover:not(.active) {
+      background: rgba(255, 255, 255, 0.1);
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .section {
+      margin-bottom: 16px;
+    }
+
+    .section:last-child {
+      margin-bottom: 0;
+    }
+
+    .section-header {
+      margin: 0 0 8px 0;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      opacity: 0.8;
+      text-align: left;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .button-row:last-child {
+      margin-bottom: 0;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px 8px;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      backdrop-filter: blur(10px);
+      text-align: center;
+      line-height: 1.2;
+    }
+
+    button:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .mode-indicator {
+      font-size: 10px;
+      opacity: 0.6;
+      text-align: center;
+      margin-top: 8px;
+      font-style: italic;
+    }
+
+    .copy-feedback {
+      font-size: 11px;
+      text-align: center;
+      margin-top: 4px;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      height: 16px;
+    }
+
+    .copy-feedback.visible {
+      opacity: 1;
+    }
+
+    .status-bar {
+      font-size: 10px;
+      opacity: 0.6;
+      margin-top: 4px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .status-line {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 2px;
+    }
+
+    .status-label {
+      font-weight: 600;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>Tab Organizer</h2>
+  
+  <div class="tab-nav">
+    <button class="tab-button active" data-tab="groups">Tab Groups Mode</button>
+    <button class="tab-button" data-tab="individual">Individual Mode</button>
+  </div>
+
+  <div id="groups-content" class="tab-content active">
+    <div class="mode-indicator">Preserves Chrome tab groups</div>
+
+    <div class="section">
+      <h3 class="section-header">This Window</h3>
+      <div class="button-row">
+        <button id="sortCurrentWindow-groups" title="Sort tabs alphabetically by URL (preserves groups)">Sort</button>
+        <button id="removeDuplicatesWindow-groups" title="Remove duplicate tabs in this window (within each group)">Deduplicate</button>
+        <button id="flattenWindow-groups" title="Ungroup all tabs in this window">Flatten</button>
+      </div>
+      <div class="button-row">
+        <button id="aiOrganize-groups" title="Use AI to organize ungrouped tabs into new groups (existing groups are untouched)">&#10024; Organize</button>
+        <button id="aiSettings-groups" class="ai-cog-btn" style="display: none; flex: 0 0 40px; font-size: 14px;" title="AI settings">&#9881;</button>
+      </div>
+    </div>
+
+    <div class="section multi-window-section">
+      <h3 class="section-header">All Windows</h3>
+      <div class="button-row">
+        <button id="sortAllWindows-groups" title="Sort tabs in every window alphabetically by URL (preserves groups)">Sort All</button>
+        <button id="removeDuplicatesAllWindows-groups" title="Remove duplicates within each window separately (preserves groups)">Dedupe Window</button>
+        <button id="removeDuplicatesGlobally-groups" title="Remove duplicates across all windows (preserves groups)">Dedupe Global</button>
+      </div>
+      <div class="button-row">
+        <button id="moveAllToSingleWindow-groups" title="Move all tabs from every window into the current window (preserves groups)">Merge</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3 class="section-header">Extract</h3>
+      <div class="button-row">
+        <button id="extractDomain-groups" title="Move all tabs of the current domain into a new window (preserves groups)">Domain</button>
+        <button id="extractAllDomains-groups" title="Split tabs into one window per domain (preserves groups)">All Domains</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3 class="section-header">Copy</h3>
+      <div class="button-row">
+        <button id="copyAllTabs-groups" title="Copy all tab URLs to the clipboard, organized by Chrome tab group">Copy All Tabs</button>
+      </div>
+      <div id="copyFeedback-groups" class="copy-feedback">Copied!</div>
+    </div>
+  </div>
+
+  <div id="individual-content" class="tab-content">
+    <div class="mode-indicator">Treats all tabs individually</div>
+
+    <div class="section">
+      <h3 class="section-header">This Window</h3>
+      <div class="button-row">
+        <button id="sortCurrentWindow-individual" title="Sort tabs alphabetically by URL (ignores groups)">Sort</button>
+        <button id="removeDuplicatesWindow-individual" title="Remove duplicate tabs in this window (ignores groups)">Deduplicate</button>
+      </div>
+      <div class="button-row">
+        <button id="aiOrganize-individual" title="Use AI to reorganize all tabs from scratch (ignores existing groups)">&#10024; Organize</button>
+        <button id="aiSettings-individual" class="ai-cog-btn" style="display: none; flex: 0 0 40px; font-size: 14px;" title="AI settings">&#9881;</button>
+      </div>
+    </div>
+
+    <div class="section multi-window-section">
+      <h3 class="section-header">All Windows</h3>
+      <div class="button-row">
+        <button id="sortAllWindows-individual" title="Sort tabs in every window alphabetically by URL (ignores groups)">Sort All</button>
+        <button id="removeDuplicatesAllWindows-individual" title="Remove duplicates within each window separately (ignores groups)">Dedupe Window</button>
+        <button id="removeDuplicatesGlobally-individual" title="Remove duplicates across all windows (ignores groups)">Dedupe Global</button>
+      </div>
+      <div class="button-row">
+        <button id="moveAllToSingleWindow-individual" title="Move all tabs from every window into the current window (ignores groups)">Merge</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3 class="section-header">Extract</h3>
+      <div class="button-row">
+        <button id="extractDomain-individual" title="Move all tabs of the current domain into a new window (ignores groups)">Domain</button>
+        <button id="extractAllDomains-individual" title="Split tabs into one window per domain (ignores groups)">All Domains</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3 class="section-header">Copy</h3>
+      <div class="button-row">
+        <button id="copyAllTabs-individual" title="Copy all tab URLs to the clipboard as a flat list">Copy All Tabs</button>
+      </div>
+      <div id="copyFeedback-individual" class="copy-feedback">Copied!</div>
+    </div>
+  </div>
+
+  <div id="statusBar" class="status-bar">
+    <div class="status-line"><span class="status-label">This window:</span> <span id="statusThisWindow"></span></div>
+    <div class="status-line multi-window-section"><span class="status-label">All windows:</span> <span id="statusAllWindows"></span></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>
