@@ -171,40 +171,40 @@
     <div class="section">
       <h3 class="section-header">This Window</h3>
       <div class="button-row">
-        <button id="sortCurrentWindow-groups">Sort</button>
-        <button id="removeDuplicatesWindow-groups">Deduplicate</button>
-        <button id="flattenWindow-groups">Flatten</button>
+        <button id="sortCurrentWindow-groups" title="Sort tabs alphabetically by URL (preserves groups)">Sort</button>
+        <button id="removeDuplicatesWindow-groups" title="Remove duplicate tabs in this window (within each group)">Deduplicate</button>
+        <button id="flattenWindow-groups" title="Ungroup all tabs in this window">Flatten</button>
       </div>
       <div class="button-row">
-        <button id="aiOrganize-groups">&#10024; Organize</button>
-        <button id="aiSettings-groups" class="ai-cog-btn" style="display: none; flex: 0 0 40px; font-size: 14px;">&#9881;</button>
+        <button id="aiOrganize-groups" title="Use AI to organize ungrouped tabs into new groups (existing groups are untouched)">&#10024; Organize</button>
+        <button id="aiSettings-groups" class="ai-cog-btn" style="display: none; flex: 0 0 40px; font-size: 14px;" title="AI settings">&#9881;</button>
       </div>
     </div>
 
     <div class="section multi-window-section">
       <h3 class="section-header">All Windows</h3>
       <div class="button-row">
-        <button id="sortAllWindows-groups">Sort All</button>
-        <button id="removeDuplicatesAllWindows-groups">Dedupe Window</button>
-        <button id="removeDuplicatesGlobally-groups">Dedupe Global</button>
+        <button id="sortAllWindows-groups" title="Sort tabs in every window alphabetically by URL (preserves groups)">Sort All</button>
+        <button id="removeDuplicatesAllWindows-groups" title="Remove duplicates within each window separately (preserves groups)">Dedupe Window</button>
+        <button id="removeDuplicatesGlobally-groups" title="Remove duplicates across all windows (preserves groups)">Dedupe Global</button>
       </div>
       <div class="button-row">
-        <button id="moveAllToSingleWindow-groups">Merge</button>
+        <button id="moveAllToSingleWindow-groups" title="Move all tabs from every window into the current window (preserves groups)">Merge</button>
       </div>
     </div>
 
     <div class="section">
       <h3 class="section-header">Extract</h3>
       <div class="button-row">
-        <button id="extractDomain-groups">Domain</button>
-        <button id="extractAllDomains-groups">All Domains</button>
+        <button id="extractDomain-groups" title="Move all tabs of the current domain into a new window (preserves groups)">Domain</button>
+        <button id="extractAllDomains-groups" title="Split tabs into one window per domain (preserves groups)">All Domains</button>
       </div>
     </div>
 
     <div class="section">
       <h3 class="section-header">Copy</h3>
       <div class="button-row">
-        <button id="copyAllTabs-groups">Copy All Tabs</button>
+        <button id="copyAllTabs-groups" title="Copy all tab URLs to the clipboard, organized by Chrome tab group">Copy All Tabs</button>
       </div>
       <div id="copyFeedback-groups" class="copy-feedback">Copied!</div>
     </div>
@@ -216,39 +216,39 @@
     <div class="section">
       <h3 class="section-header">This Window</h3>
       <div class="button-row">
-        <button id="sortCurrentWindow-individual">Sort</button>
-        <button id="removeDuplicatesWindow-individual">Deduplicate</button>
+        <button id="sortCurrentWindow-individual" title="Sort tabs alphabetically by URL (ignores groups)">Sort</button>
+        <button id="removeDuplicatesWindow-individual" title="Remove duplicate tabs in this window (ignores groups)">Deduplicate</button>
       </div>
       <div class="button-row">
-        <button id="aiOrganize-individual">&#10024; Organize</button>
-        <button id="aiSettings-individual" class="ai-cog-btn" style="display: none; flex: 0 0 40px; font-size: 14px;">&#9881;</button>
+        <button id="aiOrganize-individual" title="Use AI to reorganize all tabs from scratch (ignores existing groups)">&#10024; Organize</button>
+        <button id="aiSettings-individual" class="ai-cog-btn" style="display: none; flex: 0 0 40px; font-size: 14px;" title="AI settings">&#9881;</button>
       </div>
     </div>
 
     <div class="section multi-window-section">
       <h3 class="section-header">All Windows</h3>
       <div class="button-row">
-        <button id="sortAllWindows-individual">Sort All</button>
-        <button id="removeDuplicatesAllWindows-individual">Dedupe Window</button>
-        <button id="removeDuplicatesGlobally-individual">Dedupe Global</button>
+        <button id="sortAllWindows-individual" title="Sort tabs in every window alphabetically by URL (ignores groups)">Sort All</button>
+        <button id="removeDuplicatesAllWindows-individual" title="Remove duplicates within each window separately (ignores groups)">Dedupe Window</button>
+        <button id="removeDuplicatesGlobally-individual" title="Remove duplicates across all windows (ignores groups)">Dedupe Global</button>
       </div>
       <div class="button-row">
-        <button id="moveAllToSingleWindow-individual">Merge</button>
+        <button id="moveAllToSingleWindow-individual" title="Move all tabs from every window into the current window (ignores groups)">Merge</button>
       </div>
     </div>
 
     <div class="section">
       <h3 class="section-header">Extract</h3>
       <div class="button-row">
-        <button id="extractDomain-individual">Domain</button>
-        <button id="extractAllDomains-individual">All Domains</button>
+        <button id="extractDomain-individual" title="Move all tabs of the current domain into a new window (ignores groups)">Domain</button>
+        <button id="extractAllDomains-individual" title="Split tabs into one window per domain (ignores groups)">All Domains</button>
       </div>
     </div>
 
     <div class="section">
       <h3 class="section-header">Copy</h3>
       <div class="button-row">
-        <button id="copyAllTabs-individual">Copy All Tabs</button>
+        <button id="copyAllTabs-individual" title="Copy all tab URLs to the clipboard as a flat list">Copy All Tabs</button>
       </div>
       <div id="copyFeedback-individual" class="copy-feedback">Copied!</div>
     </div>
