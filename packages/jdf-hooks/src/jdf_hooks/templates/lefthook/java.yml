@@ -4,9 +4,9 @@
   - group:
       parallel: true
       jobs:
-      - name: google-java-format
-        run: bash -c 'for file in "$@"; do hooks/gjfpc-hook/format.sh -i "$file"; done' -- {staged_files}
-        glob: '*.java'
+      # Java formatting (google-java-format) temporarily removed — see
+      # https://github.com/joaodinissf/jdf-suite/issues/4 for the tracking
+      # issue on reimplementing it without the git submodule dependency.
       - name: pmd
         run: pmd check -d {staged_files} --no-cache
         glob: '*.java'

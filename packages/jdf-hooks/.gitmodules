@@ -1,3 +1,0 @@
-[submodule "hooks/gjfpc-hook"]
-	path = hooks/gjfpc-hook
-	url = https://github.com/justinludwig/gjfpc-hook.git

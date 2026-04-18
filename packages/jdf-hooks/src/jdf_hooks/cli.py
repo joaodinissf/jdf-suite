@@ -177,7 +177,7 @@ def print_next_steps(hook_manager: str, languages: set[str]) -> None:
         "python": ["pycln", "isort", "ruff", "pyright"],
         "javascript": ["prettier (npm install -g prettier)"],
         "rust": ["rustfmt, clippy (rustup component add rustfmt clippy)"],
-        "java": ["google-java-format, pmd, checkstyle"],
+        "java": ["pmd, checkstyle"],
         "markdown": ["markdownlint (npm install -g markdownlint-cli)"],
         "yaml": ["yamlfix (pip install yamlfix)"],
         "toml": ["taplo (cargo install taplo-cli)"],

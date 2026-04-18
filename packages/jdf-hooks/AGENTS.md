@@ -19,7 +19,7 @@ A centralized collection of Git hooks for enforcing code quality across multiple
 - **Python**: pycln, isort, ruff (format & check), mypy, ty (experimental)
 - **JavaScript/TypeScript**: prettier
 - **Rust**: rustfmt, clippy
-- **Java**: google-java-format, pmd, cpd, checkstyle
+- **Java**: pmd, cpd, checkstyle (google-java-format temporarily removed in 1.0.1 — pending redesign without the git submodule; see [jdf-suite#4](https://github.com/joaodinissf/jdf-suite/issues/4))
 - **Markdown**: markdownlint
 - **YAML**: yamlfix
 - **TOML**: taplo (format & lint)
@@ -608,7 +608,6 @@ line-length = 88
 │       ├── test_precommit.py
 │       └── test_lefthook.py
 ├── hooks/
-│   └── gjfpc-hook/             # Git submodule for Java formatting
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml              # Tests both configs
@@ -634,7 +633,8 @@ line-length = 88
   - URL references updated (pyproject metadata, generated config headers, README badges)
   - Release pipeline: tags now `jdf-hooks-v*`, workflow `jdf-hooks-release.yml` at the monorepo root, PyPI trusted publisher rebound to the new repo
   - CI reorganized: two duplicated integration jobs collapsed into one matrix job
-  - No functional changes to the CLI or generated configs
+  - **Regression**: `google-java-format` hook removed from Java templates; the `hooks/gjfpc-hook` git submodule was excised in pursuit of a wholly self-sufficient package with no submodule dependencies. Tracking issue: [jdf-suite#4](https://github.com/joaodinissf/jdf-suite/issues/4). Other Java hooks (PMD, CPD, Checkstyle) are unaffected.
+  - No other functional changes to the CLI or generated configs
 
 - **v1.0.0** (PyPI): Fragment-based templates + CLI UX + automated tests (first public release)
   - Breaking: monolithic templates replaced by per-language fragment files

@@ -65,10 +65,11 @@ This repository supports **both** hook managers to get the best of both worlds:
 
 ### Java
 
-- **google-java-format** - Format Java code
 - **PMD** - Java linter
 - **CPD** - Copy-paste detector
 - **Checkstyle** - Java style checker
+
+> **Note**: Automatic Java formatting (google-java-format) is temporarily unavailable as of 1.0.1 while its integration is redesigned without the previous git-submodule dependency. See [jdf-suite#4](https://github.com/joaodinissf/jdf-suite/issues/4) for status.
 
 ### Markdown
 
@@ -218,7 +219,7 @@ sudo pacman -S shfmt
 
 ### Java Tools
 
-Java tools (google-java-format, PMD, Checkstyle) are managed automatically by the hooks. CPD is bundled with PMD.
+Java tools (PMD, Checkstyle) are managed automatically by the hooks. CPD is bundled with PMD. Google Java Format is temporarily unavailable (see README note above).
 
 ### General Tools
 

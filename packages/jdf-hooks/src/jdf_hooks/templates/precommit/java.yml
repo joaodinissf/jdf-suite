@@ -4,12 +4,9 @@
 # Uses system-installed tools for consistency with lefthook
 - repo: local
   hooks:
-  - id: google-java-format
-    name: Google Java Format
-    entry: bash -c 'for file in "$@"; do hooks/gjfpc-hook/format.sh -i "$file"; done' --
-    language: system
-    types: [java]
-    pass_filenames: true
+  # Java formatting (google-java-format) temporarily removed — see
+  # https://github.com/joaodinissf/jdf-suite/issues/4 for the tracking
+  # issue on reimplementing it without the git submodule dependency.
   - id: pmd
     name: PMD
     entry: pmd check --no-cache -d
