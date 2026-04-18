@@ -1,0 +1,39 @@
+# ============================================================================
+# JAVA
+# ============================================================================
+# Uses system-installed tools for consistency with lefthook
+- repo: local
+  hooks:
+  - id: google-java-format
+    name: Google Java Format
+    entry: bash -c 'for file in "$@"; do hooks/gjfpc-hook/format.sh -i "$file"; done' --
+    language: system
+    types: [java]
+    pass_filenames: true
+  - id: pmd
+    name: PMD
+    entry: pmd check --no-cache -d
+    language: system
+    types: [java]
+    pass_filenames: true
+  - id: cpd
+    name: CPD (Copy-Paste Detector)
+    entry: cpd --minimum-tokens 50 --files
+    language: system
+    types: [java]
+    pass_filenames: true
+  - id: checkstyle
+    name: Checkstyle
+    entry: checkstyle -c configs/java/google_checks.xml
+    language: system
+    types: [java]
+    pass_filenames: true
+
+# ALTERNATIVE: Unofficial Java tools wrapper (uses Docker for PMD/Checkstyle)
+# Uncomment to use wrapper instead of system tools
+# - repo: https://github.com/gherynos/pre-commit-java
+#   rev: v0.6.31
+#   hooks:
+#   - id: pmd
+#   - id: cpd
+#   - id: checkstyle

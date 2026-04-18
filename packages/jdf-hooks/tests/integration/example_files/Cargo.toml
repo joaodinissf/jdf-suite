@@ -1,0 +1,12 @@
+# NOTE: This Cargo.toml is placed at the root level for pre-commit testing purposes only.
+# In a real Rust project, this would typically be at your project root.
+# The clippy hook needs to find Cargo.toml to run properly.
+
+[package]
+name = "example"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "main"
+path = "src/main.rs"

@@ -1,0 +1,15 @@
+# ============================================================================
+# PYTHON
+# ============================================================================
+  - group:
+      parallel: false
+      jobs:
+      - name: pycln
+        run: pycln --all {staged_files}
+        glob: '*.py'
+      - name: isort
+        run: isort {staged_files}
+        glob: '*.py'
+      - name: ruff-format
+        run: ruff format --force-exclude {staged_files}
+        glob: '*.{py,pyi}'

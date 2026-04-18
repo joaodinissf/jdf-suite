@@ -1,0 +1,12 @@
+# ============================================================================
+# TOML
+# ============================================================================
+  - group:
+      parallel: true
+      jobs:
+      - name: taplo-format
+        run: taplo format --config configs/toml/taplo.toml {staged_files}
+        glob: '*.toml'
+      - name: taplo-lint
+        run: taplo lint --config configs/toml/taplo.toml {staged_files}
+        glob: '*.toml'

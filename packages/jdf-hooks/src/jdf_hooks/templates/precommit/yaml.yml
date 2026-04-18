@@ -1,0 +1,11 @@
+# ============================================================================
+# YAML
+# ============================================================================
+- repo: https://github.com/lyz-code/yamlfix
+  rev: 1.19.1
+  hooks:
+  - id: yamlfix
+    exclude: .*lock\.ya?ml$
+    args: [--config-file, configs/yaml/yamlfix.toml]
+    types:
+    - yaml

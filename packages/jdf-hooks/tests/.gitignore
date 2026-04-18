@@ -1,0 +1,7 @@
+# Extracted test files (should only exist temporarily during testing)
+test_files/
+!example_files.zip
+
+# Rust build artifacts that might be created during testing
+target/
+Cargo.lock

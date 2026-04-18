@@ -1,0 +1,9 @@
+# ============================================================================
+# JAVASCRIPT/TYPESCRIPT/WEB
+# ============================================================================
+  - group:
+      parallel: true
+      jobs:
+      - name: prettier
+        run: npx prettier --ignore-unknown --write {staged_files}
+        glob: '*.{astro,js,jsx,ts,tsx,json,css,scss}'

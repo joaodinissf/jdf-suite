@@ -1,0 +1,26 @@
+# ============================================================================
+# PROJECT-SPECIFIC LEFTHOOK CONFIGURATION
+# ============================================================================
+# This is the local dev hooks config for the jdf-hooks project itself.
+# For the multi-language template library, see src/jdf_hooks/templates/
+# ============================================================================
+pre-commit:
+  jobs:
+  - group:
+      parallel: false
+      jobs:
+      - name: ruff-format
+        run: ruff format --force-exclude {staged_files}
+        glob: '*.{py,pyi}'
+  - group:
+      parallel: true
+      jobs:
+      - name: ruff-check
+        run: ruff check --force-exclude {staged_files}
+        glob: '*.{py,pyi}'
+      - name: pyright
+        run: pyright {staged_files}
+        glob: '*.py'
+      - name: ty
+        run: ty check --force-exclude {staged_files}
+        glob: '*.py'

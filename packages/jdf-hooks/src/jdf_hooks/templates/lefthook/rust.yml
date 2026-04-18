@@ -1,0 +1,12 @@
+# ============================================================================
+# RUST
+# ============================================================================
+  - group:
+      parallel: true
+      jobs:
+      - name: rustfmt
+        run: rustfmt --edition 2024 {staged_files}
+        glob: '*.rs'
+      - name: clippy
+        run: RUSTFLAGS="-Dwarnings" cargo clippy --all-targets --all-features
+        glob: '*.rs'

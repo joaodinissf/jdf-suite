@@ -1,0 +1,17 @@
+# ============================================================================
+# SQL
+# ============================================================================
+- repo: https://github.com/sqlfluff/sqlfluff
+  rev: 4.0.4
+  hooks:
+  - id: sqlfluff-fix
+    name: sqlfluff fix (Postgres)
+    entry: sqlfluff fix --config configs/sql/.sqlfluff
+    language: python
+    types: [sql]
+  - id: sqlfluff-lint
+    name: sqlfluff lint (Postgres)
+    entry: sqlfluff lint --config configs/sql/.sqlfluff
+    language: python
+    types:
+    - sql

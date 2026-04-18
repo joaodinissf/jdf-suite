@@ -1,0 +1,33 @@
+# ============================================================================
+# PYTHON
+# ============================================================================
+- repo: https://github.com/hadialqattan/pycln
+  rev: v2.6.0
+  hooks:
+  - id: pycln
+    args: [--all]
+    types: [python]
+- repo: https://github.com/pycqa/isort
+  rev: 8.0.1
+  hooks:
+  - id: isort
+    types: [python]
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.15.5
+  hooks:
+  - id: ruff-format
+    name: ruff format
+    description: Run 'ruff format' for extremely fast Python formatting
+    entry: ruff format --force-exclude
+    language: python
+    types_or: [python, pyi, jupyter]
+    args: []
+    require_serial: true
+  - id: ruff-check
+    name: ruff check
+    description: Run 'ruff check' for extremely fast Python linting
+    entry: ruff check --force-exclude
+    language: python
+    types_or: [python, pyi, jupyter]
+    args: []
+    require_serial: true

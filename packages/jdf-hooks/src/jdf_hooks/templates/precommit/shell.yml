@@ -1,0 +1,18 @@
+# ============================================================================
+# SHELL SCRIPTS
+# ============================================================================
+- repo: local
+  hooks:
+  - id: shell-fmt
+    name: shfmt
+    description: Rewrites all shell scripts to a canonical format.
+    entry: shfmt
+    language: system
+    types: [file, shell]
+    exclude_types: [zsh]
+    args:
+    - -w
+    - -s
+    - -l
+    - -i
+    - '2'

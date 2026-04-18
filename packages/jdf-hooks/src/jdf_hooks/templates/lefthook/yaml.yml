@@ -1,0 +1,10 @@
+# ============================================================================
+# YAML
+# ============================================================================
+  - group:
+      parallel: true
+      jobs:
+      - name: yamlfix
+        run: yamlfix --config-file configs/yaml/yamlfix.toml {staged_files}
+        glob: '*.{yml,yaml}'
+        exclude: .*lock\.ya?ml$
