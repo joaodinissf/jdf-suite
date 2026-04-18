@@ -134,6 +134,25 @@ const confirmationWrapper = `
 `;
 eval(confirmationWrapper);
 
+// Load and execute content-clumper script, exposing its pure helpers + test hooks
+const clumperJs = readFileSync(resolve(__dirname, '../src/content-clumper.js'), 'utf8');
+const clumperWrapper = `
+(function() {
+  ${clumperJs}
+
+  if (typeof clumperIsOpenableUrl !== 'undefined') global.clumperIsOpenableUrl = clumperIsOpenableUrl;
+  if (typeof clumperRectsOverlap !== 'undefined') global.clumperRectsOverlap = clumperRectsOverlap;
+  if (typeof clumperBoxFromPoints !== 'undefined') global.clumperBoxFromPoints = clumperBoxFromPoints;
+  if (typeof clumperKeyMatches !== 'undefined') global.clumperKeyMatches = clumperKeyMatches;
+  if (typeof clumperModifierMatches !== 'undefined') global.clumperModifierMatches = clumperModifierMatches;
+  if (typeof clumperCollectUrlsInRect !== 'undefined') global.clumperCollectUrlsInRect = clumperCollectUrlsInRect;
+  if (typeof clumperIsTextInputTarget !== 'undefined') global.clumperIsTextInputTarget = clumperIsTextInputTarget;
+  if (typeof clumperResetStateForTest !== 'undefined') global.clumperResetStateForTest = clumperResetStateForTest;
+  if (typeof clumperGetStateForTest !== 'undefined') global.clumperGetStateForTest = clumperGetStateForTest;
+})();
+`;
+eval(clumperWrapper);
+
 // Snapshot base listeners registered during eval, reset to this state before each test
 const baseListeners = [...messageListeners];
 
