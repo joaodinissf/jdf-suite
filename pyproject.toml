@@ -1,2 +1,6 @@
 [tool.uv.workspace]
+# Glob over `packages/*` and prune directories that aren't Python workspace
+# members (Chrome extensions, userscripts, AppleScript, etc.). Every new
+# non-Python package must be added here. See jdf-suite#12.
 members = ["packages/*"]
+exclude = ["packages/jdf-tab-huddle"]
