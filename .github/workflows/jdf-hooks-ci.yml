@@ -57,7 +57,13 @@ jobs:
       if: matrix.manager == 'lefthook'
       run: |
         npm install -g lefthook prettier markdownlint-cli
-        uv tool install pycln isort ruff pyright ty yamlfix sqlfluff
+        uv tool install pycln
+        uv tool install isort
+        uv tool install ruff
+        uv tool install pyright
+        uv tool install ty
+        uv tool install yamlfix
+        uv tool install sqlfluff
         cargo install taplo-cli
     - name: Run integration test
       run: uv run python tests/integration/test_${{ matrix.manager }}.py
@@ -69,5 +75,7 @@ jobs:
     - uses: actions/checkout@v6
     - run: npm install -g lefthook
     - name: Validate lefthook.yml
-      run: lefthook dump
+      # Lefthook resolves its config relative to the git root, not CWD,
+      # so in a monorepo we must point it at the per-package config explicitly.
+      run: lefthook -c lefthook.yml dump
       working-directory: packages/jdf-hooks
