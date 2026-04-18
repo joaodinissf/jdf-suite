@@ -93,6 +93,7 @@ export default [
         extractAllDomains: 'readonly',
         moveAllToSingleWindow: 'readonly',
         copyAllTabs: 'readonly',
+        flattenWindow: 'readonly',
         updateStatusBar: 'readonly',
         formatTabsAsText: 'readonly',
         handleCopyAllTabs: 'readonly',

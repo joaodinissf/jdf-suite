@@ -125,6 +125,14 @@ describe('Popup Script', () => {
         expect.any(Function)
       );
     });
+
+    test('flattenWindow should send correct message', () => {
+      flattenWindow();
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        { action: 'flattenWindow' },
+        expect.any(Function)
+      );
+    });
   });
 
   describe('Copy All Tabs', () => {

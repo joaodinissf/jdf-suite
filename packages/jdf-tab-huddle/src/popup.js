@@ -93,6 +93,7 @@ function setupEventListeners() {
   document.getElementById('extractAllDomains-groups').addEventListener('click', () => extractAllDomains(true));
   document.getElementById('moveAllToSingleWindow-groups').addEventListener('click', () => moveAllToSingleWindow(true));
   document.getElementById('copyAllTabs-groups').addEventListener('click', () => copyAllTabs(true));
+  document.getElementById('flattenWindow-groups').addEventListener('click', () => flattenWindow());
 
   // Individual mode listeners
   document.getElementById('sortAllWindows-individual').addEventListener('click', () => sortAllWindows(false));
@@ -176,6 +177,11 @@ function removeDuplicatesGlobally(respectGroups = true) {
 // Extract all domains into separate windows
 function extractAllDomains(respectGroups = true) {
   sendAction('extractAllDomains', { respectGroups });
+}
+
+// Ungroup all tabs in the current window
+function flattenWindow() {
+  sendAction('flattenWindow');
 }
 
 // Move all tabs to a single window
