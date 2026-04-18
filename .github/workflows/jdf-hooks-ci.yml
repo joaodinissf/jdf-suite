@@ -76,6 +76,8 @@ jobs:
     - run: npm install -g lefthook
     - name: Validate lefthook.yml
       # Lefthook resolves its config relative to the git root, not CWD,
-      # so in a monorepo we must point it at the per-package config explicitly.
-      run: lefthook -c lefthook.yml dump
-      working-directory: packages/jdf-hooks
+      # so in a monorepo we must point it at the per-package config via
+      # the LEFTHOOK_CONFIG env var (there's no -c/--config CLI flag).
+      env:
+        LEFTHOOK_CONFIG: packages/jdf-hooks/lefthook.yml
+      run: lefthook dump
