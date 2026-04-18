@@ -4,16 +4,12 @@ const extractableCount = parseInt(urlParams.get('extractable') || '0');
 const singleTabCount = parseInt(urlParams.get('single') || '0');
 const totalWindows = extractableCount + (singleTabCount > 0 ? 1 : 0);
 
-console.log('URL Params:', window.location.search);
-console.log('Parsed values:', { extractableCount, singleTabCount, totalWindows });
-
 // Function to update content
 function updateContent() {
   // Update window count
   const windowCountElement = document.getElementById('windowCount');
   if (windowCountElement) {
     windowCountElement.textContent = `This will create ${totalWindows} new browser windows.`;
-    console.log('Updated window count element');
   }
 
   // Update operation list
@@ -33,14 +29,12 @@ function updateContent() {
     listContent += `<li>Pinned tabs will remain in their current windows (not moved)</li>`;
 
     operationList.innerHTML = listContent;
-    console.log('Updated operation list');
   }
 
   // Update confirm button text
   const confirmButton = document.getElementById('confirmButton');
   if (confirmButton) {
     confirmButton.textContent = `🚀 Create ${totalWindows} Window${totalWindows === 1 ? '' : 's'}`;
-    console.log('Updated confirm button text');
   }
 }
 
@@ -58,14 +52,13 @@ function setupEventListeners() {
 }
 
 function respond(confirmed) {
-  console.log('User response:', confirmed);
   try {
     chrome.runtime.sendMessage({
       action: 'extractAllDomainsConfirmation',
       confirmed: confirmed
     });
   } catch (error) {
-    console.error('Error sending confirmation response:', error);
+    console.error('[Tab Organizer] Error sending confirmation response:', error);
     window.close();
   }
 }
@@ -76,11 +69,9 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', function () {
     updateContent();
     setupEventListeners();
-    console.log('Content updated via DOMContentLoaded');
   });
 } else {
   // DOM already ready
   updateContent();
   setupEventListeners();
-  console.log('Content updated immediately');
 }
