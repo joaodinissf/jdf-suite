@@ -1,7 +1,7 @@
 {
-  "name": "tab-organizer",
-  "version": "2.3.0",
-  "description": "Chrome extension for organizing tabs by URL and domain",
+  "name": "jdf-tab-huddle",
+  "version": "0.1.0",
+  "description": "Huddle — Chrome extension for organizing and huddling loose tabs",
   "type": "module",
   "scripts": {
     "test": "vitest run",
@@ -9,7 +9,7 @@
     "lint": "eslint src/**/*.js tests/**/*.js",
     "lint:fix": "eslint src/**/*.js tests/**/*.js --fix",
     "validate": "node -e \"JSON.parse(require('fs').readFileSync('src/manifest.json', 'utf8')); console.log('✅ manifest.json is valid')\"",
-    "package": "npm run validate && zip -r tab-organizer-$(node -p \"require('./package.json').version\").zip src -x 'node_modules/*' 'tests/*' '*.md' 'package*.json' 'pnpm-lock.yaml' '.git/*' '.github/*'",
+    "package": "npm run validate && zip -r jdf-tab-huddle-$(node -p \"require('./package.json').version\").zip src -x 'node_modules/*' 'tests/*' '*.md' 'package*.json' 'pnpm-lock.yaml' '.git/*' '.github/*'",
     "dev": "echo '🚀 Load the src/ folder in Chrome Developer Mode'",
     "test:e2e": "npx playwright test --config=e2e/playwright.config.js",
     "ci": "npm run lint && npm run test && npm run validate",
