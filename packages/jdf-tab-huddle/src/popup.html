@@ -2,11 +2,17 @@
 <html>
 
 <head>
+  <meta charset="UTF-8">
   <title>Tab Organizer</title>
   <style>
+    html, body {
+      height: auto;
+      overflow: visible;
+    }
+
     body {
       width: 380px;
-      padding: 16px;
+      padding: 12px 14px;
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -14,8 +20,8 @@
     }
 
     h2 {
-      margin: 0 0 16px 0;
-      font-size: 18px;
+      margin: 0 0 10px 0;
+      font-size: 16px;
       font-weight: 600;
       text-align: center;
       text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
@@ -23,10 +29,10 @@
 
     .tab-nav {
       display: flex;
-      margin-bottom: 16px;
+      margin-bottom: 10px;
       background: rgba(0, 0, 0, 0.2);
       border-radius: 8px;
-      padding: 4px;
+      padding: 3px;
     }
 
     .tab-button {
@@ -63,7 +69,7 @@
     }
 
     .section {
-      margin-bottom: 16px;
+      margin-bottom: 10px;
     }
 
     .section:last-child {
@@ -71,8 +77,8 @@
     }
 
     .section-header {
-      margin: 0 0 8px 0;
-      font-size: 12px;
+      margin: 0 0 6px 0;
+      font-size: 11px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -82,8 +88,8 @@
 
     .button-row {
       display: flex;
-      gap: 8px;
-      margin-bottom: 8px;
+      gap: 6px;
+      margin-bottom: 6px;
     }
 
     .button-row:last-child {
@@ -92,7 +98,7 @@
 
     button {
       flex: 1;
-      padding: 12px 8px;
+      padding: 8px 8px;
       background: rgba(255, 255, 255, 0.2);
       color: white;
       border: 1px solid rgba(255, 255, 255, 0.3);
@@ -120,17 +126,17 @@
       font-size: 10px;
       opacity: 0.6;
       text-align: center;
-      margin-top: 8px;
+      margin-top: 4px;
       font-style: italic;
     }
 
     .copy-feedback {
       font-size: 11px;
       text-align: center;
-      margin-top: 4px;
+      margin-top: 2px;
       opacity: 0;
       transition: opacity 0.3s ease;
-      height: 16px;
+      height: 14px;
     }
 
     .copy-feedback.visible {
@@ -140,7 +146,7 @@
     .status-bar {
       font-size: 10px;
       opacity: 0.6;
-      margin-top: 4px;
+      margin-top: 8px;
       padding-top: 6px;
       border-top: 1px solid rgba(255, 255, 255, 0.15);
     }
@@ -148,7 +154,7 @@
     .status-line {
       display: flex;
       gap: 4px;
-      margin-bottom: 2px;
+      margin-bottom: 1px;
     }
 
     .status-label {
@@ -259,7 +265,7 @@
     <div class="status-line multi-window-section"><span class="status-label">All windows:</span> <span id="statusAllWindows"></span></div>
   </div>
 
-  <div style="text-align: center; margin-top: 12px; font-size: 11px; opacity: 0.7;">
+  <div style="text-align: center; margin-top: 6px; font-size: 10px; opacity: 0.7;">
     <a href="#" id="openOptions" style="color: inherit; text-decoration: underline;">⚙ Settings</a>
   </div>
 
