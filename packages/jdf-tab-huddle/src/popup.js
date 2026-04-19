@@ -16,6 +16,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Update status bar
   updateStatusBar();
+
+  // Wire up the Settings link to open the options page
+  const settingsLink = document.getElementById('openOptions');
+  if (settingsLink) {
+    settingsLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (chrome && chrome.runtime && chrome.runtime.openOptionsPage) {
+        chrome.runtime.openOptionsPage();
+      }
+    });
+  }
 });
 
 // Tab switching functionality

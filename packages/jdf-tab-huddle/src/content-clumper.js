@@ -6,10 +6,14 @@
 // Clean-room implementation from a behavior spec; not derived from upstream
 // linkclump source. See packages/jdf-tab-huddle/README.md for attribution.
 
-// --- Configuration (hardcoded for now; wired to chrome.storage.sync in PR C) ---
-const CLUMPER_ACTIVATION_KEY = 'z';
-const CLUMPER_ACTIVATION_MODIFIER = null; // null | 'shift' | 'ctrl' | 'alt'
-const CLUMPER_ENABLED = true;
+// --- Configuration (read from chrome.storage.sync; defaults applied if unset) ---
+const CLUMPER_DEFAULT_KEY = 'z';
+const CLUMPER_DEFAULT_MODIFIER = null; // null | 'shift' | 'ctrl' | 'alt'
+const CLUMPER_DEFAULT_ENABLED = true;
+
+let clumperActivationKey = CLUMPER_DEFAULT_KEY;
+let clumperActivationModifier = CLUMPER_DEFAULT_MODIFIER;
+let clumperEnabled = CLUMPER_DEFAULT_ENABLED;
 
 // --- Visual constants ---
 const CLUMPER_COLOR = '#ff6600';
@@ -243,17 +247,17 @@ function clumperTeardown() {
 // --- Event handlers ---
 
 function clumperHandleKeyDown(event) {
-  if (!CLUMPER_ENABLED) return;
+  if (!clumperEnabled) return;
   if (clumperKeyHeld) return;
   if (clumperIsTextInputTarget(event.target)) return;
-  if (!clumperKeyMatches(event, CLUMPER_ACTIVATION_KEY)) return;
-  if (!clumperModifierMatches(event, CLUMPER_ACTIVATION_MODIFIER)) return;
+  if (!clumperKeyMatches(event, clumperActivationKey)) return;
+  if (!clumperModifierMatches(event, clumperActivationModifier)) return;
   clumperKeyHeld = true;
   clumperSuppressTextSelection();
 }
 
 function clumperHandleKeyUp(event) {
-  if (!clumperKeyMatches(event, CLUMPER_ACTIVATION_KEY)) return;
+  if (!clumperKeyMatches(event, clumperActivationKey)) return;
   clumperKeyHeld = false;
   if (clumperDragging) {
     clumperTeardown();
@@ -271,7 +275,7 @@ function clumperHandleEscape(event) {
 }
 
 function clumperHandleMouseDown(event) {
-  if (!CLUMPER_ENABLED) return;
+  if (!clumperEnabled) return;
   if (!clumperKeyHeld) return;
   if (event.button !== 0) return;
   clumperDragging = true;
@@ -316,6 +320,24 @@ function clumperGetStateForTest() {
   };
 }
 
+function clumperApplySettings(raw) {
+  const c = raw && typeof raw === 'object' ? raw : {};
+  clumperEnabled = typeof c.enabled === 'boolean' ? c.enabled : CLUMPER_DEFAULT_ENABLED;
+  clumperActivationKey = typeof c.key === 'string' && c.key.length === 1
+    ? c.key.toLowerCase()
+    : CLUMPER_DEFAULT_KEY;
+  clumperActivationModifier = c.modifier === 'shift' || c.modifier === 'ctrl' || c.modifier === 'alt'
+    ? c.modifier
+    : CLUMPER_DEFAULT_MODIFIER;
+}
+
+function clumperLoadSettings() {
+  if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.sync) return;
+  chrome.storage.sync.get(['clumping'], (result) => {
+    clumperApplySettings(result && result.clumping);
+  });
+}
+
 // Register listeners. Capturing phase so we beat the page's own handlers.
 if (typeof document !== 'undefined') {
   document.addEventListener('keydown', clumperHandleKeyDown, true);
@@ -324,4 +346,20 @@ if (typeof document !== 'undefined') {
   document.addEventListener('mousedown', clumperHandleMouseDown, true);
   document.addEventListener('mousemove', clumperHandleMouseMove, true);
   document.addEventListener('mouseup', clumperHandleMouseUp, true);
+}
+
+// Load settings once on startup, then keep them in sync with any subsequent
+// changes made through the options page (or from another Chrome signin).
+clumperLoadSettings();
+if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'sync' || !changes.clumping) return;
+    clumperApplySettings(changes.clumping.newValue);
+    // If the feature was just disabled or the key changed, abort any
+    // in-flight drag to avoid a "zombie" armed state.
+    if (clumperKeyHeld || clumperDragging) {
+      clumperKeyHeld = false;
+      clumperTeardown();
+    }
+  });
 }
