@@ -22,7 +22,8 @@ let clumperKeyHeld = false;
 let clumperDragging = false;
 let clumperDragStart = null; // {x, y} in page coords
 let clumperSelectionBox = null; // DOM element or null
-const clumperHighlights = new Set();
+const clumperHighlightOverlays = []; // array of overlay DOM elements
+let clumperHighlightContainer = null; // parent element holding all overlays
 let clumperPrevBodyUserSelect = null; // saved value of document.body.style.userSelect while suppressed
 
 // --- Pure helpers ---
@@ -160,27 +161,57 @@ function clumperUpdateSelectionBox(box, rect) {
   box.style.height = `${Math.max(0, rect.bottom - rect.top)}px`;
 }
 
-function clumperClearHighlights() {
-  for (const link of clumperHighlights) {
-    link.style.backgroundColor = link.dataset.jdfClumperPrevBackgroundColor || '';
-    link.style.outline = link.dataset.jdfClumperPrevOutline || '';
-    delete link.dataset.jdfClumperPrevBackgroundColor;
-    delete link.dataset.jdfClumperPrevOutline;
+function clumperEnsureHighlightContainer() {
+  if (clumperHighlightContainer && clumperHighlightContainer.isConnected) {
+    return clumperHighlightContainer;
   }
-  clumperHighlights.clear();
+  const container = document.createElement('div');
+  container.setAttribute('data-jdf-tab-huddle', 'clumper-highlights');
+  container.style.position = 'absolute';
+  container.style.top = '0';
+  container.style.left = '0';
+  container.style.pointerEvents = 'none';
+  container.style.zIndex = String(CLUMPER_Z_INDEX - 1);
+  document.body.appendChild(container);
+  clumperHighlightContainer = container;
+  return container;
+}
+
+function clumperClearHighlights() {
+  for (const overlay of clumperHighlightOverlays) {
+    overlay.remove();
+  }
+  clumperHighlightOverlays.length = 0;
+  if (clumperHighlightContainer) {
+    clumperHighlightContainer.remove();
+    clumperHighlightContainer = null;
+  }
 }
 
 function clumperHighlightLinksInRect(selRect) {
   clumperClearHighlights();
   const links = document.querySelectorAll('a[href]');
+  const container = clumperEnsureHighlightContainer();
   for (const link of links) {
     if (!clumperIsOpenableUrl(link.getAttribute('href'))) continue;
-    if (!clumperRectsOverlap(clumperPageRectOf(link), selRect)) continue;
-    link.dataset.jdfClumperPrevBackgroundColor = link.style.backgroundColor;
-    link.dataset.jdfClumperPrevOutline = link.style.outline;
-    link.style.backgroundColor = CLUMPER_LINK_HIGHLIGHT;
-    link.style.outline = `2px solid ${CLUMPER_COLOR}`;
-    clumperHighlights.add(link);
+    const pageRect = clumperPageRectOf(link);
+    if (!clumperRectsOverlap(pageRect, selRect)) continue;
+    // Draw an overlay rather than styling the link itself. This works
+    // even when the link wraps opaque children (like BBC article cards
+    // with images) that would hide a backgroundColor set on the anchor,
+    // and survives any site CSS with `outline: none !important` on links.
+    const overlay = document.createElement('div');
+    overlay.style.position = 'absolute';
+    overlay.style.pointerEvents = 'none';
+    overlay.style.left = `${pageRect.left}px`;
+    overlay.style.top = `${pageRect.top}px`;
+    overlay.style.width = `${Math.max(0, pageRect.right - pageRect.left)}px`;
+    overlay.style.height = `${Math.max(0, pageRect.bottom - pageRect.top)}px`;
+    overlay.style.backgroundColor = CLUMPER_LINK_HIGHLIGHT;
+    overlay.style.outline = `2px solid ${CLUMPER_COLOR}`;
+    overlay.style.boxSizing = 'border-box';
+    container.appendChild(overlay);
+    clumperHighlightOverlays.push(overlay);
   }
 }
 
@@ -281,7 +312,7 @@ function clumperGetStateForTest() {
     dragging: clumperDragging,
     dragStart: clumperDragStart,
     hasSelectionBox: Boolean(clumperSelectionBox),
-    highlightCount: clumperHighlights.size,
+    highlightCount: clumperHighlightOverlays.length,
   };
 }
 
