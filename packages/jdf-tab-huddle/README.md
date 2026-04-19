@@ -31,11 +31,11 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 - Adaptive UI hides multi-window buttons when only one window exists
 
 ### Link Clumping
-- Hold **Z** and click-drag a rectangle over any set of links
+- Hold the activation key (default: **Z**) and click-drag a rectangle over any set of links
 - On release, every selected link opens in a new background tab, adjacent to the current one, in DOM order, with duplicates filtered out
 - Works on any HTTP/HTTPS page
 - Press Escape mid-drag to cancel without opening
-- Current defaults (activation key, modifier, enabled state) are hardcoded; a configurable options page lands in a follow-up
+- Configure the key, optional modifier (Shift/Ctrl/Alt), or disable the feature via the **Settings** link in the popup — preferences sync across your Chrome signins
 
 ## Acknowledgements
 

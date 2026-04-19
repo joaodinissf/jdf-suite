@@ -49,6 +49,15 @@ global.chrome = {
       set: vi.fn(),
       remove: vi.fn(),
     },
+    sync: {
+      get: vi.fn(),
+      set: vi.fn(),
+      remove: vi.fn(),
+    },
+    onChanged: {
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    },
   },
 };
 
@@ -149,9 +158,28 @@ const clumperWrapper = `
   if (typeof clumperIsTextInputTarget !== 'undefined') global.clumperIsTextInputTarget = clumperIsTextInputTarget;
   if (typeof clumperResetStateForTest !== 'undefined') global.clumperResetStateForTest = clumperResetStateForTest;
   if (typeof clumperGetStateForTest !== 'undefined') global.clumperGetStateForTest = clumperGetStateForTest;
+  if (typeof clumperApplySettings !== 'undefined') global.clumperApplySettings = clumperApplySettings;
 })();
 `;
 eval(clumperWrapper);
+
+// Load and execute options script, exposing its pure helpers + test hooks
+const optionsJs = readFileSync(resolve(__dirname, '../src/options.js'), 'utf8');
+const optionsWrapper = `
+(function() {
+  ${optionsJs}
+
+  if (typeof CLUMPING_DEFAULTS !== 'undefined') global.CLUMPING_DEFAULTS = CLUMPING_DEFAULTS;
+  if (typeof getAllowedKeys !== 'undefined') global.getAllowedKeys = getAllowedKeys;
+  if (typeof applyDefaults !== 'undefined') global.optionsApplyDefaults = applyDefaults;
+  if (typeof loadClumpingSettings !== 'undefined') global.loadClumpingSettings = loadClumpingSettings;
+  if (typeof saveClumpingSettings !== 'undefined') global.saveClumpingSettings = saveClumpingSettings;
+  if (typeof populateKeyDropdown !== 'undefined') global.populateKeyDropdown = populateKeyDropdown;
+  if (typeof readFormState !== 'undefined') global.readFormState = readFormState;
+  if (typeof writeFormState !== 'undefined') global.writeFormState = writeFormState;
+})();
+`;
+eval(optionsWrapper);
 
 // Snapshot base listeners registered during eval, reset to this state before each test
 const baseListeners = [...messageListeners];
