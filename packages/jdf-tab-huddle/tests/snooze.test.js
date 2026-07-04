@@ -262,6 +262,55 @@ describe('Tab Snoozing', () => {
       expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'Wake time is in the past' });
       expect(chrome.tabs.remove).not.toHaveBeenCalled();
     });
+
+    test('single active incognito tab → refused with a clear error, nothing removed or persisted', async () => {
+      useMemoryStore();
+      chrome.tabs.query.mockResolvedValue([
+        { id: 10, url: 'https://example.com/a', title: 'A', pinned: false, index: 0, windowId: 1, incognito: true },
+      ]);
+      const sendResponse = vi.fn();
+      await handleSnoozeTab({ wakeAt: at(4, 9), preset: 'tomorrow' }, sendResponse);
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: false, error: "Incognito tabs can't be snoozed" });
+      expect(chrome.tabs.remove).not.toHaveBeenCalled();
+      expect(chrome.storage.local.set).not.toHaveBeenCalled();
+      expect(chrome.alarms.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('snoozeTabs incognito exclusion (multi-tab units)', () => {
+    test('incognito tabs are silently excluded from a multi-tab snooze; non-incognito tabs still snooze', async () => {
+      useMemoryStore();
+      chrome.tabs.query.mockResolvedValue([
+        { id: 10, url: 'https://example.com/a', title: 'A', pinned: false, index: 0, windowId: 1, incognito: false },
+        { id: 11, url: 'https://example.com/b', title: 'B', pinned: false, index: 1, windowId: 1, incognito: true },
+      ]);
+      chrome.windows.getAll.mockResolvedValue([{ id: 1, tabs: [{ id: 10 }, { id: 11 }, { id: 12 }] }]);
+      chrome.tabs.remove.mockResolvedValue(undefined);
+
+      const sendResponse = vi.fn();
+      await handleSnoozeSelected({ wakeAt: at(4, 9), preset: 'tomorrow' }, sendResponse);
+
+      const res = sendResponse.mock.calls[0][0];
+      expect(res.success).toBe(true);
+      expect(res.record.tabs).toHaveLength(1);
+      expect(res.record.tabs[0].url).toBe('https://example.com/a');
+      // Only the non-incognito tab was closed; the incognito tab is untouched.
+      expect(chrome.tabs.remove).toHaveBeenCalledWith([10]);
+    });
+
+    test('a selection that is entirely incognito reports the generic "nothing here" error', async () => {
+      useMemoryStore();
+      chrome.tabs.query.mockResolvedValue([
+        { id: 10, url: 'https://example.com/a', title: 'A', pinned: false, index: 0, windowId: 1, incognito: true },
+        { id: 11, url: 'https://example.com/b', title: 'B', pinned: false, index: 1, windowId: 1, incognito: true },
+      ]);
+      const sendResponse = vi.fn();
+      await handleSnoozeSelected({ wakeAt: at(4, 9), preset: 'tomorrow' }, sendResponse);
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'Nothing here can be snoozed' });
+      expect(chrome.tabs.remove).not.toHaveBeenCalled();
+    });
   });
 
   describe('handleSnoozeGroup', () => {
@@ -274,6 +323,26 @@ describe('Tab Snoozing', () => {
       await handleSnoozeGroup({ wakeAt: at(4, 9), preset: 'tomorrow' }, sendResponse);
       expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'Active tab is not in a group' });
       expect(chrome.tabs.remove).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleWakeNow', () => {
+    test('a requeued (restore-failed) wake reports a retry message, not "Snooze not found"', async () => {
+      const record = {
+        id: 'r8', type: 'tab', summary: 'A', wakeAt: at(4, 9), preset: 'tomorrow',
+        windowId: 1, tabs: [{ url: 'https://example.com/a', title: 'A', pinned: false, index: 0 }],
+      };
+      useMemoryStore({ snoozedItems: [record] });
+      chrome.windows.getLastFocused.mockRejectedValue(new Error('no window'));
+      chrome.windows.create.mockRejectedValue(new Error('cannot create window'));
+
+      const sendResponse = vi.fn();
+      await handleWakeNow({ id: 'r8' }, sendResponse);
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: false,
+        error: 'Could not restore right now — will retry automatically',
+      });
     });
   });
 
@@ -422,6 +491,58 @@ describe('Tab Snoozing', () => {
       const result = await wakeSnoozedRecord('r5', { notify: false });
       expect(result.failedCount).toBe(1);
       expect(result.createdCount).toBe(1);
+    });
+
+    test('a throw outside the per-tab loop (e.g. window creation) re-persists the popped record — no data loss', async () => {
+      const record = {
+        id: 'r6', type: 'tab', summary: 'A', wakeAt: at(4, 9), preset: 'tomorrow',
+        windowId: 1, tabs: [{ url: 'https://example.com/a', title: 'A', pinned: false, index: 0 }],
+      };
+      const store = useMemoryStore({ snoozedItems: [record] });
+      // Both the primary lookup and the create-a-window fallback fail, so
+      // getRestoreTargetWindowId (and therefore restoreSnoozedRecord) throws.
+      chrome.windows.getLastFocused.mockRejectedValue(new Error('no window'));
+      chrome.windows.create.mockRejectedValue(new Error('cannot create window'));
+
+      const result = await wakeSnoozedRecord('r6', { notify: true });
+
+      // The record survives — it's back in storage, not lost.
+      expect(store.snoozedItems).toEqual([record]);
+      expect(result).toEqual({ record, requeued: true });
+      // A near-future retry alarm was armed under the same alarm name.
+      expect(chrome.alarms.create).toHaveBeenCalledWith(
+        'snooze:r6',
+        expect.objectContaining({ when: expect.any(Number) })
+      );
+      // A failed restore must never fire the "tabs are back" notification.
+      expect(chrome.notifications.create).not.toHaveBeenCalled();
+    });
+
+    test('notifyWake reports the ACTUAL restored count (createdCount), not the intended tab count', async () => {
+      const record = {
+        id: 'r7', type: 'tabs', summary: '3 selected tabs', wakeAt: at(4, 9), preset: 'laterToday',
+        windowId: 1,
+        tabs: [
+          { url: 'https://a/', title: 'A', pinned: false, index: 0 },
+          { url: 'https://b/', title: 'B', pinned: false, index: 1 },
+          { url: 'https://c/', title: 'C', pinned: false, index: 2 },
+        ],
+      };
+      useMemoryStore({ snoozedItems: [record] });
+      chrome.windows.getLastFocused.mockResolvedValue({ id: 5 });
+      chrome.tabs.create
+        .mockResolvedValueOnce({ id: 60 })
+        .mockRejectedValueOnce(new Error('cannot create'))
+        .mockResolvedValueOnce({ id: 61 });
+
+      const result = await wakeSnoozedRecord('r7', { notify: true });
+
+      expect(result.createdCount).toBe(2);
+      expect(result.failedCount).toBe(1);
+      expect(chrome.notifications.create).toHaveBeenCalledWith(
+        'snooze-wake:r7',
+        expect.objectContaining({ message: '2 tabs are back — 1 could not be reopened' })
+      );
     });
   });
 
