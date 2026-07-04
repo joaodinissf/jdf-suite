@@ -1882,12 +1882,15 @@ async function restoreSnoozedRecord(record) {
   const createdTabIds = [];
   for (const t of record.tabs) {
     try {
+      // No `index` here: chrome.tabs.create (unlike tabs.move) does not accept
+      // -1 as "append at the end" — it throws "index: Value must be at least
+      // 0". Omitting `index` already appends the tab as the last one in the
+      // window, which is the behavior we want.
       const created = await chrome.tabs.create({
         windowId,
         url: t.url,
         pinned: !!t.pinned,
         active: false,
-        index: -1,
       });
       createdCount++;
       createdTabIds.push(created.id);
