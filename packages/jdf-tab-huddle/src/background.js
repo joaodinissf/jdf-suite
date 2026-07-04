@@ -1597,8 +1597,18 @@ async function getSnoozeGroupInfoMap(tabs) {
 async function snoozeTabs(type, tabs, extras, wakeAt, preset) {
   const source = Array.isArray(tabs) ? tabs : [];
 
+  // Incognito tabs must never be written into chrome.storage.local (persistent,
+  // non-incognito storage) — doing so would leak incognito browsing outside
+  // its boundary. A single active incognito tab gets a specific error; the
+  // multi-tab units silently exclude incognito tabs, same as any other
+  // non-snoozeable tab.
+  if (type === 'tab' && source.length > 0 && source.every((t) => t.incognito === true)) {
+    return { success: false, error: 'Incognito tabs can\'t be snoozed' };
+  }
+  const nonIncognito = source.filter((t) => t.incognito !== true);
+
   // 2. Filter snoozeable URLs (non-snoozeable tabs are silently left open).
-  const snoozeable = source.filter((t) => isSnoozeableUrl(t.url));
+  const snoozeable = nonIncognito.filter((t) => isSnoozeableUrl(t.url));
   if (snoozeable.length === 0) {
     // A single-tab snooze of a rejected URL gets a page-specific message; the
     // multi-tab units report the generic "nothing here" error.
@@ -1921,7 +1931,10 @@ async function restoreSnoozedRecord(record) {
 // Fire the wake notification and register it in the best-effort click map.
 // `location` (optional) carries { windowId, firstTabId } for click focusing.
 function notifyWake(record, createdCount, failedCount, location = {}) {
-  const n = record.tabs ? record.tabs.length : createdCount;
+  // Use the ACTUAL restored count (createdCount), not the originally intended
+  // record.tabs.length — otherwise a partial-failure wake reports a number of
+  // "back" tabs that's inconsistent with the "N could not be reopened" suffix.
+  const n = typeof createdCount === 'number' ? createdCount : (record.tabs ? record.tabs.length : 0);
   const title = n === 1 ? 'Huddle — tab woke up' : 'Huddle — tabs woke up';
   let message;
   switch (record.type) {
@@ -1987,7 +2000,29 @@ async function wakeSnoozedRecord(id, options = {}) {
     // harmless if already fired/cleared
   }
 
-  const restoreResult = await restoreSnoozedRecord(record);
+  let restoreResult;
+  try {
+    restoreResult = await restoreSnoozedRecord(record);
+  } catch (error) {
+    // restoreSnoozedRecord already try/catches every per-tab create; a throw
+    // here means something failed outside that loop (e.g. chrome.windows.create
+    // / getLastFocused for a window-type record). The record was already
+    // popped from storage above — without this recovery it would be gone for
+    // good. Re-persist it (under the same lock used everywhere else) and arm
+    // a near-future retry so the tabs are never permanently lost.
+    console.error('[Tab Organizer] restoreSnoozedRecord failed; re-persisting snoozed record to avoid data loss:', error);
+    await withSnoozeLock(async () => {
+      const items = await loadSnoozedItems();
+      items.push(record);
+      await saveSnoozedItems(items);
+    });
+    try {
+      await chrome.alarms.create(SNOOZE_ALARM_PREFIX + id, { when: Date.now() + 60000 });
+    } catch (_alarmErr) {
+      // best effort — reconcileSnoozeAlarms re-arms it on next startup/install
+    }
+    return { record, requeued: true };
+  }
 
   if (notify) {
     notifyWake(record, restoreResult.createdCount, restoreResult.failedCount, {
@@ -2012,6 +2047,10 @@ async function handleWakeNow(message, sendResponse) {
     const result = await wakeSnoozedRecord(message.id, { notify: false });
     if (!result) {
       sendResponse({ success: false, error: 'Snooze not found' });
+      return;
+    }
+    if (result.requeued) {
+      sendResponse({ success: false, error: 'Could not restore right now — will retry automatically' });
       return;
     }
     sendResponse({ success: true });
