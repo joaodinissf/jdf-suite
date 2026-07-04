@@ -8,7 +8,9 @@
     "tabs",
     "windows",
     "tabGroups",
-    "storage"
+    "storage",
+    "alarms",
+    "notifications"
   ],
   "host_permissions": [
     "https://openrouter.ai/*"

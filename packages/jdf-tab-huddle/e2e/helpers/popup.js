@@ -29,3 +29,19 @@ export async function clickPopupButton(popupPage, buttonId) {
 export async function switchMode(popupPage, mode) {
   await popupPage.click(`.tab-button[data-tab="${mode}"]`);
 }
+
+/**
+ * Open the snooze time picker for a given unit and wait for the panel.
+ * @param {import('@playwright/test').Page} popupPage
+ * @param {'tab' | 'selected' | 'window' | 'group'} unit
+ */
+export async function openSnoozePicker(popupPage, unit) {
+  const idMap = {
+    tab: 'snoozeTab',
+    selected: 'snoozeSelected',
+    window: 'snoozeWindow',
+    group: 'snoozeGroup',
+  };
+  await popupPage.click(`#${idMap[unit]}`);
+  await popupPage.waitForSelector('#snoozePickerPanel:not([hidden])');
+}

@@ -589,6 +589,30 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sendResponse({ success: true });
     });
     return true;
+  } else if (message.action === 'getSnoozePresets') {
+    handleGetSnoozePresets(sendResponse);
+    return true;
+  } else if (message.action === 'snoozeTab') {
+    handleSnoozeTab(message, sendResponse);
+    return true;
+  } else if (message.action === 'snoozeSelected') {
+    handleSnoozeSelected(message, sendResponse);
+    return true;
+  } else if (message.action === 'snoozeWindow') {
+    handleSnoozeWindow(message, sendResponse);
+    return true;
+  } else if (message.action === 'snoozeGroup') {
+    handleSnoozeGroup(message, sendResponse);
+    return true;
+  } else if (message.action === 'listSnoozed') {
+    handleListSnoozed(sendResponse);
+    return true;
+  } else if (message.action === 'wakeSnoozed') {
+    handleWakeNow(message, sendResponse);
+    return true;
+  } else if (message.action === 'cancelSnoozed') {
+    handleCancelSnooze(message, sendResponse);
+    return true;
   }
 });
 
@@ -1307,3 +1331,787 @@ async function handleMoveAllToSingleWindow(message, sendResponse) {
     sendResponse({ success: false, error: error.message });
   }
 }
+
+// ============================================================
+// Tab Snoozing — Constants and Pure Helpers
+// ============================================================
+
+const SNOOZE_STORAGE_KEY = 'snoozedItems';
+const SNOOZE_ALARM_PREFIX = 'snooze:';
+
+// Ordered list of the five presets. Times are computed on demand by
+// computePresetWakeTime — this array holds only key + label metadata.
+const SNOOZE_PRESETS = [
+  { key: 'laterToday', label: 'Later Today' },
+  { key: 'tonight', label: 'Tonight' },
+  { key: 'tomorrow', label: 'Tomorrow' },
+  { key: 'weekend', label: 'This Weekend' },
+  { key: 'nextWeek', label: 'Next Week' },
+];
+
+// Next occurrence of weekday `targetDow` (0=Sun..6=Sat) at `hour`:00 local time.
+// - strictlyAfterToday === false: strictly after `now` (used by `weekend`).
+// - strictlyAfterToday === true:  strictly after *today* (used by `nextWeek`).
+function nextWeekdayAt(now, targetDow, hour, strictlyAfterToday) {
+  const base = new Date(now);
+  const candidate = new Date(base.getFullYear(), base.getMonth(), base.getDate(), hour, 0, 0, 0);
+  const dayDiff = (targetDow - base.getDay() + 7) % 7;
+  candidate.setDate(candidate.getDate() + dayDiff);
+  if (strictlyAfterToday) {
+    // "next week" semantics: the target weekday is never today.
+    if (dayDiff === 0) {
+      candidate.setDate(candidate.getDate() + 7);
+    }
+  } else if (candidate.getTime() <= now) {
+    // "weekend" semantics: allow today if the hour is still ahead.
+    candidate.setDate(candidate.getDate() + 7);
+  }
+  return candidate.getTime();
+}
+
+// Returns the wake time (epoch ms, local) for a preset key. Throws on unknown.
+function computePresetWakeTime(preset, now = Date.now()) {
+  const base = new Date(now);
+  switch (preset) {
+    case 'laterToday':
+      return now + 3 * 60 * 60 * 1000;
+    case 'tonight': {
+      const tonight = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 18, 0, 0, 0);
+      if (now >= tonight.getTime()) {
+        return now + 60 * 60 * 1000;
+      }
+      return tonight.getTime();
+    }
+    case 'tomorrow': {
+      const tomorrow = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 9, 0, 0, 0);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      return tomorrow.getTime();
+    }
+    case 'weekend':
+      return nextWeekdayAt(now, 6, 9, false);
+    case 'nextWeek':
+      return nextWeekdayAt(now, 1, 9, true);
+    default:
+      throw new Error('Unknown snooze preset: ' + preset);
+  }
+}
+
+// Safety net against clock skew / popup-open drift: never schedule in the past.
+function clampWakeAt(wakeAt, now = Date.now()) {
+  return Math.max(wakeAt, now + 60000);
+}
+
+// Allowlist per the Edge Cases table. Rejects unparseable / null / '' and
+// this extension's own pages.
+function isSnoozeableUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  let u;
+  try {
+    u = new URL(url);
+  } catch (_e) {
+    return false;
+  }
+  const protocol = u.protocol;
+  if (protocol === 'http:' || protocol === 'https:' || protocol === 'file:') {
+    return true;
+  }
+  if (protocol === 'about:') {
+    return u.pathname === 'blank';
+  }
+  if (protocol === 'chrome-extension:') {
+    // Allow foreign extension pages, but not our own (they cannot be reopened
+    // meaningfully and would resurrect the extension's own UI).
+    let ownId = '';
+    try {
+      ownId = chrome.runtime.getURL('').split('/')[2];
+    } catch (_e) {
+      ownId = '';
+    }
+    return u.host !== ownId;
+  }
+  return false;
+}
+
+// Truncate a tab title to the stored maximum (60 chars).
+function truncateSnoozeTitle(title) {
+  return (title || '').slice(0, 60);
+}
+
+// Primary key generator. Uses crypto.randomUUID() (available in MV3 service
+// workers); falls back to a UUIDv4 shim in environments that lack it.
+function generateSnoozeId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+// The `summary` string shown in the sleeping list (captured at snooze time).
+function buildSnoozeSummary(type, tabs, groupInfo) {
+  const n = tabs.length;
+  switch (type) {
+    case 'tab': {
+      const first = tabs[0] || {};
+      const title = first.title ? first.title : (first.url || '');
+      return truncateSnoozeTitle(title);
+    }
+    case 'tabs':
+      return `${n} selected tabs`;
+    case 'group': {
+      const title = groupInfo && groupInfo.title ? groupInfo.title : '(unnamed)';
+      return `Group "${title}" (${n} tabs)`;
+    }
+    case 'window':
+      return `Window (${n} tabs)`;
+    default:
+      return `${n} tabs`;
+  }
+}
+
+// Assemble a full snooze record (pure — generates id/createdAt/summary and
+// truncates titles). `tabs` may already carry a `groupIndex` (window type).
+function createSnoozeRecord({ type, tabs, group, groups, windowId, wakeAt, preset }) {
+  const normalizedTabs = tabs
+    .map((t) => {
+      const entry = {
+        url: t.url,
+        title: truncateSnoozeTitle(t.title),
+        pinned: !!t.pinned,
+        index: t.index,
+      };
+      if (typeof t.groupIndex === 'number') {
+        entry.groupIndex = t.groupIndex;
+      }
+      return entry;
+    })
+    .sort((a, b) => a.index - b.index);
+
+  const record = {
+    id: generateSnoozeId(),
+    type,
+    summary: buildSnoozeSummary(type, normalizedTabs, group),
+    createdAt: Date.now(),
+    wakeAt,
+    preset,
+    windowId,
+    tabs: normalizedTabs,
+  };
+
+  if (type === 'group' && group) {
+    record.group = { title: group.title || '', color: group.color || 'grey' };
+  }
+  if (type === 'window' && groups && groups.length > 0) {
+    record.groups = groups.map((g) => ({ title: g.title || '', color: g.color || 'grey' }));
+  }
+
+  return record;
+}
+
+// ============================================================
+// Tab Snoozing — Storage and Scheduling
+// ============================================================
+
+// Serializes all read-modify-write cycles on `snoozedItems` within this worker.
+let snoozeLock = Promise.resolve();
+function withSnoozeLock(fn) {
+  const run = snoozeLock.then(() => fn());
+  // Keep the chain alive regardless of whether `fn` resolved or rejected.
+  snoozeLock = run.then(() => {}, () => {});
+  return run;
+}
+
+async function loadSnoozedItems() {
+  try {
+    const result = await chrome.storage.local.get([SNOOZE_STORAGE_KEY]);
+    const items = result && result[SNOOZE_STORAGE_KEY];
+    return Array.isArray(items) ? items : [];
+  } catch (_e) {
+    return [];
+  }
+}
+
+async function saveSnoozedItems(items) {
+  await chrome.storage.local.set({ [SNOOZE_STORAGE_KEY]: items });
+}
+
+function scheduleSnoozeAlarm(record) {
+  return chrome.alarms.create(SNOOZE_ALARM_PREFIX + record.id, { when: record.wakeAt });
+}
+
+// ============================================================
+// Tab Snoozing — Snooze Path
+// ============================================================
+
+// Resolve the effective wakeAt for an incoming snooze message. Presets are
+// clamped to now + 60s; a custom time in the past is rejected outright.
+function clampOrRejectWakeAt(message, now = Date.now()) {
+  const incoming = message.wakeAt;
+  if (message.preset === 'custom') {
+    if (typeof incoming !== 'number' || Number.isNaN(incoming) || incoming < now + 60000) {
+      return { error: 'Wake time is in the past' };
+    }
+    return { value: incoming };
+  }
+  const base = typeof incoming === 'number' && !Number.isNaN(incoming) ? incoming : now;
+  return { value: clampWakeAt(base, now) };
+}
+
+function handleGetSnoozePresets(sendResponse) {
+  const now = Date.now();
+  const presets = SNOOZE_PRESETS.map((p) => ({
+    key: p.key,
+    label: p.label,
+    wakeAt: computePresetWakeTime(p.key, now),
+  }));
+  sendResponse({ success: true, presets });
+}
+
+// Build a Map of groupId -> { title, color } for every group represented in
+// `tabs` (used to capture window-level group structure).
+async function getSnoozeGroupInfoMap(tabs) {
+  const map = new Map();
+  const groupIds = [
+    ...new Set(
+      tabs
+        .map((t) => t.groupId)
+        .filter((id) => id !== undefined && id !== chrome.tabGroups.TAB_GROUP_ID_NONE)
+    ),
+  ];
+  for (const gid of groupIds) {
+    try {
+      const g = await chrome.tabGroups.get(gid);
+      map.set(gid, { title: g.title || '', color: g.color || 'grey' });
+    } catch (_e) {
+      map.set(gid, { title: '', color: 'grey' });
+    }
+  }
+  return map;
+}
+
+// Shared core for all four snooze units. Implements steps 1-8 of the snooze
+// flow. `extras` may carry { windowId, groupInfo, groupInfoMap }.
+async function snoozeTabs(type, tabs, extras, wakeAt, preset) {
+  const source = Array.isArray(tabs) ? tabs : [];
+
+  // 2. Filter snoozeable URLs (non-snoozeable tabs are silently left open).
+  const snoozeable = source.filter((t) => isSnoozeableUrl(t.url));
+  if (snoozeable.length === 0) {
+    // A single-tab snooze of a rejected URL gets a page-specific message; the
+    // multi-tab units report the generic "nothing here" error.
+    const error = type === 'tab' ? "This page can't be snoozed" : 'Nothing here can be snoozed';
+    return { success: false, error };
+  }
+
+  // 1. Order ascending by tab.index.
+  snoozeable.sort((a, b) => a.index - b.index);
+
+  // Capture group structure for `window`; build the record-level groups array
+  // and per-tab groupIndex.
+  let recordGroups;
+  let preparedTabs = snoozeable;
+  if (type === 'window') {
+    const groupInfoMap = (extras && extras.groupInfoMap) || new Map();
+    const groupIdToIndex = new Map();
+    recordGroups = [];
+    for (const t of snoozeable) {
+      const gid = t.groupId;
+      if (gid !== undefined && gid !== chrome.tabGroups.TAB_GROUP_ID_NONE && !groupIdToIndex.has(gid)) {
+        const gi = groupInfoMap.get(gid);
+        groupIdToIndex.set(gid, recordGroups.length);
+        recordGroups.push({
+          title: gi ? gi.title || '' : '',
+          color: gi ? gi.color || 'grey' : 'grey',
+        });
+      }
+    }
+    preparedTabs = snoozeable.map((t) => {
+      const entry = { url: t.url, title: t.title, pinned: t.pinned, index: t.index };
+      const gid = t.groupId;
+      if (gid !== undefined && gid !== chrome.tabGroups.TAB_GROUP_ID_NONE && groupIdToIndex.has(gid)) {
+        entry.groupIndex = groupIdToIndex.get(gid);
+      }
+      return entry;
+    });
+    if (recordGroups.length === 0) recordGroups = undefined;
+  }
+
+  const groupInfo = type === 'group' ? extras && extras.groupInfo : undefined;
+
+  // 3. Build the record.
+  const record = createSnoozeRecord({
+    type,
+    tabs: preparedTabs,
+    group: groupInfo,
+    groups: recordGroups,
+    windowId: extras && extras.windowId,
+    wakeAt,
+    preset,
+  });
+
+  // 4. Persist first (under the lock) — a crash before close can at worst leave
+  // a duplicate, never lose data.
+  await withSnoozeLock(async () => {
+    const items = await loadSnoozedItems();
+    items.push(record);
+    await saveSnoozedItems(items);
+  });
+
+  // 5. Schedule the alarm.
+  await scheduleSnoozeAlarm(record);
+
+  // 6. Last-window guard: keep Chrome alive if we're about to empty the only
+  // normal window.
+  await guardLastWindowBeforeClose(snoozeable);
+
+  // 7. Close the tabs (closing all of a window's tabs closes the window).
+  await chrome.tabs.remove(snoozeable.map((t) => t.id));
+
+  // 8. Done.
+  return { success: true, record };
+}
+
+async function guardLastWindowBeforeClose(tabsToClose) {
+  try {
+    const windows = await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] });
+    if (!Array.isArray(windows) || windows.length !== 1) return;
+    const win = windows[0];
+    const closingIds = new Set(tabsToClose.map((t) => t.id));
+    const remaining = (win.tabs || []).filter((t) => !closingIds.has(t.id));
+    if (remaining.length === 0) {
+      await chrome.tabs.create({ url: 'chrome://newtab/', active: true });
+    }
+  } catch (_e) {
+    // Best effort — never block the snooze on the guard.
+  }
+}
+
+async function handleSnoozeTab(message, sendResponse) {
+  try {
+    const w = clampOrRejectWakeAt(message);
+    if (w.error) {
+      sendResponse({ success: false, error: w.error });
+      return;
+    }
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const result = await snoozeTabs(
+      'tab',
+      tabs,
+      { windowId: tabs[0] && tabs[0].windowId },
+      w.value,
+      message.preset
+    );
+    sendResponse(result);
+  } catch (error) {
+    console.error('[Tab Organizer] Error in snoozeTab:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+async function handleSnoozeSelected(message, sendResponse) {
+  try {
+    const w = clampOrRejectWakeAt(message);
+    if (w.error) {
+      sendResponse({ success: false, error: w.error });
+      return;
+    }
+    const tabs = await chrome.tabs.query({ highlighted: true, currentWindow: true });
+    const result = await snoozeTabs(
+      'tabs',
+      tabs,
+      { windowId: tabs[0] && tabs[0].windowId },
+      w.value,
+      message.preset
+    );
+    sendResponse(result);
+  } catch (error) {
+    console.error('[Tab Organizer] Error in snoozeSelected:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+async function handleSnoozeWindow(message, sendResponse) {
+  try {
+    const w = clampOrRejectWakeAt(message);
+    if (w.error) {
+      sendResponse({ success: false, error: w.error });
+      return;
+    }
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    const groupInfoMap = await getSnoozeGroupInfoMap(tabs);
+    const result = await snoozeTabs(
+      'window',
+      tabs,
+      { windowId: tabs[0] && tabs[0].windowId, groupInfoMap },
+      w.value,
+      message.preset
+    );
+    sendResponse(result);
+  } catch (error) {
+    console.error('[Tab Organizer] Error in snoozeWindow:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+async function handleSnoozeGroup(message, sendResponse) {
+  try {
+    const w = clampOrRejectWakeAt(message);
+    if (w.error) {
+      sendResponse({ success: false, error: w.error });
+      return;
+    }
+    const activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const activeTab = activeTabs[0];
+    const groupId = activeTab && activeTab.groupId;
+    if (groupId === undefined || groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
+      sendResponse({ success: false, error: 'Active tab is not in a group' });
+      return;
+    }
+    const tabs = await chrome.tabs.query({ groupId, currentWindow: true });
+    let groupInfo;
+    try {
+      const g = await chrome.tabGroups.get(groupId);
+      groupInfo = { title: g.title || '', color: g.color || 'grey' };
+    } catch (_e) {
+      groupInfo = { title: '', color: 'grey' };
+    }
+    const result = await snoozeTabs(
+      'group',
+      tabs,
+      { windowId: activeTab.windowId, groupInfo },
+      w.value,
+      message.preset
+    );
+    sendResponse(result);
+  } catch (error) {
+    console.error('[Tab Organizer] Error in snoozeGroup:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// ============================================================
+// Tab Snoozing — Wake Path
+// ============================================================
+
+// notificationId -> { windowId, tabId } for best-effort click focusing. This
+// map is memory-resident and lossy across service-worker respawns (documented).
+const snoozeNotificationTargets = new Map();
+
+// Find the window to restore tab/tabs/group records into: the last-focused
+// normal window, creating one if none exists.
+async function getRestoreTargetWindowId() {
+  try {
+    const win = await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
+    if (win && win.id !== undefined && win.id !== null) {
+      return win.id;
+    }
+  } catch (_e) {
+    // fall through to creating a window
+  }
+  const created = await chrome.windows.create({ focused: false });
+  return created.id;
+}
+
+// Recreate the tabs/window/group in the background. Never throws — per-tab
+// failures are counted. Returns { createdCount, failedCount, windowId, firstTabId }.
+async function restoreSnoozedRecord(record) {
+  let createdCount = 0;
+  let failedCount = 0;
+  let windowId;
+  let firstTabId;
+
+  if (record.type === 'window') {
+    const urls = record.tabs.map((t) => t.url);
+    let win;
+    try {
+      win = await chrome.windows.create({ url: urls, focused: false });
+    } catch (_e) {
+      win = await chrome.windows.create({ focused: false });
+    }
+    windowId = win && win.id;
+    const createdTabs = (win && win.tabs) || [];
+    createdCount = createdTabs.length;
+    failedCount = Math.max(0, record.tabs.length - createdCount);
+    if (createdTabs[0]) firstTabId = createdTabs[0].id;
+
+    // Re-pin tabs whose stored entry was pinned.
+    for (let i = 0; i < record.tabs.length; i++) {
+      if (record.tabs[i].pinned && createdTabs[i]) {
+        try {
+          await chrome.tabs.update(createdTabs[i].id, { pinned: true });
+        } catch (_e) {
+          // best effort
+        }
+      }
+    }
+
+    // Recreate each stored group over the new tabs.
+    if (record.groups && record.groups.length > 0) {
+      for (let gi = 0; gi < record.groups.length; gi++) {
+        const memberTabIds = [];
+        for (let i = 0; i < record.tabs.length; i++) {
+          if (record.tabs[i].groupIndex === gi && createdTabs[i]) {
+            memberTabIds.push(createdTabs[i].id);
+          }
+        }
+        if (memberTabIds.length > 0) {
+          try {
+            const newGroupId = await chrome.tabs.group({
+              tabIds: memberTabIds,
+              createProperties: { windowId },
+            });
+            await chrome.tabGroups.update(newGroupId, {
+              title: record.groups[gi].title || '',
+              color: record.groups[gi].color || 'grey',
+            });
+          } catch (_e) {
+            // best effort
+          }
+        }
+      }
+    }
+
+    return { createdCount, failedCount, windowId, firstTabId };
+  }
+
+  // tab / tabs / group — recreate into the last-focused normal window.
+  windowId = await getRestoreTargetWindowId();
+  const createdTabIds = [];
+  for (const t of record.tabs) {
+    try {
+      const created = await chrome.tabs.create({
+        windowId,
+        url: t.url,
+        pinned: !!t.pinned,
+        active: false,
+        index: -1,
+      });
+      createdCount++;
+      createdTabIds.push(created.id);
+      if (firstTabId === undefined) firstTabId = created.id;
+    } catch (_e) {
+      failedCount++;
+    }
+  }
+
+  if (record.type === 'group' && createdTabIds.length > 0) {
+    try {
+      const newGroupId = await chrome.tabs.group({
+        tabIds: createdTabIds,
+        createProperties: { windowId },
+      });
+      await chrome.tabGroups.update(newGroupId, {
+        title: (record.group && record.group.title) || '',
+        color: (record.group && record.group.color) || 'grey',
+      });
+    } catch (_e) {
+      // best effort
+    }
+  }
+
+  return { createdCount, failedCount, windowId, firstTabId };
+}
+
+// Fire the wake notification and register it in the best-effort click map.
+// `location` (optional) carries { windowId, firstTabId } for click focusing.
+function notifyWake(record, createdCount, failedCount, location = {}) {
+  const n = record.tabs ? record.tabs.length : createdCount;
+  const title = n === 1 ? 'Huddle — tab woke up' : 'Huddle — tabs woke up';
+  let message;
+  switch (record.type) {
+    case 'tab': {
+      const t = (record.tabs && record.tabs[0] && record.tabs[0].title) || '';
+      message = `"${t}" is back`;
+      break;
+    }
+    case 'tabs':
+      message = `${n} tabs are back`;
+      break;
+    case 'group': {
+      const gt = record.group && record.group.title ? record.group.title : '(unnamed)';
+      message = `Group "${gt}" (${n} tabs) is back`;
+      break;
+    }
+    case 'window':
+      message = `Window restored (${n} tabs)`;
+      break;
+    default:
+      message = `${n} tabs are back`;
+  }
+  if (failedCount > 0) {
+    message += ` — ${failedCount} could not be reopened`;
+  }
+
+  const notificationId = 'snooze-wake:' + record.id;
+  try {
+    chrome.notifications.create(notificationId, {
+      type: 'basic',
+      iconUrl: 'icons/icon128.png',
+      title,
+      message,
+    });
+    snoozeNotificationTargets.set(notificationId, {
+      windowId: location.windowId,
+      tabId: location.firstTabId,
+    });
+  } catch (_e) {
+    // notifications are best-effort
+  }
+}
+
+// Atomically pop the record, clear its alarm, restore it, optionally notify.
+// Idempotent: a missing id is a silent no-op (handles duplicate alarm fires).
+async function wakeSnoozedRecord(id, options = {}) {
+  const notify = options.notify === true;
+
+  const record = await withSnoozeLock(async () => {
+    const items = await loadSnoozedItems();
+    const idx = items.findIndex((r) => r.id === id);
+    if (idx === -1) return null;
+    const [popped] = items.splice(idx, 1);
+    await saveSnoozedItems(items);
+    return popped;
+  });
+
+  if (!record) return null;
+
+  try {
+    await chrome.alarms.clear(SNOOZE_ALARM_PREFIX + id);
+  } catch (_e) {
+    // harmless if already fired/cleared
+  }
+
+  const restoreResult = await restoreSnoozedRecord(record);
+
+  if (notify) {
+    notifyWake(record, restoreResult.createdCount, restoreResult.failedCount, {
+      windowId: restoreResult.windowId,
+      firstTabId: restoreResult.firstTabId,
+    });
+  }
+
+  return { record, ...restoreResult };
+}
+
+function handleSnoozeAlarm(alarm) {
+  if (!alarm || typeof alarm.name !== 'string' || !alarm.name.startsWith(SNOOZE_ALARM_PREFIX)) {
+    return;
+  }
+  const id = alarm.name.slice(SNOOZE_ALARM_PREFIX.length);
+  wakeSnoozedRecord(id, { notify: true });
+}
+
+async function handleWakeNow(message, sendResponse) {
+  try {
+    const result = await wakeSnoozedRecord(message.id, { notify: false });
+    if (!result) {
+      sendResponse({ success: false, error: 'Snooze not found' });
+      return;
+    }
+    sendResponse({ success: true });
+  } catch (error) {
+    console.error('[Tab Organizer] Error in wakeSnoozed:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+async function handleCancelSnooze(message, sendResponse) {
+  try {
+    const removed = await withSnoozeLock(async () => {
+      const items = await loadSnoozedItems();
+      const idx = items.findIndex((r) => r.id === message.id);
+      if (idx === -1) return false;
+      items.splice(idx, 1);
+      await saveSnoozedItems(items);
+      return true;
+    });
+    try {
+      await chrome.alarms.clear(SNOOZE_ALARM_PREFIX + message.id);
+    } catch (_e) {
+      // harmless if already cleared
+    }
+    sendResponse({ success: removed });
+  } catch (error) {
+    console.error('[Tab Organizer] Error in cancelSnoozed:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+async function handleListSnoozed(sendResponse) {
+  try {
+    const items = await loadSnoozedItems();
+    items.sort((a, b) => a.wakeAt - b.wakeAt);
+    sendResponse({ success: true, items });
+  } catch (error) {
+    console.error('[Tab Organizer] Error in listSnoozed:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+async function handleWakeNotificationClicked(notificationId) {
+  const target = snoozeNotificationTargets.get(notificationId);
+  try {
+    chrome.notifications.clear(notificationId);
+  } catch (_e) {
+    // best effort
+  }
+  if (!target) return; // worker was respawned; click is a silent no-op
+  snoozeNotificationTargets.delete(notificationId);
+  try {
+    if (target.windowId !== undefined && target.windowId !== null) {
+      await chrome.windows.update(target.windowId, { focused: true });
+    }
+    if (target.tabId !== undefined && target.tabId !== null) {
+      await chrome.tabs.update(target.tabId, { active: true });
+    }
+  } catch (_e) {
+    // the window/tab may already be gone
+  }
+}
+
+// ============================================================
+// Tab Snoozing — Reconciler (startup / install)
+// ============================================================
+
+// Belt-and-braces on browser startup / extension install/update: wake every
+// past-due record and re-arm alarms for future records that lost their timer.
+async function reconcileSnoozeAlarms() {
+  try {
+    const now = Date.now();
+    const items = await loadSnoozedItems();
+
+    const pastDue = items.filter((r) => r.wakeAt <= now);
+    for (const r of pastDue) {
+      await wakeSnoozedRecord(r.id, { notify: true });
+    }
+
+    const remaining = await loadSnoozedItems();
+    let existingAlarms = [];
+    try {
+      existingAlarms = (await chrome.alarms.getAll()) || [];
+    } catch (_e) {
+      existingAlarms = [];
+    }
+    const existingNames = new Set(existingAlarms.map((a) => a.name));
+
+    for (const r of remaining) {
+      if (r.wakeAt > now && !existingNames.has(SNOOZE_ALARM_PREFIX + r.id)) {
+        await scheduleSnoozeAlarm(r);
+      }
+    }
+  } catch (error) {
+    console.error('[Tab Organizer] Error reconciling snooze alarms:', error);
+  }
+}
+
+// ============================================================
+// Tab Snoozing — Top-level listener registrations (MV3: sync at top level)
+// ============================================================
+
+chrome.alarms.onAlarm.addListener(handleSnoozeAlarm);
+chrome.runtime.onStartup.addListener(reconcileSnoozeAlarms);
+chrome.runtime.onInstalled.addListener(reconcileSnoozeAlarms);
+chrome.notifications.onClicked.addListener(handleWakeNotificationClicked);

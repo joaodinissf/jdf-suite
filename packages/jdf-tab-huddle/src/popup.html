@@ -160,6 +160,77 @@
     .status-label {
       font-weight: 600;
     }
+
+    /* Tab Snoozing */
+    #snoozeSection .button-row button.selected {
+      background: rgba(255, 255, 255, 0.42);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    button:disabled:hover {
+      background: rgba(255, 255, 255, 0.2);
+      transform: none;
+      box-shadow: none;
+    }
+
+    #snoozeCustomTime {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.15);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 12px;
+      font-family: inherit;
+      min-width: 0;
+    }
+
+    #snoozeCustomTime::-webkit-calendar-picker-indicator {
+      filter: invert(1);
+      cursor: pointer;
+    }
+
+    #snoozedList {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+
+    .snoozed-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 0;
+    }
+
+    .snoozed-summary {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 12px;
+    }
+
+    .snoozed-time {
+      flex: 0 0 auto;
+      font-size: 10px;
+      opacity: 0.7;
+      white-space: nowrap;
+    }
+
+    .snoozed-item button {
+      flex: 0 0 auto;
+      padding: 4px 6px;
+      font-size: 10px;
+    }
   </style>
 </head>
 
@@ -258,6 +329,38 @@
       </div>
       <div id="copyFeedback-individual" class="copy-feedback">Copied!</div>
     </div>
+  </div>
+
+  <div class="section" id="snoozeSection">
+    <h3 class="section-header">Snooze</h3>
+    <div class="button-row">
+      <button id="snoozeTab" title="Snooze the active tab">Tab</button>
+      <button id="snoozeSelected" title="Snooze all highlighted tabs">Selected</button>
+      <button id="snoozeWindow" title="Snooze every tab in this window">Window</button>
+      <button id="snoozeGroup" title="Snooze the active tab's group">Group</button>
+    </div>
+    <div id="snoozePickerPanel" hidden>
+      <div class="button-row">
+        <button id="snoozePreset-laterToday"></button>
+        <button id="snoozePreset-tonight"></button>
+      </div>
+      <div class="button-row">
+        <button id="snoozePreset-tomorrow"></button>
+        <button id="snoozePreset-weekend"></button>
+        <button id="snoozePreset-nextWeek"></button>
+      </div>
+      <div class="button-row">
+        <input type="datetime-local" id="snoozeCustomTime">
+        <button id="snoozeCustomConfirm" style="flex: 0 0 72px;">Snooze</button>
+        <button id="snoozePickerCancel" style="flex: 0 0 60px;">Cancel</button>
+      </div>
+      <div id="snoozeFeedback" class="copy-feedback"></div>
+    </div>
+  </div>
+
+  <div class="section" id="sleepingSection" hidden>
+    <h3 class="section-header">Sleeping (<span id="sleepingCount">0</span>)</h3>
+    <ul id="snoozedList"></ul>
   </div>
 
   <div id="statusBar" class="status-bar">
