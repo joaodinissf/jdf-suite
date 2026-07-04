@@ -44,7 +44,7 @@ test('20: One window per domain (>=2 tabs)', async ({ sw, context, extensionId }
   await sleep(300);
 
   const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'extractAllDomains-groups');
+  await clickPopupButton(popup, 'extractAllDomains');
   await sleep(2000);
 
   // 3 domains -> 3 windows (no confirmation since <=5)
@@ -141,7 +141,7 @@ test('22: Confirmation >5 windows - confirm', async ({ sw, context, extensionId 
   // Trigger extraction and wait for confirmation dialog
   const [dialogPage] = await Promise.all([
     context.waitForEvent('page'),
-    clickPopupButton(popup, 'extractAllDomains-groups'),
+    clickPopupButton(popup, 'extractAllDomains'),
   ]);
 
   await dialogPage.waitForSelector('#confirmButton');
@@ -229,7 +229,7 @@ test('24: No confirmation when <=5 windows', async ({ sw, context, extensionId }
   let dialogOpened = false;
   context.on('page', () => { dialogOpened = true; });
 
-  await clickPopupButton(popup, 'extractAllDomains-groups');
+  await clickPopupButton(popup, 'extractAllDomains');
   await sleep(2000);
 
   // No confirmation dialog should have appeared
@@ -266,7 +266,7 @@ test('25: Pinned excluded from extraction', async ({ sw, context, extensionId })
   await sleep(300);
 
   const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'extractAllDomains-groups');
+  await clickPopupButton(popup, 'extractAllDomains');
   await sleep(2000);
 
   // With 1 unpinned tab per domain, they all become single-tab domains
@@ -303,7 +303,7 @@ test('26: All tabs same domain', async ({ sw, context, extensionId }) => {
   await sleep(300);
 
   const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'extractAllDomains-groups');
+  await clickPopupButton(popup, 'extractAllDomains');
   await sleep(2000);
 
   // All example.com => 1 domain window
@@ -345,7 +345,7 @@ test('27: Groups preserved across domain windows', async ({ sw, context, extensi
   await sleep(300);
 
   const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'extractAllDomains-groups');
+  await clickPopupButton(popup, 'extractAllDomains');
   await sleep(2000);
 
   const allWindows = await getAllWindows(sw);

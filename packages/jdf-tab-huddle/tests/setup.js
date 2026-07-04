@@ -153,7 +153,8 @@ const popupWrapper = `
 
   // Expose functions to global scope
   if (typeof lexHost !== 'undefined') global.lexHost = lexHost;
-  if (typeof getCurrentMode !== 'undefined') global.getCurrentMode = getCurrentMode;
+  if (typeof getRespectGroups !== 'undefined') global.getRespectGroups = getRespectGroups;
+  if (typeof setRespectGroups !== 'undefined') global.setRespectGroups = setRespectGroups;
   if (typeof saveUserPreference !== 'undefined') global.saveUserPreference = saveUserPreference;
   if (typeof loadUserPreferences !== 'undefined') global.loadUserPreferences = loadUserPreferences;
   if (typeof sortAllWindows !== 'undefined') global.sortAllWindows = sortAllWindows;
@@ -230,6 +231,23 @@ const optionsWrapper = `
 })();
 `;
 eval(optionsWrapper);
+
+// Load and execute the nap room script, exposing its pure helpers
+const napRoomJs = readFileSync(resolve(__dirname, '../src/nap-room.js'), 'utf8');
+const napRoomWrapper = `
+(function() {
+  ${napRoomJs}
+
+  if (typeof napFormatClock !== 'undefined') global.napFormatClock = napFormatClock;
+  if (typeof napDayInfo !== 'undefined') global.napDayInfo = napDayInfo;
+  if (typeof napNextWakeSummary !== 'undefined') global.napNextWakeSummary = napNextWakeSummary;
+  if (typeof napRowTitle !== 'undefined') global.napRowTitle = napRowTitle;
+  if (typeof napRowUrl !== 'undefined') global.napRowUrl = napRowUrl;
+  if (typeof napGroupBadge !== 'undefined') global.napGroupBadge = napGroupBadge;
+  if (typeof napGroupByDay !== 'undefined') global.napGroupByDay = napGroupByDay;
+})();
+`;
+eval(napRoomWrapper);
 
 // Snapshot base listeners registered during eval, reset to this state before each test
 const baseListeners = [...messageListeners];

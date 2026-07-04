@@ -32,7 +32,7 @@ test('1: Ungroups all grouped tabs in the current window', async ({ sw, context,
   expect(groupedBefore.length).toBeGreaterThanOrEqual(4);
 
   const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'flattenWindow-groups');
+  await clickPopupButton(popup, 'flattenWindow');
   await sleep(1000);
   await popup.close();
 
@@ -53,7 +53,7 @@ test('2: No-op when there are no groups', async ({ sw, context, extensionId }) =
   const before = await getWindowTabs(sw, windowId);
 
   const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'flattenWindow-groups');
+  await clickPopupButton(popup, 'flattenWindow');
   await sleep(1000);
   await popup.close();
 
@@ -74,7 +74,7 @@ test('3: Preserves ungrouped and pinned tabs', async ({ sw, context, extensionId
   const before = await getWindowTabs(sw, windowId);
 
   const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'flattenWindow-groups');
+  await clickPopupButton(popup, 'flattenWindow');
   await sleep(1000);
   await popup.close();
 

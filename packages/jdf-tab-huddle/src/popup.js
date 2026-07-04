@@ -1,11 +1,11 @@
 document.addEventListener('DOMContentLoaded', function () {
-  // Initialize tab switching
-  initTabSwitching();
-  
-  // Load saved preferences
+  // Initialize the Groups/Flat toggle
+  initModeToggle();
+
+  // Load saved preferences (migrates the legacy selectedMode preference)
   loadUserPreferences();
-  
-  // Setup event listeners for both modes
+
+  // Setup event listeners for the action buttons
   setupEventListeners();
 
   // Update UI based on number of windows
@@ -32,99 +32,92 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 });
 
-// Tab switching functionality
-function initTabSwitching() {
-  const tabButtons = document.querySelectorAll('.tab-button');
-  const tabContents = document.querySelectorAll('.tab-content');
-  
-  tabButtons.forEach(button => {
-    button.addEventListener('click', () => {
-      const targetTab = button.dataset.tab;
-      
-      // Update button states
-      tabButtons.forEach(btn => btn.classList.remove('active'));
-      button.classList.add('active');
-      
-      // Update content visibility
-      tabContents.forEach(content => {
-        content.classList.remove('active');
-        if (content.id === targetTab + '-content') {
-          content.classList.add('active');
-        }
-      });
-      
-      // Save preference
-      saveUserPreference('selectedMode', targetTab);
-    });
-  });
+// ============================================================
+// Groups / Flat toggle
+// ============================================================
+
+// In-memory mirror of the toggle's state; kept in sync with the DOM and
+// with chrome.storage.local under the 'respectGroups' key.
+let currentRespectGroups = true;
+
+// Wire the two segmented-toggle buttons.
+function initModeToggle() {
+  const groupsBtn = document.getElementById('modeGroups');
+  const flatBtn = document.getElementById('modeFlat');
+  if (groupsBtn) groupsBtn.addEventListener('click', () => setRespectGroups(true));
+  if (flatBtn) flatBtn.addEventListener('click', () => setRespectGroups(false));
 }
 
-// Load user preferences
+// Apply a respectGroups value to the toggle UI and (optionally) persist it.
+function setRespectGroups(value, options = {}) {
+  const persist = options.persist !== false;
+  currentRespectGroups = value;
+
+  const groupsBtn = document.getElementById('modeGroups');
+  const flatBtn = document.getElementById('modeFlat');
+  if (groupsBtn) groupsBtn.setAttribute('aria-pressed', String(value));
+  if (flatBtn) flatBtn.setAttribute('aria-pressed', String(!value));
+
+  const subtitle = document.getElementById('modeSubtitle');
+  if (subtitle) subtitle.textContent = value ? 'respecting groups' : 'flat mode';
+
+  if (persist) saveUserPreference('respectGroups', value);
+}
+
+// Current toggle state, read by every action button's click handler.
+function getRespectGroups() {
+  return currentRespectGroups;
+}
+
+// Load user preferences. Migrates the legacy `selectedMode` ('groups' |
+// 'individual') string preference to the new boolean `respectGroups` key
+// the first time it runs, then persists under the new key going forward.
 function loadUserPreferences() {
-  chrome.storage.local.get(['selectedMode'], (result) => {
-    const savedMode = result.selectedMode || 'groups'; // Default to groups mode
-    
-    // Update UI to show saved mode
-    const tabButtons = document.querySelectorAll('.tab-button');
-    const tabContents = document.querySelectorAll('.tab-content');
-    
-    tabButtons.forEach(btn => {
-      btn.classList.remove('active');
-      if (btn.dataset.tab === savedMode) {
-        btn.classList.add('active');
-      }
-    });
-    
-    tabContents.forEach(content => {
-      content.classList.remove('active');
-      if (content.id === savedMode + '-content') {
-        content.classList.add('active');
-      }
-    });
+  chrome.storage.local.get(['respectGroups', 'selectedMode'], (result) => {
+    let value;
+    let migrating;
+    if (typeof result.respectGroups === 'boolean') {
+      value = result.respectGroups;
+      migrating = false;
+    } else {
+      // No new-style preference yet — derive it from the old mode string
+      // (defaulting to groups, same default the old UI used).
+      value = result.selectedMode !== 'individual';
+      migrating = true;
+    }
+    setRespectGroups(value, { persist: migrating });
   });
 }
 
-// Save user preference
+// Save preference to chrome storage
 function saveUserPreference(key, value) {
   chrome.storage.local.set({ [key]: value });
 }
 
-// Get current mode
-function getCurrentMode() {
-  const activeTab = document.querySelector('.tab-button.active');
-  return activeTab ? activeTab.dataset.tab : 'groups';
-}
-
-// Setup event listeners for both modes
+// Setup event listeners for the action buttons
 function setupEventListeners() {
-  // Groups mode listeners
-  document.getElementById('sortAllWindows-groups').addEventListener('click', () => sortAllWindows(true));
-  document.getElementById('sortCurrentWindow-groups').addEventListener('click', () => sortCurrentWindow(true));
-  document.getElementById('removeDuplicatesWindow-groups').addEventListener('click', () => removeDuplicatesWindow(true));
-  document.getElementById('removeDuplicatesAllWindows-groups').addEventListener('click', () => removeDuplicatesAllWindows(true));
-  document.getElementById('removeDuplicatesGlobally-groups').addEventListener('click', () => removeDuplicatesGlobally(true));
-  document.getElementById('extractDomain-groups').addEventListener('click', () => extractDomain(true));
-  document.getElementById('extractAllDomains-groups').addEventListener('click', () => extractAllDomains(true));
-  document.getElementById('moveAllToSingleWindow-groups').addEventListener('click', () => moveAllToSingleWindow(true));
-  document.getElementById('copyAllTabs-groups').addEventListener('click', () => copyAllTabs(true));
-  document.getElementById('flattenWindow-groups').addEventListener('click', () => flattenWindow());
+  document.getElementById('sortAllWindows').addEventListener('click', () => sortAllWindows(getRespectGroups()));
+  document.getElementById('sortCurrentWindow').addEventListener('click', () => sortCurrentWindow(getRespectGroups()));
+  document.getElementById('removeDuplicatesWindow').addEventListener('click', () => removeDuplicatesWindow(getRespectGroups()));
+  document.getElementById('removeDuplicatesAllWindows').addEventListener('click', () => removeDuplicatesAllWindows(getRespectGroups()));
+  document.getElementById('removeDuplicatesGlobally').addEventListener('click', () => removeDuplicatesGlobally(getRespectGroups()));
+  document.getElementById('extractDomain').addEventListener('click', () => extractDomain(getRespectGroups()));
+  document.getElementById('extractAllDomains').addEventListener('click', () => extractAllDomains(getRespectGroups()));
+  document.getElementById('moveAllToSingleWindow').addEventListener('click', () => moveAllToSingleWindow(getRespectGroups()));
+  document.getElementById('copyAllTabs').addEventListener('click', () => copyAllTabs(getRespectGroups()));
+  document.getElementById('flattenWindow').addEventListener('click', () => flattenWindow());
 
-  // Individual mode listeners
-  document.getElementById('sortAllWindows-individual').addEventListener('click', () => sortAllWindows(false));
-  document.getElementById('sortCurrentWindow-individual').addEventListener('click', () => sortCurrentWindow(false));
-  document.getElementById('removeDuplicatesWindow-individual').addEventListener('click', () => removeDuplicatesWindow(false));
-  document.getElementById('removeDuplicatesAllWindows-individual').addEventListener('click', () => removeDuplicatesAllWindows(false));
-  document.getElementById('removeDuplicatesGlobally-individual').addEventListener('click', () => removeDuplicatesGlobally(false));
-  document.getElementById('extractDomain-individual').addEventListener('click', () => extractDomain(false));
-  document.getElementById('extractAllDomains-individual').addEventListener('click', () => extractAllDomains(false));
-  document.getElementById('moveAllToSingleWindow-individual').addEventListener('click', () => moveAllToSingleWindow(false));
-  document.getElementById('copyAllTabs-individual').addEventListener('click', () => copyAllTabs(false));
+  // AI listeners
+  document.getElementById('aiOrganize').addEventListener('click', () => aiOrganize(getRespectGroups()));
+  document.getElementById('aiSettings').addEventListener('click', () => openAiSettings());
 
-  // AI listeners (both modes)
-  document.getElementById('aiOrganize-groups').addEventListener('click', () => aiOrganize(true));
-  document.getElementById('aiOrganize-individual').addEventListener('click', () => aiOrganize(false));
-  document.getElementById('aiSettings-groups').addEventListener('click', () => openAiSettings());
-  document.getElementById('aiSettings-individual').addEventListener('click', () => openAiSettings());
+  // Expand the Sleeping preview into its own full-page tab (the nap room).
+  const expandBtn = document.getElementById('expandSleeping');
+  if (expandBtn) {
+    expandBtn.addEventListener('click', () => {
+      chrome.tabs.create({ url: chrome.runtime.getURL('nap-room.html') });
+    });
+  }
 }
 
 // Simple logging helper
@@ -193,7 +186,8 @@ function extractAllDomains(respectGroups = true) {
   sendAction('extractAllDomains', { respectGroups });
 }
 
-// Ungroup all tabs in the current window
+// Ungroup all tabs in the current window (background message name kept as
+// "flattenWindow" — only the visible label changed to "Ungroup").
 function flattenWindow() {
   sendAction('flattenWindow');
 }
@@ -215,7 +209,6 @@ function moveAllToSingleWindow(respectGroups = true) {
 
 // Copy all tab URLs to clipboard
 function copyAllTabs(respectGroups = true) {
-  const mode = respectGroups ? 'groups' : 'individual';
   chrome.runtime.sendMessage({ action: 'copyAllTabs', respectGroups }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error copying tabs:', chrome.runtime.lastError.message);
@@ -223,7 +216,7 @@ function copyAllTabs(respectGroups = true) {
     }
     if (response && response.success && response.text) {
       navigator.clipboard.writeText(response.text).then(() => {
-        const feedback = document.getElementById('copyFeedback-' + mode);
+        const feedback = document.getElementById('copyFeedback');
         if (feedback) {
           feedback.classList.add('visible');
           setTimeout(() => feedback.classList.remove('visible'), 1500);
@@ -261,10 +254,8 @@ function updateAiButtonState() {
     if (chrome.runtime.lastError || !response) return;
 
     const hasKey = response.config && response.config.key;
-    const cogs = document.querySelectorAll('.ai-cog-btn');
-    cogs.forEach(cog => {
-      cog.style.display = hasKey ? 'block' : 'none';
-    });
+    const cog = document.getElementById('aiSettings');
+    if (cog) cog.style.display = hasKey ? 'flex' : 'none';
   });
 }
 
@@ -560,7 +551,7 @@ function updateStatusBar() {
           thisParts.push(thisWindowGroups + (thisWindowGroups === 1 ? ' group' : ' groups'));
         }
         const thisEl = document.getElementById('statusThisWindow');
-        if (thisEl) thisEl.textContent = thisParts.join(' \u00b7 ');
+        if (thisEl) thisEl.textContent = thisParts.join(' · ');
 
         // All windows
         const totalTabs = windows.reduce((sum, w) => sum + w.tabs.length, 0);
@@ -574,7 +565,7 @@ function updateStatusBar() {
           allParts.push(totalGroups + (totalGroups === 1 ? ' group' : ' groups'));
         }
         const allEl = document.getElementById('statusAllWindows');
-        if (allEl) allEl.textContent = allParts.join(' \u00b7 ');
+        if (allEl) allEl.textContent = allParts.join(' · ');
       });
     });
   });
