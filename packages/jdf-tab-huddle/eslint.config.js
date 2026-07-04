@@ -144,6 +144,13 @@ export default [
         renderSnoozedList: 'readonly',
         updateSnoozeButtonState: 'readonly',
 
+        // Keyboard shortcut functions (loaded by setup.js)
+        buildHotkeyMap: 'readonly',
+        refreshHotkeys: 'readonly',
+        handleHotkeyKeydown: 'readonly',
+        isTextInputTarget: 'readonly',
+        isHotkeyVisible: 'readonly',
+
         // Nap room functions (loaded by setup.js)
         napFormatClock: 'readonly',
         napDayInfo: 'readonly',
