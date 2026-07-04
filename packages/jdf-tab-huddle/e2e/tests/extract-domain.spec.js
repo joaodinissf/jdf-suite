@@ -10,10 +10,17 @@ import {
   getAllWindows,
   getTabGroups,
   getCurrentWindowId,
+  getTabWindowId,
   sleep,
 } from '../helpers/tabs.js';
 import { openPopup } from '../helpers/popup.js';
-import { waitForWindowCount, assertTabsSorted } from '../helpers/assertions.js';
+import {
+  waitForWindowCount,
+  waitForTabCount,
+  waitForSorted,
+  waitForGroupTitle,
+  assertTabsSorted,
+} from '../helpers/assertions.js';
 import { URLS } from '../helpers/constants.js';
 
 test.beforeEach(async ({ sw, context }) => {
@@ -50,10 +57,10 @@ test('13: Extracts matching domain tabs to new window', async ({ sw, context }) 
       handleExtractDomain(params, resolve);
     });
   }, { tabId: targetTabId, url: targetUrl, respectGroups: true });
-  await sleep(1000);
 
-  // Expect 2 windows: original (github tabs) and new (example.com tabs)
-  await waitForWindowCount(sw, 2);
+  // Expect 2 windows: original (github tabs) and new (example.com tabs).
+  // Poll for that end state rather than a fixed sleep.
+  await waitForWindowCount(sw, 2, 10000);
 
   const allWindows = await getAllWindows(sw);
   // Find the window with the target tab
@@ -69,7 +76,9 @@ test('13: Extracts matching domain tabs to new window', async ({ sw, context }) 
     expect(tab.url).toContain('example.com');
   }
 
-  // New window should be sorted
+  // New window should be sorted. The handler responds before its internal
+  // setTimeout(200) sort runs, so poll for the sort to land first.
+  await waitForSorted(sw, newWindow.id, 10000);
   await assertTabsSorted(sw, newWindow.id);
 });
 
@@ -107,9 +116,10 @@ test('14: Pinned tabs not extracted', async ({ sw, context }) => {
     });
   }, { tabId: targetTabId, url: targetUrl, respectGroups: true });
 
-  await waitForWindowCount(sw, 2);
-  // Wait for the internal setTimeout(200) sort to complete
-  await sleep(2000);
+  await waitForWindowCount(sw, 2, 10000);
+  // Poll for the internal setTimeout(200) sort to land rather than a fixed
+  // sleep that can race it under load.
+  await waitForSorted(sw, await getTabWindowId(sw, targetTabId), 10000);
 
   // Re-query windows to get updated tab positions
   const allWindows = await getAllWindows(sw);
@@ -153,9 +163,9 @@ test('15: No other tabs on same domain', async ({ sw, context }) => {
       handleExtractDomain(params, resolve);
     });
   }, { tabId: targetTabId, url: targetUrl, respectGroups: true });
-  await sleep(1000);
 
-  await waitForWindowCount(sw, 2);
+  // Poll for the real end state rather than a fixed sleep.
+  await waitForWindowCount(sw, 2, 10000);
 
   const allWindows = await getAllWindows(sw);
   const newWindow = allWindows.find(w => w.tabs.some(t => t.id === targetTabId));
@@ -196,7 +206,12 @@ test('16: Extracts from multiple source windows', async ({ sw, context }) => {
       handleExtractDomain(params, resolve);
     });
   }, { tabId: targetTabId, url: targetUrl, respectGroups: true });
-  await sleep(1000);
+
+  // Poll for the real end state (all 3 example.com tabs in the new window,
+  // then the handler's delayed sort) rather than a fixed sleep.
+  const newWindowId = await getTabWindowId(sw, targetTabId);
+  await waitForTabCount(sw, newWindowId, 3, 10000);
+  await waitForSorted(sw, newWindowId, 10000);
 
   const allWindows = await getAllWindows(sw);
   const newWindow = allWindows.find(w => w.tabs.some(t => t.id === targetTabId));
@@ -239,7 +254,9 @@ test('17: Groups preserved during extraction', async ({ sw, context }) => {
       handleExtractDomain(params, resolve);
     });
   }, { tabId: targetTabId, url: targetUrl, respectGroups: true });
-  await sleep(1500);
+
+  // Poll for the recreated group in the new window rather than a fixed sleep.
+  await waitForGroupTitle(sw, await getTabWindowId(sw, targetTabId), 'ExGroup', 10000);
 
   const allWindows = await getAllWindows(sw);
   const newWindow = allWindows.find(w => w.tabs.some(t => t.id === targetTabId));
@@ -285,8 +302,10 @@ test('18: Individual mode drops groups', async ({ sw, context }) => {
     });
   }, { tabId: targetTabId, url: targetUrl, respectGroups: false });
 
-  await waitForWindowCount(sw, 2);
-  await sleep(1500);
+  // Poll for the real end state (all 3 example.com tabs in the new window)
+  // rather than a fixed sleep.
+  await waitForWindowCount(sw, 2, 10000);
+  await waitForTabCount(sw, await getTabWindowId(sw, targetTabId), 3, 10000);
 
   const allWindows = await getAllWindows(sw);
   const newWindow = allWindows.find(w => w.tabs.some(t => t.id === targetTabId));
@@ -332,9 +351,9 @@ test('19: Extension URL domain extraction', async ({ sw, context, extensionId })
       handleExtractDomain(params, resolve);
     });
   }, { tabId: targetTabId, url: targetUrl, respectGroups: true });
-  await sleep(1000);
 
-  await waitForWindowCount(sw, 2);
+  // Poll for the real end state rather than a fixed sleep.
+  await waitForWindowCount(sw, 2, 10000);
 
   const allWindows = await getAllWindows(sw);
   const newWindow = allWindows.find(w => w.tabs.some(t => t.id === targetTabId));

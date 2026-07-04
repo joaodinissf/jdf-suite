@@ -16,6 +16,13 @@ import {
   sleep,
 } from '../helpers/tabs.js';
 import { openPopup, openSnoozePicker, clickPopupButton } from '../helpers/popup.js';
+import {
+  waitForCondition,
+  waitForWindowCount,
+  waitForGroupTitle,
+  waitForSnoozedCount,
+  waitForUrlCount,
+} from '../helpers/assertions.js';
 import { URLS } from '../helpers/constants.js';
 
 test.beforeEach(async ({ sw, context }) => {
@@ -66,7 +73,15 @@ test('1: Snooze current tab via preset closes it and records the snooze', async 
   await openSnoozePicker(popup, 'tab');
   await activateTab(sw, target.id);
   await clickPopupButton(popup, 'snoozePreset-tomorrow');
-  await sleep(800);
+
+  // The preset click is fire-and-forget, so poll for the real end state
+  // instead of a fixed sleep: closing the tab is the snooze's last step, and
+  // the popup re-renders its list off the storage write.
+  await waitForCondition(async () => {
+    const tabs = await getWindowTabs(sw, windowId);
+    if (tabs.some((t) => t.url === URLS.EXAMPLE_A)) return false;
+    return (await popup.locator('.snoozed-item').count()) === 1;
+  });
 
   // The tab was closed.
   const after = await getWindowTabs(sw, windowId);
@@ -92,12 +107,18 @@ test('2: Wake now reopens the tab in the background and clears the record', asyn
   const [tabId] = await createTabs(sw, [URLS.EXAMPLE_A, URLS.GITHUB_A]);
   await sleep(300);
   const record = await snoozeActiveTabViaSw(sw, tabId);
-  await sleep(500);
+  await waitForSnoozedCount(sw, 1);
   expect(record).toBeTruthy();
 
   const popup = await openPopup(context, extensionId);
   await popup.waitForSelector(`.snoozed-item[data-id="${record.id}"]`);
   await popup.click(`.snoozed-item[data-id="${record.id}"] .snoozed-wake`);
+
+  // The Wake click is fire-and-forget: poll for the reopened tab (the wake's
+  // last step) instead of a fixed sleep.
+  await waitForCondition(async () => (await findTabByUrl(sw, URLS.EXAMPLE_A)) !== null);
+  // Fixed sleep stays: the tab must NOT become active afterwards, which
+  // polling can't prove.
   await sleep(800);
 
   // The tab reopened with the original URL, not focused.
@@ -116,11 +137,19 @@ test('3: Cancel removes the record and clears the alarm without reopening', asyn
   const [tabId] = await createTabs(sw, [URLS.EXAMPLE_A, URLS.GITHUB_A]);
   await sleep(300);
   const record = await snoozeActiveTabViaSw(sw, tabId);
-  await sleep(500);
+  await waitForSnoozedCount(sw, 1);
 
   const popup = await openPopup(context, extensionId);
   await popup.waitForSelector(`.snoozed-item[data-id="${record.id}"]`);
   await popup.click(`.snoozed-item[data-id="${record.id}"] .snoozed-cancel`);
+
+  // The Cancel click is fire-and-forget: poll for the record and its alarm
+  // (cleared last) to be gone instead of a fixed sleep.
+  await waitForSnoozedCount(sw, 0);
+  await waitForCondition(async () =>
+    !(await getAllAlarms(sw)).some((a) => a.name === 'snooze:' + record.id)
+  );
+  // Fixed sleep stays: the tab must NOT be reopened, which polling can't prove.
   await sleep(600);
 
   // Storage empty.
@@ -157,7 +186,13 @@ test('4: Snooze selected tabs stores one record with all entries in index order'
       }),
     Date.now() + 3600000
   );
-  await sleep(600);
+
+  // Poll for the real end state (all three tabs closed) rather than a fixed
+  // sleep.
+  await waitForCondition(async () => {
+    const tabs = await getWindowTabs(sw, windowId);
+    return !tabs.some((t) => [URLS.EXAMPLE_A, URLS.GITHUB_A, URLS.TEST_A].includes(t.url));
+  });
 
   expect(record.type).toBe('tabs');
   expect(record.tabs.length).toBe(3);
@@ -185,7 +220,7 @@ test('5: Snooze group and wake recreates the group with title, color and members
       }),
     Date.now() + 3600000
   );
-  await sleep(500);
+  await waitForSnoozedCount(sw, 1);
   expect(record.type).toBe('group');
   expect(record.group.title).toBe('Research');
   expect(record.group.color).toBe('blue');
@@ -194,7 +229,12 @@ test('5: Snooze group and wake recreates the group with title, color and members
   await sw.evaluate(async (id) => {
     await wakeSnoozedRecord(id, { notify: true });
   }, record.id);
-  await sleep(800);
+
+  // Poll for the recreated group and its members' URLs rather than a fixed
+  // sleep (freshly created tabs briefly report an empty URL).
+  await waitForGroupTitle(sw, null, 'Research');
+  await waitForUrlCount(sw, null, URLS.MOZILLA_A, 1);
+  await waitForUrlCount(sw, null, URLS.MOZILLA_B, 1);
 
   // A group named "Research" with color blue was recreated.
   const groups = await getTabGroups(sw);
@@ -237,7 +277,10 @@ test('7: Snooze window and wake recreates a background window with pinned tab pr
       }),
     Date.now() + 3600000
   );
-  await sleep(700);
+
+  // Poll for the snoozed window to close (only the reset window remains)
+  // rather than a fixed sleep.
+  await waitForWindowCount(sw, 1);
   expect(record.type).toBe('window');
 
   // The original window is gone.
@@ -248,7 +291,13 @@ test('7: Snooze window and wake recreates a background window with pinned tab pr
   await sw.evaluate(async (id) => {
     await wakeSnoozedRecord(id, { notify: true });
   }, record.id);
-  await sleep(900);
+
+  // Poll for the restored window and its tabs' URLs rather than a fixed
+  // sleep (freshly created tabs briefly report an empty URL).
+  await waitForWindowCount(sw, 2, 10000);
+  for (const url of [URLS.EXAMPLE_A, URLS.GITHUB_A, URLS.TEST_A]) {
+    await waitForUrlCount(sw, null, url, 1, 10000);
+  }
 
   windows = await getAllWindows(sw);
   const restored = windows.find((w) => w.tabs.some((t) => t.url === URLS.EXAMPLE_A));
@@ -282,6 +331,8 @@ test('8: Custom time in the past is rejected in the popup', async ({ sw, context
 
   await popup.fill('#snoozeCustomTime', '2020-01-01T00:00');
   await popup.click('#snoozeCustomConfirm');
+  // Fixed sleep stays: nothing should be snoozed or closed, so polling would
+  // pass vacuously.
   await sleep(400);
 
   // Error feedback is shown.
@@ -301,6 +352,8 @@ test('9: Alarm-driven wake reopens without stealing focus from the active tab', 
   const [tabId] = await createTabs(sw, [URLS.EXAMPLE_A, URLS.GITHUB_A]);
   await sleep(300);
   const record = await snoozeActiveTabViaSw(sw, tabId);
+  // Fixed sleep stays: the active-tab baseline must be settled before the
+  // "focus was not stolen" check below.
   await sleep(500);
 
   // Some other tab is now active.
@@ -313,6 +366,12 @@ test('9: Alarm-driven wake reopens without stealing focus from the active tab', 
   await sw.evaluate((id) => {
     handleSnoozeAlarm({ name: 'snooze:' + id });
   }, record.id);
+
+  // The alarm handler is fire-and-forget: poll for the reopened tab (the
+  // wake's last step) instead of a fixed sleep.
+  await waitForCondition(async () => (await findTabByUrl(sw, URLS.EXAMPLE_A)) !== null);
+  // Fixed sleep stays: the tab must NOT become active or steal focus
+  // afterwards, which polling can't prove.
   await sleep(900);
 
   // The tab reopened but is not active.
@@ -344,7 +403,13 @@ test('10: Snoozing the only tab in the last window keeps a newtab open', async (
   await sleep(300);
 
   const record = await snoozeActiveTabViaSw(sw, tabId);
-  await sleep(700);
+
+  // Poll for the real end state (only the fresh newtab left) rather than a
+  // fixed sleep.
+  await waitForCondition(async () => {
+    const tabs = await getWindowTabs(sw, windowId);
+    return tabs.length === 1 && tabs[0].url !== URLS.EXAMPLE_A;
+  });
 
   // A window with a fresh (newtab) page remains — Chrome did not exit.
   const windows = await getAllWindows(sw);
@@ -371,6 +436,8 @@ test('11: A special (chrome://) URL cannot be snoozed and surfaces an error', as
   await openSnoozePicker(popup, 'tab');
   await activateTab(sw, specialId);
   await clickPopupButton(popup, 'snoozePreset-tomorrow');
+  // Fixed sleep stays: nothing should be snoozed, so polling would pass
+  // vacuously.
   await sleep(600);
 
   // Error feedback is shown and nothing was snoozed.

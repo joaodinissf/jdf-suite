@@ -9,6 +9,7 @@ import {
   sleep,
 } from '../helpers/tabs.js';
 import { openPopup, clickPopupButton } from '../helpers/popup.js';
+import { waitForNoGroupedTabs } from '../helpers/assertions.js';
 import { URLS } from '../helpers/constants.js';
 
 test.beforeEach(async ({ sw, context }) => {
@@ -33,7 +34,10 @@ test('1: Ungroups all grouped tabs in the current window', async ({ sw, context,
 
   const popup = await openPopup(context, extensionId);
   await clickPopupButton(popup, 'flattenWindow');
-  await sleep(1000);
+
+  // The popup click is fire-and-forget, so poll for the real end state
+  // instead of a fixed sleep that can race the background ungroup under load.
+  await waitForNoGroupedTabs(sw, windowId);
   await popup.close();
 
   // After flattening, no tabs should be in any group
@@ -54,6 +58,7 @@ test('2: No-op when there are no groups', async ({ sw, context, extensionId }) =
 
   const popup = await openPopup(context, extensionId);
   await clickPopupButton(popup, 'flattenWindow');
+  // Fixed sleep stays: this is a no-op, so polling would pass vacuously.
   await sleep(1000);
   await popup.close();
 
@@ -75,7 +80,8 @@ test('3: Preserves ungrouped and pinned tabs', async ({ sw, context, extensionId
 
   const popup = await openPopup(context, extensionId);
   await clickPopupButton(popup, 'flattenWindow');
-  await sleep(1000);
+  // Poll for the real end state rather than a fixed sleep.
+  await waitForNoGroupedTabs(sw, windowId);
   await popup.close();
 
   const after = await getWindowTabs(sw, windowId);

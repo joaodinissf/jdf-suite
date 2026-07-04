@@ -11,7 +11,7 @@ import {
   sleep,
 } from '../helpers/tabs.js';
 import { openPopup, clickPopupButton, switchMode } from '../helpers/popup.js';
-import { assertTabsSorted } from '../helpers/assertions.js';
+import { assertTabsSorted, waitForSorted, waitForSortedWithinGroups } from '../helpers/assertions.js';
 import { URLS } from '../helpers/constants.js';
 
 test.beforeEach(async ({ sw, context }) => {
@@ -35,7 +35,12 @@ test('9: Each window sorted independently (both modes)', async ({ sw, context, e
   // Sort all windows in groups mode
   const popup1 = await openPopup(context, extensionId);
   await clickPopupButton(popup1, 'sortAllWindows');
-  await sleep(1500);
+
+  // The popup click is fire-and-forget (no response the test can await), so
+  // poll for the real end state instead of a fixed sleep that can race the
+  // background sort under load.
+  await waitForSorted(sw, windowId1, 10000);
+  await waitForSorted(sw, win2.windowId, 10000);
   await popup1.close();
 
   // Both windows should be sorted independently
@@ -55,7 +60,8 @@ test('9: Each window sorted independently (both modes)', async ({ sw, context, e
   const popup2 = await openPopup(context, extensionId);
   await switchMode(popup2, 'individual');
   await clickPopupButton(popup2, 'sortAllWindows');
-  await sleep(1500);
+  await waitForSorted(sw, windowId1b, 10000);
+  await waitForSorted(sw, win2b.windowId, 10000);
   await popup2.close();
 
   await assertTabsSorted(sw, windowId1b);
@@ -84,7 +90,10 @@ test('10: Pinned unaffected across windows (both modes)', async ({ sw, context, 
     await sw.evaluate(async (rg) => {
       await new Promise((resolve) => handleSortAllWindows(rg, resolve));
     }, respectGroups);
-    await sleep(1000);
+
+    // Poll for the real end state rather than a fixed sleep.
+    await waitForSorted(sw, windowId1, 5000);
+    await waitForSorted(sw, win2.windowId, 5000);
 
     // Verify pinned tabs remain in both windows
     const tabs1 = await getWindowTabs(sw, windowId1);
@@ -124,7 +133,11 @@ test('11: Groups preserved per window (groups mode)', async ({ sw, context, exte
   await sw.evaluate(async (respectGroups) => {
     await new Promise((resolve) => handleSortAllWindows(respectGroups, resolve));
   }, true);
-  await sleep(1000);
+
+  // Groups mode sorts within groups, so poll for that end state rather than
+  // a fixed sleep.
+  await waitForSortedWithinGroups(sw, windowId1);
+  await waitForSortedWithinGroups(sw, win2.windowId);
 
   // Both windows should retain their groups (fix for #30)
   const tabs1 = await getWindowTabs(sw, windowId1);
@@ -161,7 +174,7 @@ test('12: Single window = same as sort current (both modes)', async ({ sw, conte
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'sortCurrentWindow');
-    await sleep(1000);
+    await waitForSorted(sw, windowId, 10000);
     await popup.close();
 
     await assertTabsSorted(sw, windowId);

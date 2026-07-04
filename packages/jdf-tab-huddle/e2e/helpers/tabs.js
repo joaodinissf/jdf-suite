@@ -150,6 +150,15 @@ export async function getCurrentWindowId(sw) {
 }
 
 /**
+ * Get the ID of the window a tab currently lives in.
+ */
+export async function getTabWindowId(sw, tabId) {
+  return await sw.evaluate(async (id) => {
+    return (await chrome.tabs.get(id)).windowId;
+  }, tabId);
+}
+
+/**
  * Read the current `snoozedItems` array from chrome.storage.local.
  */
 export async function getSnoozedItems(sw) {
