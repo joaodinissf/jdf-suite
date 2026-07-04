@@ -141,6 +141,11 @@ const backgroundWrapper = `
   if (typeof restoreSnoozedRecord !== 'undefined') global.restoreSnoozedRecord = restoreSnoozedRecord;
   if (typeof reconcileSnoozeAlarms !== 'undefined') global.reconcileSnoozeAlarms = reconcileSnoozeAlarms;
   if (typeof SNOOZE_PRESETS !== 'undefined') global.SNOOZE_PRESETS = SNOOZE_PRESETS;
+
+  // AI proposal / grouping exposures
+  if (typeof callOpenRouter !== 'undefined') global.callOpenRouter = callOpenRouter;
+  if (typeof handleAiGroupTabs !== 'undefined') global.handleAiGroupTabs = handleAiGroupTabs;
+  if (typeof handleApplyAiProposal !== 'undefined') global.handleApplyAiProposal = handleApplyAiProposal;
 })();
 `;
 eval(backgroundWrapper);
@@ -186,6 +191,40 @@ const popupWrapper = `
 })();
 `;
 eval(popupWrapper);
+
+// Load and execute ai-proposal script, exposing functions globally.
+// ai-proposal.js's top-level init() runs synchronously on eval (jsdom's
+// document.readyState is already 'complete'), and it dereferences several
+// element ids without null-guards (e.g. setupDebugToggle()'s
+// toggle.addEventListener). Stand up a throwaway DOM matching
+// ai-proposal.html just for the duration of this eval so init() doesn't
+// throw, then restore whatever body markup was there before — individual
+// tests build their own fixture DOM before calling the exposed functions.
+const aiProposalDomBackup = document.body.innerHTML;
+document.body.innerHTML = `
+  <div id="actionsContainer" class="actions" style="display: none;">
+    <button class="confirm" id="applyButton">Apply</button>
+    <button class="cancel" id="cancelButton">Cancel</button>
+  </div>
+  <div id="content"><div class="loading">Loading proposal...</div></div>
+  <button class="debug-toggle" id="debugToggle">Show raw model I/O</button>
+  <div class="debug-section" id="debugSection"></div>
+`;
+const aiProposalJs = readFileSync(resolve(__dirname, '../src/ai-proposal.js'), 'utf8');
+const aiProposalWrapper = `
+(function() {
+  ${aiProposalJs}
+
+  // Expose functions to global scope
+  if (typeof escapeHtml !== 'undefined') global.escapeHtml = escapeHtml;
+  if (typeof moveTab !== 'undefined') global.moveTab = moveTab;
+  if (typeof renderGroup !== 'undefined') global.renderGroup = renderGroup;
+  if (typeof handleMessage !== 'undefined') global.handleMessage = handleMessage;
+  if (typeof setupActionButtons !== 'undefined') global.setupActionButtons = setupActionButtons;
+})();
+`;
+eval(aiProposalWrapper);
+document.body.innerHTML = aiProposalDomBackup;
 
 // Load and execute confirmation dialog script, exposing functions globally
 const confirmationJs = readFileSync(resolve(__dirname, '../src/confirmation-dialog.js'), 'utf8');
