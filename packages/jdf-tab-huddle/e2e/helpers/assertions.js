@@ -45,6 +45,53 @@ export async function waitForTabCount(sw, windowId, expectedCount, timeout = 500
 }
 
 /**
+ * Wait for expected number of "domain" windows — i.e. windows that don't
+ * contain the extension's popup or confirmation-dialog page. Several
+ * operations (extract all domains, etc.) are triggered via a fire-and-forget
+ * popup click or a detached `handler(args, () => {})` invocation with no
+ * promise for the test to await, so the only reliable signal that the
+ * operation has finished is the actual window layout settling into its
+ * expected shape.
+ */
+export async function waitForDomainWindowCount(sw, expectedCount, timeout = 10000) {
+  return waitForCondition(async () => {
+    const windows = await sw.evaluate(async () => {
+      const wins = await chrome.windows.getAll({ populate: true });
+      return wins.map(w => ({
+        id: w.id,
+        urls: w.tabs.map(t => t.url || t.pendingUrl || ''),
+      }));
+    });
+    const domainWindows = windows.filter(w =>
+      !w.urls.some(u => u.includes('popup.html') || u.includes('confirmation-dialog.html'))
+    );
+    if (domainWindows.length === expectedCount) return true;
+    throw new Error(`Expected ${expectedCount} domain windows, got ${domainWindows.length}`);
+  }, timeout);
+}
+
+/**
+ * Poll until unpinned tab URLs in a window reach sorted order, or timeout.
+ * Use this in place of a fixed sleep before asserting sort order when the
+ * sort is triggered by a fire-and-forget popup click (no promise to await),
+ * so the assertion doesn't race the background operation under load.
+ */
+export async function waitForSorted(sw, windowId, timeout = 10000) {
+  return waitForCondition(async () => {
+    const tabs = await sw.evaluate(async (wid) => {
+      const tabs = await chrome.tabs.query({ windowId: wid });
+      return tabs
+        .sort((a, b) => a.index - b.index)
+        .filter(t => !t.pinned)
+        .map(t => t.pendingUrl || t.url);
+    }, windowId);
+    const sorted = [...tabs].sort((a, b) => a.localeCompare(b));
+    if (JSON.stringify(tabs) === JSON.stringify(sorted)) return true;
+    throw new Error(`Tabs in window ${windowId} not yet sorted: ${JSON.stringify(tabs)}`);
+  }, timeout);
+}
+
+/**
  * Assert that unpinned tab URLs in a window are in sorted order.
  */
 export async function assertTabsSorted(sw, windowId) {

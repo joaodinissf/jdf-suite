@@ -15,7 +15,9 @@ import {
 import { openPopup, clickPopupButton, switchMode } from '../helpers/popup.js';
 import {
   waitForWindowCount,
+  waitForTabCount,
   waitForCondition,
+  waitForDomainWindowCount,
   assertTabsSorted,
 } from '../helpers/assertions.js';
 import { URLS } from '../helpers/constants.js';
@@ -45,7 +47,11 @@ test('20: One window per domain (>=2 tabs)', async ({ sw, context, extensionId }
 
   const popup = await openPopup(context, extensionId);
   await clickPopupButton(popup, 'extractAllDomains');
-  await sleep(2000);
+
+  // The popup click is fire-and-forget (no response the test can await), so
+  // poll for the real end state instead of a fixed sleep that can race the
+  // background extraction under load.
+  await waitForDomainWindowCount(sw, 3, 10000);
 
   // 3 domains -> 3 windows (no confirmation since <=5)
   const allWindows = await getAllWindows(sw);
@@ -146,7 +152,10 @@ test('22: Confirmation >5 windows - confirm', async ({ sw, context, extensionId 
 
   await dialogPage.waitForSelector('#confirmButton');
   await dialogPage.click('#confirmButton');
-  await sleep(2000);
+
+  // Poll for the real end state rather than a fixed sleep (extraction is
+  // triggered by a fire-and-forget confirmation message).
+  await waitForDomainWindowCount(sw, 6, 10000);
 
   // After confirmation, 6 domain windows should be created
   const allWindows = await getAllWindows(sw);
@@ -230,7 +239,12 @@ test('24: No confirmation when <=5 windows', async ({ sw, context, extensionId }
   context.on('page', () => { dialogOpened = true; });
 
   await clickPopupButton(popup, 'extractAllDomains');
-  await sleep(2000);
+
+  // Poll for the real end state rather than a fixed sleep. The `dialogOpened`
+  // flag is set synchronously by the 'page' listener above the moment (if
+  // ever) a dialog tab is created, so checking it after this wait is still
+  // valid.
+  await waitForDomainWindowCount(sw, 3, 10000);
 
   // No confirmation dialog should have appeared
   expect(dialogOpened).toBe(false);
@@ -267,10 +281,16 @@ test('25: Pinned excluded from extraction', async ({ sw, context, extensionId })
 
   const popup = await openPopup(context, extensionId);
   await clickPopupButton(popup, 'extractAllDomains');
-  await sleep(2000);
 
-  // With 1 unpinned tab per domain, they all become single-tab domains
-  // so we should get 1 misc window + the original with pinned tabs
+  // With 1 unpinned tab per domain, the two unpinned tabs are single-tab
+  // domains that get extracted into a miscellaneous window, leaving the
+  // original window holding only its 2 pinned tabs. Poll for that end state
+  // (the real signal extraction has finished) rather than a fixed sleep.
+  // NB: the popup's own chrome-extension:// tab is itself treated as a
+  // single-tab domain and lands in the misc window, so a domain-window
+  // count isn't a reliable signal here — the original window's tab count is.
+  await waitForTabCount(sw, windowId, 2, 10000);
+
   const allWindows = await getAllWindows(sw);
 
   // Find the window with pinned tabs
@@ -304,7 +324,10 @@ test('26: All tabs same domain', async ({ sw, context, extensionId }) => {
 
   const popup = await openPopup(context, extensionId);
   await clickPopupButton(popup, 'extractAllDomains');
-  await sleep(2000);
+
+  // All example.com => 1 domain window. Poll for that end state rather
+  // than a fixed sleep.
+  await waitForDomainWindowCount(sw, 1, 10000);
 
   // All example.com => 1 domain window
   const allWindows = await getAllWindows(sw);
@@ -346,7 +369,10 @@ test('27: Groups preserved across domain windows', async ({ sw, context, extensi
 
   const popup = await openPopup(context, extensionId);
   await clickPopupButton(popup, 'extractAllDomains');
-  await sleep(2000);
+
+  // 2 domains (example.com, example.net) => 2 domain windows. Poll for
+  // that end state rather than a fixed sleep.
+  await waitForDomainWindowCount(sw, 2, 10000);
 
   const allWindows = await getAllWindows(sw);
   const nonPopupWindows = allWindows.filter(w =>

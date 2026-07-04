@@ -9,7 +9,7 @@ import {
   sleep,
 } from '../helpers/tabs.js';
 import { openPopup, clickPopupButton } from '../helpers/popup.js';
-import { waitForCondition, waitForWindowCount } from '../helpers/assertions.js';
+import { waitForCondition, waitForWindowCount, waitForDomainWindowCount } from '../helpers/assertions.js';
 import { URLS } from '../helpers/constants.js';
 
 test.beforeEach(async ({ sw, context }) => {
@@ -88,7 +88,12 @@ test('61: Confirm proceeds', async ({ sw, context, extensionId }) => {
   const dialogPage = await findDialogPage(context);
   await dialogPage.waitForSelector('#confirmButton');
   await dialogPage.click('#confirmButton');
-  await sleep(3000);
+
+  // Extraction runs in the background off a fire-and-forget confirmation
+  // message with no promise for the test to await — poll for the actual
+  // end state (6 domain windows) instead of guessing a fixed delay, which
+  // flakes under load when extraction hasn't finished by an arbitrary sleep.
+  await waitForDomainWindowCount(sw, 6, 10000);
 
   // Extraction should have happened - 6 domain windows
   const allWindows = await getAllWindows(sw);

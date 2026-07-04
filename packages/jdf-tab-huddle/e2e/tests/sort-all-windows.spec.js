@@ -11,7 +11,7 @@ import {
   sleep,
 } from '../helpers/tabs.js';
 import { openPopup, clickPopupButton, switchMode } from '../helpers/popup.js';
-import { assertTabsSorted } from '../helpers/assertions.js';
+import { assertTabsSorted, waitForSorted } from '../helpers/assertions.js';
 import { URLS } from '../helpers/constants.js';
 
 test.beforeEach(async ({ sw, context }) => {
@@ -32,7 +32,12 @@ test('9: Each window sorted independently (both modes)', async ({ sw, context, e
   // Sort all windows in groups mode
   const popup1 = await openPopup(context, extensionId);
   await clickPopupButton(popup1, 'sortAllWindows');
-  await sleep(1500);
+
+  // The popup click is fire-and-forget (no response the test can await), so
+  // poll for the real end state instead of a fixed sleep that can race the
+  // background sort under load.
+  await waitForSorted(sw, windowId1, 10000);
+  await waitForSorted(sw, win2.windowId, 10000);
   await popup1.close();
 
   // Both windows should be sorted independently
@@ -52,7 +57,8 @@ test('9: Each window sorted independently (both modes)', async ({ sw, context, e
   const popup2 = await openPopup(context, extensionId);
   await switchMode(popup2, 'individual');
   await clickPopupButton(popup2, 'sortAllWindows');
-  await sleep(1500);
+  await waitForSorted(sw, windowId1b, 10000);
+  await waitForSorted(sw, win2b.windowId, 10000);
   await popup2.close();
 
   await assertTabsSorted(sw, windowId1b);
@@ -145,7 +151,7 @@ test('12: Single window = same as sort current (both modes)', async ({ sw, conte
   // which exercises the same sortWindowTabs() code path
   const popup = await openPopup(context, extensionId);
   await clickPopupButton(popup, 'sortCurrentWindow');
-  await sleep(1000);
+  await waitForSorted(sw, windowId, 10000);
   await popup.close();
 
   await assertTabsSorted(sw, windowId);
