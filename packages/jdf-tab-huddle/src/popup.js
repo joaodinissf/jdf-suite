@@ -17,6 +17,9 @@ document.addEventListener('DOMContentLoaded', function () {
   // Initialize the Tab Snoozing UI (picker, presets, sleeping list)
   initSnoozeUi();
 
+  // Wire up single-key keyboard shortcuts and render their hints
+  initKeyboardShortcuts();
+
   // Update status bar
   updateStatusBar();
 
@@ -55,6 +58,9 @@ function initTabSwitching() {
       
       // Save preference
       saveUserPreference('selectedMode', targetTab);
+
+      // The visible button set changed — recompute hotkeys.
+      refreshHotkeys();
     });
   });
 }
@@ -81,6 +87,9 @@ function loadUserPreferences() {
         content.classList.add('active');
       }
     });
+
+    // The visible panel may have changed — recompute hotkeys.
+    refreshHotkeys();
   });
 }
 
@@ -242,6 +251,8 @@ function updateUIForWindowCount() {
       document.querySelectorAll('.multi-window-section').forEach(section => {
         section.style.display = 'none';
       });
+      // Multi-window buttons are now hidden — recompute hotkeys.
+      refreshHotkeys();
     }
   });
 }
@@ -265,6 +276,8 @@ function updateAiButtonState() {
     cogs.forEach(cog => {
       cog.style.display = hasKey ? 'block' : 'none';
     });
+    // The AI settings cog visibility changed — recompute hotkeys.
+    refreshHotkeys();
   });
 }
 
@@ -389,6 +402,8 @@ function updateSnoozeButtonState() {
     grpBtn.title = inGroup
       ? 'Snooze the active tab\'s group'
       : 'Snooze the active tab\'s group (active tab is not in a group)';
+    // The Group button's enabled state changed — recompute hotkeys.
+    refreshHotkeys();
   });
 }
 
@@ -411,6 +426,8 @@ function openSnoozePicker(unit) {
   markSelectedUnitButton(unit);
   clearSnoozeFeedback();
   panel.hidden = false;
+  // Picker is now the active (modal) hotkey set.
+  refreshHotkeys();
 }
 
 function closeSnoozePicker() {
@@ -418,6 +435,8 @@ function closeSnoozePicker() {
   if (panel) panel.hidden = true;
   pendingSnoozeUnit = null;
   markSelectedUnitButton(null);
+  // Back to the main hotkey set.
+  refreshHotkeys();
 }
 
 function showSnoozeFeedback(text) {
@@ -510,6 +529,8 @@ function renderSnoozedList() {
     }
     if (countEl) countEl.textContent = String(items.length);
     if (section) section.hidden = items.length === 0;
+    // The sleeping list (and its Wake/Cancel buttons) was rebuilt — recompute hotkeys.
+    refreshHotkeys();
   });
 }
 
@@ -544,6 +565,225 @@ function formatWakeTime(wakeAt, now = Date.now()) {
   }
   const month = new Intl.DateTimeFormat(undefined, { month: 'short' }).format(wake);
   return `${wake.getDate()} ${month}, ${clock}`;
+}
+
+// ============================================================
+// Keyboard Shortcuts — single-key hotkeys for visible controls
+// ============================================================
+//
+// Every actionable, VISIBLE, ENABLED button in the current popup state is
+// assigned a unique single letter. A small key-badge is rendered on each
+// button so the binding is discoverable, and a document-level keydown listener
+// maps the pressed key to its button and clicks it. The map is recomputed
+// whenever the visible state changes (mode switch, picker open/close, list
+// re-render, button enable/disable), so hidden panels and disabled buttons are
+// never bound.
+
+// Preferred mnemonic letters per control, resolved greedily (first free wins).
+// Keys are matched via hotkeyPreferenceKey(): mode tabs by "tab:<mode>",
+// action buttons by their id with the -groups/-individual suffix stripped,
+// and sleeping-list buttons by "row:<action>".
+const HOTKEY_PREFERENCES = {
+  // Mode-switch tabs
+  'tab:groups': ['g'],
+  'tab:individual': ['i'],
+  // "This Window"
+  sortCurrentWindow: ['s'],
+  removeDuplicatesWindow: ['d'],
+  flattenWindow: ['f'],
+  aiOrganize: ['o'],
+  aiSettings: ['k', 'h'],
+  // "All Windows"
+  sortAllWindows: ['a'],
+  removeDuplicatesAllWindows: ['u'],
+  removeDuplicatesGlobally: ['b'],
+  moveAllToSingleWindow: ['m'],
+  // "Extract"
+  extractDomain: ['n'],
+  extractAllDomains: ['l'],
+  // "Copy"
+  copyAllTabs: ['c'],
+  // Snooze unit buttons
+  snoozeTab: ['t'],
+  snoozeSelected: ['e'],
+  snoozeWindow: ['w'],
+  snoozeGroup: ['r'],
+  // Snooze picker (modal set while the panel is open)
+  'snoozePreset-laterToday': ['l'],
+  'snoozePreset-tonight': ['t'],
+  'snoozePreset-tomorrow': ['m'],
+  'snoozePreset-weekend': ['w'],
+  'snoozePreset-nextWeek': ['n'],
+  snoozeCustomConfirm: ['s'],
+  snoozePickerCancel: ['c'],
+};
+
+const HOTKEY_FALLBACK_LETTERS = 'abcdefghijklmnopqrstuvwxyz';
+
+// The current key -> button element map for the visible state.
+let activeHotkeys = new Map();
+
+// True when the pressed target should be allowed to type (never hijack keys
+// from text inputs, textareas, selects, contenteditable, or the datetime-local
+// custom-time field).
+function isTextInputTarget(el) {
+  if (!el || !el.tagName) return false;
+  const tag = el.tagName.toUpperCase();
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (el.isContentEditable) return true;
+  return false;
+}
+
+// Layout-free visibility test: walk ancestors and reject if any is hidden via
+// the [hidden] attribute, inline display/visibility, or an inactive
+// .tab-content panel. This mirrors every way the popup hides controls and works
+// identically in the browser and in jsdom (which has no layout engine).
+function isHotkeyVisible(el) {
+  let node = el;
+  while (node && node.nodeType === 1) {
+    if (node.hidden) return false;
+    const style = node.style;
+    if (style && (style.display === 'none' || style.visibility === 'hidden')) return false;
+    if (node.classList && node.classList.contains('tab-content') && !node.classList.contains('active')) {
+      return false;
+    }
+    node = node.parentElement;
+  }
+  return true;
+}
+
+// The lookup key into HOTKEY_PREFERENCES for a given element.
+function hotkeyPreferenceKey(el) {
+  if (el.classList && el.classList.contains('tab-button')) return 'tab:' + el.dataset.tab;
+  if (el.id) return el.id.replace(/-(groups|individual)$/, '');
+  const action = el.getAttribute && el.getAttribute('data-action');
+  if (action) return 'row:' + action;
+  return '';
+}
+
+// Collect the actionable buttons for the CURRENT visible state, in priority
+// order. When the snooze picker is open it is modal: only its buttons bind.
+function collectHotkeyTargets() {
+  const panel = document.getElementById('snoozePickerPanel');
+  const pickerOpen = panel && !panel.hidden && isHotkeyVisible(panel);
+
+  if (pickerOpen) {
+    const pickerIds = [
+      'snoozePreset-laterToday', 'snoozePreset-tonight', 'snoozePreset-tomorrow',
+      'snoozePreset-weekend', 'snoozePreset-nextWeek',
+      'snoozeCustomConfirm', 'snoozePickerCancel',
+    ];
+    return pickerIds
+      .map((id) => document.getElementById(id))
+      .filter((el) => el && !el.disabled && isHotkeyVisible(el));
+  }
+
+  const targets = [];
+  // 1. Mode-switch tabs.
+  document.querySelectorAll('.tab-nav .tab-button').forEach((b) => targets.push(b));
+  // 2. Buttons of the active mode panel only (never the hidden one).
+  const activePanel = document.querySelector('.tab-content.active');
+  if (activePanel) activePanel.querySelectorAll('button').forEach((b) => targets.push(b));
+  // 3. Snooze unit buttons.
+  ['snoozeTab', 'snoozeSelected', 'snoozeWindow', 'snoozeGroup'].forEach((id) => {
+    const b = document.getElementById(id);
+    if (b) targets.push(b);
+  });
+  // 4. Sleeping-list Wake/Cancel actions (assigned last; may run out of letters).
+  document.querySelectorAll('#snoozedList .snoozed-item button[data-action]').forEach((b) => targets.push(b));
+
+  return targets.filter((el) => !el.disabled && isHotkeyVisible(el));
+}
+
+// Build a fresh { letter -> element } map for the current visible state.
+function buildHotkeyMap() {
+  const targets = collectHotkeyTargets();
+  const map = new Map();
+  const used = new Set();
+
+  for (const el of targets) {
+    let chosen = null;
+    const prefs = HOTKEY_PREFERENCES[hotkeyPreferenceKey(el)] || [];
+    for (const c of prefs) {
+      if (!used.has(c)) { chosen = c; break; }
+    }
+    if (!chosen) {
+      // Fall back to the first free letter in the button's own label...
+      const label = (el.textContent || '').toLowerCase();
+      for (const c of label) {
+        if (c >= 'a' && c <= 'z' && !used.has(c)) { chosen = c; break; }
+      }
+    }
+    if (!chosen) {
+      // ...then to any remaining letter of the alphabet.
+      for (const c of HOTKEY_FALLBACK_LETTERS) {
+        if (!used.has(c)) { chosen = c; break; }
+      }
+    }
+    if (chosen) {
+      used.add(chosen);
+      map.set(chosen, el);
+    }
+  }
+  return map;
+}
+
+// Draw a small key-badge on each mapped button.
+function renderHotkeyHints(map) {
+  for (const [key, el] of map) {
+    const badge = document.createElement('span');
+    badge.className = 'hotkey-hint';
+    badge.textContent = key.toUpperCase();
+    badge.setAttribute('aria-hidden', 'true');
+    el.appendChild(badge);
+  }
+}
+
+// Recompute the active hotkey map and redraw the hints. Idempotent: existing
+// badges are cleared first so button labels stay clean for letter fallback.
+function refreshHotkeys() {
+  if (typeof document === 'undefined' || !document.querySelectorAll) return;
+  document.querySelectorAll('.hotkey-hint').forEach((s) => s.remove());
+  activeHotkeys = buildHotkeyMap();
+  renderHotkeyHints(activeHotkeys);
+}
+
+// Document-level key handler: click the button bound to the pressed key.
+function handleHotkeyKeydown(event) {
+  if (event.defaultPrevented) return;
+  // Leave shortcuts with modifiers to Chrome / the OS / the global command.
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+  const panel = document.getElementById('snoozePickerPanel');
+  const pickerOpen = panel && !panel.hidden && isHotkeyVisible(panel);
+
+  // Escape closes the picker if it is open (even from within the time field).
+  if (event.key === 'Escape') {
+    if (pickerOpen) {
+      event.preventDefault();
+      closeSnoozePicker();
+    }
+    return;
+  }
+
+  // Never hijack keys while the user is typing.
+  if (isTextInputTarget(event.target)) return;
+
+  const key = event.key && event.key.length === 1 ? event.key.toLowerCase() : '';
+  if (!key) return;
+
+  const el = activeHotkeys.get(key);
+  if (el) {
+    event.preventDefault();
+    el.click();
+  }
+}
+
+// Register the listener and compute the initial map.
+function initKeyboardShortcuts() {
+  if (typeof document === 'undefined' || !document.addEventListener) return;
+  document.addEventListener('keydown', handleHotkeyKeydown);
+  refreshHotkeys();
 }
 
 // Update status bar with tab/window/group counts

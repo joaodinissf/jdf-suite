@@ -175,6 +175,13 @@ const popupWrapper = `
   if (typeof formatWakeTime !== 'undefined') global.formatWakeTime = formatWakeTime;
   if (typeof renderSnoozedList !== 'undefined') global.renderSnoozedList = renderSnoozedList;
   if (typeof updateSnoozeButtonState !== 'undefined') global.updateSnoozeButtonState = updateSnoozeButtonState;
+
+  // Keyboard shortcut exposures
+  if (typeof buildHotkeyMap !== 'undefined') global.buildHotkeyMap = buildHotkeyMap;
+  if (typeof refreshHotkeys !== 'undefined') global.refreshHotkeys = refreshHotkeys;
+  if (typeof handleHotkeyKeydown !== 'undefined') global.handleHotkeyKeydown = handleHotkeyKeydown;
+  if (typeof isTextInputTarget !== 'undefined') global.isTextInputTarget = isTextInputTarget;
+  if (typeof isHotkeyVisible !== 'undefined') global.isHotkeyVisible = isHotkeyVisible;
 })();
 `;
 eval(popupWrapper);

@@ -141,7 +141,14 @@ export default [
         SNOOZE_PRESETS: 'readonly',
         formatWakeTime: 'readonly',
         renderSnoozedList: 'readonly',
-        updateSnoozeButtonState: 'readonly'
+        updateSnoozeButtonState: 'readonly',
+
+        // Keyboard shortcut functions (loaded by setup.js)
+        buildHotkeyMap: 'readonly',
+        refreshHotkeys: 'readonly',
+        handleHotkeyKeydown: 'readonly',
+        isTextInputTarget: 'readonly',
+        isHotkeyVisible: 'readonly'
       }
     },
     rules: {
