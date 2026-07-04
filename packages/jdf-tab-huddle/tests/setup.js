@@ -22,6 +22,12 @@ global.chrome = {
     },
     getURL: vi.fn((path) => `chrome-extension://test-id/${path}`),
     lastError: null,
+    onStartup: {
+      addListener: vi.fn(),
+    },
+    onInstalled: {
+      addListener: vi.fn(),
+    },
   },
   tabs: {
     query: vi.fn(),
@@ -36,12 +42,30 @@ global.chrome = {
     TAB_GROUP_ID_NONE: -1,
     query: vi.fn(),
     update: vi.fn(),
+    get: vi.fn(),
   },
   windows: {
     getAll: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     getCurrent: vi.fn(),
+    getLastFocused: vi.fn(),
+  },
+  alarms: {
+    create: vi.fn().mockResolvedValue(undefined),
+    clear: vi.fn().mockResolvedValue(true),
+    clearAll: vi.fn().mockResolvedValue(true),
+    getAll: vi.fn().mockResolvedValue([]),
+    onAlarm: {
+      addListener: vi.fn(),
+    },
+  },
+  notifications: {
+    create: vi.fn(),
+    clear: vi.fn(),
+    onClicked: {
+      addListener: vi.fn(),
+    },
   },
   storage: {
     local: {
@@ -96,6 +120,27 @@ const backgroundWrapper = `
   if (typeof stripQueryParams !== 'undefined') global.stripQueryParams = stripQueryParams;
   if (typeof AI_MODELS !== 'undefined') global.AI_MODELS = AI_MODELS;
   if (typeof VALID_TAB_GROUP_COLORS !== 'undefined') global.VALID_TAB_GROUP_COLORS = VALID_TAB_GROUP_COLORS;
+
+  // Tab Snoozing exposures
+  if (typeof computePresetWakeTime !== 'undefined') global.computePresetWakeTime = computePresetWakeTime;
+  if (typeof nextWeekdayAt !== 'undefined') global.nextWeekdayAt = nextWeekdayAt;
+  if (typeof clampWakeAt !== 'undefined') global.clampWakeAt = clampWakeAt;
+  if (typeof isSnoozeableUrl !== 'undefined') global.isSnoozeableUrl = isSnoozeableUrl;
+  if (typeof buildSnoozeSummary !== 'undefined') global.buildSnoozeSummary = buildSnoozeSummary;
+  if (typeof createSnoozeRecord !== 'undefined') global.createSnoozeRecord = createSnoozeRecord;
+  if (typeof snoozeTabs !== 'undefined') global.snoozeTabs = snoozeTabs;
+  if (typeof handleSnoozeTab !== 'undefined') global.handleSnoozeTab = handleSnoozeTab;
+  if (typeof handleSnoozeSelected !== 'undefined') global.handleSnoozeSelected = handleSnoozeSelected;
+  if (typeof handleSnoozeWindow !== 'undefined') global.handleSnoozeWindow = handleSnoozeWindow;
+  if (typeof handleSnoozeGroup !== 'undefined') global.handleSnoozeGroup = handleSnoozeGroup;
+  if (typeof handleListSnoozed !== 'undefined') global.handleListSnoozed = handleListSnoozed;
+  if (typeof handleWakeNow !== 'undefined') global.handleWakeNow = handleWakeNow;
+  if (typeof handleCancelSnooze !== 'undefined') global.handleCancelSnooze = handleCancelSnooze;
+  if (typeof handleSnoozeAlarm !== 'undefined') global.handleSnoozeAlarm = handleSnoozeAlarm;
+  if (typeof wakeSnoozedRecord !== 'undefined') global.wakeSnoozedRecord = wakeSnoozedRecord;
+  if (typeof restoreSnoozedRecord !== 'undefined') global.restoreSnoozedRecord = restoreSnoozedRecord;
+  if (typeof reconcileSnoozeAlarms !== 'undefined') global.reconcileSnoozeAlarms = reconcileSnoozeAlarms;
+  if (typeof SNOOZE_PRESETS !== 'undefined') global.SNOOZE_PRESETS = SNOOZE_PRESETS;
 })();
 `;
 eval(backgroundWrapper);
@@ -125,6 +170,11 @@ const popupWrapper = `
   if (typeof aiOrganize !== 'undefined') global.aiOrganize = aiOrganize;
   if (typeof openAiSettings !== 'undefined') global.openAiSettings = openAiSettings;
   if (typeof updateAiButtonState !== 'undefined') global.updateAiButtonState = updateAiButtonState;
+
+  // Tab Snoozing popup exposures
+  if (typeof formatWakeTime !== 'undefined') global.formatWakeTime = formatWakeTime;
+  if (typeof renderSnoozedList !== 'undefined') global.renderSnoozedList = renderSnoozedList;
+  if (typeof updateSnoozeButtonState !== 'undefined') global.updateSnoozeButtonState = updateSnoozeButtonState;
 })();
 `;
 eval(popupWrapper);

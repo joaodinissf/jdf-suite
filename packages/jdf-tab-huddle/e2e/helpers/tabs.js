@@ -145,6 +145,37 @@ export async function getCurrentWindowId(sw) {
   });
 }
 
+/**
+ * Read the current `snoozedItems` array from chrome.storage.local.
+ */
+export async function getSnoozedItems(sw) {
+  return await sw.evaluate(async () => {
+    const result = await chrome.storage.local.get(['snoozedItems']);
+    return result.snoozedItems || [];
+  });
+}
+
+/**
+ * Focus a tab's window and make the tab active (so the background's
+ * currentWindow/active-tab queries resolve to it).
+ */
+export async function activateTab(sw, tabId) {
+  await sw.evaluate(async (id) => {
+    const tab = await chrome.tabs.get(id);
+    await chrome.windows.update(tab.windowId, { focused: true });
+    await chrome.tabs.update(id, { active: true });
+  }, tabId);
+}
+
+/**
+ * Mark a set of tabs highlighted in their window (for the "Selected" unit).
+ */
+export async function highlightTabs(sw, windowId, tabIndices) {
+  await sw.evaluate(async ({ windowId, tabIndices }) => {
+    await chrome.tabs.highlight({ windowId, tabs: tabIndices });
+  }, { windowId, tabIndices });
+}
+
 export function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
