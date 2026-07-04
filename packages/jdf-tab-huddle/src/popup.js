@@ -387,8 +387,8 @@ function updateSnoozeButtonState() {
     const inGroup = activeTab.groupId !== undefined && activeTab.groupId !== -1;
     grpBtn.disabled = !inGroup;
     grpBtn.title = inGroup
-      ? "Snooze the active tab's group"
-      : "Snooze the active tab's group (active tab is not in a group)";
+      ? 'Snooze the active tab\'s group'
+      : 'Snooze the active tab\'s group (active tab is not in a group)';
   });
 }
 

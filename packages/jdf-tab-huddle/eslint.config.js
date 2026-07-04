@@ -15,6 +15,8 @@ export default [
         URL: 'readonly',
         URLSearchParams: 'readonly',
         navigator: 'readonly',
+        crypto: 'readonly',
+        Math: 'readonly',
         setTimeout: 'readonly',
         Map: 'readonly',
         Set: 'readonly',
@@ -115,7 +117,31 @@ export default [
         VALID_TAB_GROUP_COLORS: 'readonly',
         aiOrganize: 'readonly',
         openAiSettings: 'readonly',
-        updateAiButtonState: 'readonly'
+        updateAiButtonState: 'readonly',
+
+        // Tab snoozing functions (loaded by setup.js)
+        computePresetWakeTime: 'readonly',
+        nextWeekdayAt: 'readonly',
+        clampWakeAt: 'readonly',
+        isSnoozeableUrl: 'readonly',
+        buildSnoozeSummary: 'readonly',
+        createSnoozeRecord: 'readonly',
+        snoozeTabs: 'readonly',
+        handleSnoozeTab: 'readonly',
+        handleSnoozeSelected: 'readonly',
+        handleSnoozeWindow: 'readonly',
+        handleSnoozeGroup: 'readonly',
+        handleListSnoozed: 'readonly',
+        handleWakeNow: 'readonly',
+        handleCancelSnooze: 'readonly',
+        handleSnoozeAlarm: 'readonly',
+        wakeSnoozedRecord: 'readonly',
+        restoreSnoozedRecord: 'readonly',
+        reconcileSnoozeAlarms: 'readonly',
+        SNOOZE_PRESETS: 'readonly',
+        formatWakeTime: 'readonly',
+        renderSnoozedList: 'readonly',
+        updateSnoozeButtonState: 'readonly'
       }
     },
     rules: {

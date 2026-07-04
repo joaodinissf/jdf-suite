@@ -1421,7 +1421,7 @@ function isSnoozeableUrl(url) {
   if (protocol === 'chrome-extension:') {
     // Allow foreign extension pages, but not our own (they cannot be reopened
     // meaningfully and would resurrect the extension's own UI).
-    let ownId = '';
+    let ownId;
     try {
       ownId = chrome.runtime.getURL('').split('/')[2];
     } catch (_e) {
@@ -1602,7 +1602,7 @@ async function snoozeTabs(type, tabs, extras, wakeAt, preset) {
   if (snoozeable.length === 0) {
     // A single-tab snooze of a rejected URL gets a page-specific message; the
     // multi-tab units report the generic "nothing here" error.
-    const error = type === 'tab' ? "This page can't be snoozed" : 'Nothing here can be snoozed';
+    const error = type === 'tab' ? 'This page can\'t be snoozed' : 'Nothing here can be snoozed';
     return { success: false, error };
   }
 
