@@ -30,6 +30,14 @@
       box-sizing: border-box;
     }
 
+    /* The [hidden] attribute must always win over author display rules
+       (e.g. .grp / #snoozePickerPanel set display:flex, which otherwise
+       defeats the UA [hidden]{display:none} and leaves collapsed panels
+       such as the snooze picker and the empty sleeping section visible). */
+    [hidden] {
+      display: none !important;
+    }
+
     html, body {
       height: auto;
       overflow: visible;
@@ -248,6 +256,36 @@
     .ai-cog-btn {
       flex: 0 0 32px;
       justify-content: center;
+    }
+
+    /* keyboard hotkey hint badges */
+    .hotkey-hint {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 0 3px;
+      font: 700 8.5px var(--mono);
+      line-height: 1.5;
+      border-radius: 3px;
+      background: rgba(0, 0, 0, .32);
+      color: #fff;
+      vertical-align: middle;
+      opacity: .8;
+      pointer-events: none;
+    }
+
+    .seg button .hotkey-hint {
+      margin-left: 3px;
+      background: rgba(0, 0, 0, .25);
+    }
+
+    .chip .hotkey-hint,
+    .preset .hotkey-hint {
+      margin-left: 3px;
+    }
+
+    .snoozed-item button .hotkey-hint {
+      margin-left: 2px;
+      padding: 0 2px;
     }
 
     /* snooze */
