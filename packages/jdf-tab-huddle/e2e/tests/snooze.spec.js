@@ -267,10 +267,16 @@ test('8: Custom time in the past is rejected in the popup', async ({ sw, context
   const [tabId] = await createTabs(sw, [URLS.EXAMPLE_A]);
   await sleep(300);
   const windowId = await getCurrentWindowId(sw);
-  const before = await getWindowTabs(sw, windowId);
 
   const popup = await openPopup(context, extensionId);
   await sleep(400);
+  // Snapshot the window's tabs only after the popup is open: openPopup()
+  // loads popup.html as a real page/tab (there's no way to drive the actual
+  // browser-action popup surface in this harness), so it counts as one of the
+  // window's tabs. Taking the "before" baseline here — rather than prior to
+  // opening the popup — keeps it on equal footing with the "after" snapshot,
+  // so the comparison isolates whether the snooze action itself added a tab.
+  const before = await getWindowTabs(sw, windowId);
   await activateTab(sw, tabId);
   await openSnoozePicker(popup, 'tab');
 
