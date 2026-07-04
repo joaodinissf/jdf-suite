@@ -81,15 +81,17 @@ test('62: Copy tabs (individual mode) returns flat list without headers', async 
   expect(text).toContain('https://example.org/aaa');
 });
 
-test('63: Copy All Tabs button visible in both modes', async ({ context, extensionId }) => {
+test('63: Copy All Tabs button stays visible when toggling Groups/Flat', async ({ context, extensionId }) => {
   const popup = await openPopup(context, extensionId);
 
-  // Groups mode
-  await expect(popup.locator('#copyAllTabs-groups')).toBeVisible();
+  // Groups mode (default)
+  await expect(popup.locator('#copyAllTabs')).toBeVisible();
+  await expect(popup.locator('#modeGroups')).toHaveAttribute('aria-pressed', 'true');
 
-  // Switch to individual mode
+  // Switch to Flat mode — same single action button, only the toggle state changes.
   await switchMode(popup, 'individual');
-  await expect(popup.locator('#copyAllTabs-individual')).toBeVisible();
+  await expect(popup.locator('#copyAllTabs')).toBeVisible();
+  await expect(popup.locator('#modeFlat')).toHaveAttribute('aria-pressed', 'true');
 
   await popup.close();
 });
@@ -99,12 +101,12 @@ test('64: Copied feedback appears after clicking', async ({ sw, context, extensi
   await sleep(300);
 
   const popup = await openPopup(context, extensionId);
-  const feedback = popup.locator('#copyFeedback-groups');
+  const feedback = popup.locator('#copyFeedback');
 
   // Feedback should not be visible initially
   await expect(feedback).not.toHaveClass(/visible/);
 
-  await clickPopupButton(popup, 'copyAllTabs-groups');
+  await clickPopupButton(popup, 'copyAllTabs');
   await sleep(500);
 
   // Feedback should be visible after clicking

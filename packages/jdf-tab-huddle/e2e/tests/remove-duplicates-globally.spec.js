@@ -49,7 +49,7 @@ test('cross-window duplicates are removed globally', async ({ sw, context, exten
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesGlobally-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesGlobally');
     await sleep(1500);
     await popup.close();
 
@@ -85,7 +85,7 @@ test('first occurrence is kept during global dedup', async ({ sw, context, exten
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesGlobally-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesGlobally');
     await sleep(1500);
     await popup.close();
 
@@ -129,7 +129,7 @@ test('pinned duplicate tabs are preserved in global dedup', async ({
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesGlobally-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesGlobally');
     await sleep(1500);
     await popup.close();
 
@@ -202,7 +202,7 @@ test('all windows are sorted after global dedup', async ({ sw, context, extensio
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesGlobally-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesGlobally');
     await sleep(1500);
     await popup.close();
 
@@ -240,7 +240,7 @@ test('window left empty after global dedup gets new tab page', async ({
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesGlobally-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesGlobally');
     await sleep(1500);
     await popup.close();
 

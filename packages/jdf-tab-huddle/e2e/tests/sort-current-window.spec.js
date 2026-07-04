@@ -31,7 +31,7 @@ test('1: Sorts tabs alphabetically by URL (both modes)', async ({ sw, context, e
 
   // Test groups mode
   const popup1 = await openPopup(context, extensionId);
-  await clickPopupButton(popup1, 'sortCurrentWindow-groups');
+  await clickPopupButton(popup1, 'sortCurrentWindow');
   await sleep(1000);
   await popup1.close();
 
@@ -46,7 +46,7 @@ test('1: Sorts tabs alphabetically by URL (both modes)', async ({ sw, context, e
 
   const popup2 = await openPopup(context, extensionId);
   await switchMode(popup2, 'individual');
-  await clickPopupButton(popup2, 'sortCurrentWindow-individual');
+  await clickPopupButton(popup2, 'sortCurrentWindow');
   await sleep(1000);
   await popup2.close();
 
@@ -73,7 +73,7 @@ test('2: Pinned tabs stay at front (both modes)', async ({ sw, context, extensio
 
   // Sort in groups mode
   const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'sortCurrentWindow-groups');
+  await clickPopupButton(popup, 'sortCurrentWindow');
   await sleep(1000);
   await popup.close();
 
@@ -105,7 +105,7 @@ test('3: Grouped tabs sorted within group (groups mode)', async ({ sw, context, 
   const windowId = await getCurrentWindowId(sw);
 
   const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'sortCurrentWindow-groups');
+  await clickPopupButton(popup, 'sortCurrentWindow');
   await sleep(1000);
   await popup.close();
 
@@ -138,7 +138,7 @@ test('4: Individual mode ignores groups', async ({ sw, context, extensionId }) =
   // Sort in individual mode (ignores groups)
   const popup = await openPopup(context, extensionId);
   await switchMode(popup, 'individual');
-  await clickPopupButton(popup, 'sortCurrentWindow-individual');
+  await clickPopupButton(popup, 'sortCurrentWindow');
   await sleep(1000);
   await popup.close();
 
@@ -158,7 +158,7 @@ test('5: Mix grouped + ungrouped (groups mode)', async ({ sw, context, extension
   const windowId = await getCurrentWindowId(sw);
 
   const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'sortCurrentWindow-groups');
+  await clickPopupButton(popup, 'sortCurrentWindow');
   await sleep(1000);
   await popup.close();
 
@@ -190,7 +190,7 @@ test('6: Tabs with pendingUrl (both modes)', async ({ sw, context, extensionId }
   const windowId = await getCurrentWindowId(sw);
 
   const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'sortCurrentWindow-groups');
+  await clickPopupButton(popup, 'sortCurrentWindow');
   await sleep(1000);
   await popup.close();
 
@@ -204,7 +204,7 @@ test('7: Single tab (no-op, both modes)', async ({ sw, context, extensionId }) =
   const tabsBefore = await getWindowTabs(sw, windowId);
 
   const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'sortCurrentWindow-groups');
+  await clickPopupButton(popup, 'sortCurrentWindow');
   await sleep(1000);
   await popup.close();
 
@@ -226,7 +226,7 @@ test('8: Special URLs mixed in (individual mode)', async ({ sw, context, extensi
 
   const popup = await openPopup(context, extensionId);
   await switchMode(popup, 'individual');
-  await clickPopupButton(popup, 'sortCurrentWindow-individual');
+  await clickPopupButton(popup, 'sortCurrentWindow');
   await sleep(1000);
   await popup.close();
 
