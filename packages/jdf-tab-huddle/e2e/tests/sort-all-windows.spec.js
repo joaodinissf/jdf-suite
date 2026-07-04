@@ -31,7 +31,7 @@ test('9: Each window sorted independently (both modes)', async ({ sw, context, e
 
   // Sort all windows in groups mode
   const popup1 = await openPopup(context, extensionId);
-  await clickPopupButton(popup1, 'sortAllWindows-groups');
+  await clickPopupButton(popup1, 'sortAllWindows');
   await sleep(1500);
   await popup1.close();
 
@@ -51,7 +51,7 @@ test('9: Each window sorted independently (both modes)', async ({ sw, context, e
 
   const popup2 = await openPopup(context, extensionId);
   await switchMode(popup2, 'individual');
-  await clickPopupButton(popup2, 'sortAllWindows-individual');
+  await clickPopupButton(popup2, 'sortAllWindows');
   await sleep(1500);
   await popup2.close();
 
@@ -144,7 +144,7 @@ test('12: Single window = same as sort current (both modes)', async ({ sw, conte
   // In single-window mode, sortAllWindows button is hidden - use sortCurrentWindow
   // which exercises the same sortWindowTabs() code path
   const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'sortCurrentWindow-groups');
+  await clickPopupButton(popup, 'sortCurrentWindow');
   await sleep(1000);
   await popup.close();
 

@@ -34,7 +34,7 @@ async function runInBothModes(sw, context, extensionId, setupFn, assertFn) {
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesWindow-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesWindow');
     await sleep(1000);
     await popup.close();
     await assertFn(mode);
@@ -67,7 +67,7 @@ test('removes duplicates in current window, keeps first occurrence', async ({
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesWindow-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesWindow');
     await sleep(1000);
     await popup.close();
 
@@ -96,7 +96,7 @@ test('no duplicates present - all tabs remain', async ({ sw, context, extensionI
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesWindow-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesWindow');
     await sleep(1000);
     await popup.close();
 
@@ -124,7 +124,7 @@ test('all identical tabs reduced to one', async ({ sw, context, extensionId }) =
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesWindow-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesWindow');
     await sleep(1000);
     await popup.close();
 
@@ -156,7 +156,7 @@ test('pinned duplicates are not removed', async ({ sw, context, extensionId }) =
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesWindow-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesWindow');
     await sleep(1000);
     await popup.close();
 
@@ -187,7 +187,7 @@ test('same URL in different groups is kept in groups mode', async ({
   await sleep(200);
 
   const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'removeDuplicatesWindow-groups');
+  await clickPopupButton(popup, 'removeDuplicatesWindow');
   await sleep(1000);
   await popup.close();
 
@@ -220,7 +220,7 @@ test('same URL in same group is removed in groups mode', async ({
   await sleep(200);
 
   const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'removeDuplicatesWindow-groups');
+  await clickPopupButton(popup, 'removeDuplicatesWindow');
   await sleep(1000);
   await popup.close();
 
@@ -251,7 +251,7 @@ test('individual mode removes cross-group duplicates', async ({
 
   const popup = await openPopup(context, extensionId);
   await switchMode(popup, 'individual');
-  await clickPopupButton(popup, 'removeDuplicatesWindow-individual');
+  await clickPopupButton(popup, 'removeDuplicatesWindow');
   await sleep(1000);
   await popup.close();
 
@@ -287,7 +287,7 @@ test('uses pendingUrl for duplicate comparison', async ({ sw, context, extension
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesWindow-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesWindow');
     await sleep(1000);
     await popup.close();
 
@@ -317,7 +317,7 @@ test('tabs are sorted after dedup', async ({ sw, context, extensionId }) => {
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesWindow-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesWindow');
     await sleep(1000);
     await popup.close();
 

@@ -36,9 +36,9 @@ export default [
     rules: {
       ...js.configs.recommended.rules,
       // Relaxed rules for Chrome extension development
-      'no-unused-vars': ['warn', { 
+      'no-unused-vars': ['warn', {
         argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_|^(lexHost|getCurrentMode|AI_MODELS|DEFAULT_MODEL|EXPIRY_PRESETS|DEFAULT_EXPIRY|VALID_TAB_GROUP_COLORS|encodeKey|decodeKey|isKeyExpired|saveAiConfig|loadAiConfig|aiProposalReadyResolve|stripQueryParams|buildAiPrompt|callOpenRouter|parseAiResponse|handleAiGroupTabs|handleApplyAiProposal|aiOrganize|openAiSettings|updateAiButtonState|COLOR_MAP|handleMessage|clumperResetStateForTest|clumperGetStateForTest)$',
+        varsIgnorePattern: '^_|^(lexHost|getRespectGroups|setRespectGroups|AI_MODELS|DEFAULT_MODEL|EXPIRY_PRESETS|DEFAULT_EXPIRY|VALID_TAB_GROUP_COLORS|encodeKey|decodeKey|isKeyExpired|saveAiConfig|loadAiConfig|aiProposalReadyResolve|stripQueryParams|buildAiPrompt|callOpenRouter|parseAiResponse|handleAiGroupTabs|handleApplyAiProposal|aiOrganize|openAiSettings|updateAiButtonState|COLOR_MAP|handleMessage|clumperResetStateForTest|clumperGetStateForTest|napFormatClock|napDayInfo|napNextWakeSummary|napRowTitle|napRowUrl|napGroupBadge|napGroupByDay)$',
         caughtErrorsIgnorePattern: '^_' // Ignore unused error parameters prefixed with _
       }],
       'no-console': 'off', // Console is used for debugging in extensions
@@ -88,7 +88,8 @@ export default [
         getTabsWithGroupInfo: 'readonly',
         findDuplicateTabs: 'readonly',
         analyzeDomainDistribution: 'readonly',
-        getCurrentMode: 'readonly',
+        getRespectGroups: 'readonly',
+        setRespectGroups: 'readonly',
         saveUserPreference: 'readonly',
         loadUserPreferences: 'readonly',
         sortAllWindows: 'readonly',
@@ -141,7 +142,16 @@ export default [
         SNOOZE_PRESETS: 'readonly',
         formatWakeTime: 'readonly',
         renderSnoozedList: 'readonly',
-        updateSnoozeButtonState: 'readonly'
+        updateSnoozeButtonState: 'readonly',
+
+        // Nap room functions (loaded by setup.js)
+        napFormatClock: 'readonly',
+        napDayInfo: 'readonly',
+        napNextWakeSummary: 'readonly',
+        napRowTitle: 'readonly',
+        napRowUrl: 'readonly',
+        napGroupBadge: 'readonly',
+        napGroupByDay: 'readonly'
       }
     },
     rules: {

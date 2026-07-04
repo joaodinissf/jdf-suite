@@ -2,20 +2,19 @@ describe('Popup Script', () => {
   beforeEach(() => {
     // Setup DOM for popup tests
     document.body.innerHTML = `
-      <div class="tab-button active" data-tab="groups">Groups</div>
-      <div class="tab-button" data-tab="individual">Individual</div>
-      <div id="groups-content" class="tab-content active"></div>
-      <div id="individual-content" class="tab-content"></div>
-      <button id="sortAllWindows-groups">Sort All Windows</button>
-      <button id="sortCurrentWindow-groups">Sort Current Window</button>
-      <button id="removeDuplicatesWindow-groups">Remove Duplicates</button>
-      <button id="extractDomain-groups">Extract Domain</button>
-      <button id="copyAllTabs-groups">Copy All Tabs</button>
-      <div id="copyFeedback-groups" class="copy-feedback">Copied!</div>
+      <button id="modeGroups" aria-pressed="true">Groups</button>
+      <button id="modeFlat" aria-pressed="false">Flat</button>
+      <small id="modeSubtitle"></small>
+      <button id="sortAllWindows">Sort All Windows</button>
+      <button id="sortCurrentWindow">Sort Current Window</button>
+      <button id="removeDuplicatesWindow">Remove Duplicates</button>
+      <button id="extractDomain">Extract Domain</button>
+      <button id="copyAllTabs">Copy All Tabs</button>
+      <div id="copyFeedback" class="copy-feedback">Copied!</div>
     `;
 
     chrome.storage.local.get.mockImplementation((keys, callback) => {
-      callback({ selectedMode: 'groups' });
+      callback({ respectGroups: true });
     });
     chrome.storage.local.set.mockImplementation(() => {});
     chrome.tabs.query.mockImplementation((query, callback) => {
@@ -27,37 +26,76 @@ describe('Popup Script', () => {
     });
   });
 
-  describe('getCurrentMode function', () => {
-    test('should return active tab mode', () => {
-      expect(getCurrentMode()).toBe('groups');
-
-      document.querySelector('.tab-button.active').classList.remove('active');
-      document.querySelector('[data-tab="individual"]').classList.add('active');
-
-      expect(getCurrentMode()).toBe('individual');
+  describe('getRespectGroups / setRespectGroups', () => {
+    test('setRespectGroups(false) flips the toggle state and DOM', () => {
+      setRespectGroups(false);
+      expect(getRespectGroups()).toBe(false);
+      expect(document.getElementById('modeGroups').getAttribute('aria-pressed')).toBe('false');
+      expect(document.getElementById('modeFlat').getAttribute('aria-pressed')).toBe('true');
+      expect(document.getElementById('modeSubtitle').textContent).toBe('flat mode');
     });
 
-    test('should default to groups if no active tab', () => {
-      document.querySelector('.tab-button.active').classList.remove('active');
-      expect(getCurrentMode()).toBe('groups');
+    test('setRespectGroups(true) restores the Groups state', () => {
+      setRespectGroups(false);
+      setRespectGroups(true);
+      expect(getRespectGroups()).toBe(true);
+      expect(document.getElementById('modeGroups').getAttribute('aria-pressed')).toBe('true');
+      expect(document.getElementById('modeFlat').getAttribute('aria-pressed')).toBe('false');
+      expect(document.getElementById('modeSubtitle').textContent).toBe('respecting groups');
+    });
+
+    test('persists to chrome.storage.local under "respectGroups" by default', () => {
+      setRespectGroups(false);
+      expect(chrome.storage.local.set).toHaveBeenCalledWith({ respectGroups: false });
+    });
+
+    test('does not persist when { persist: false } is passed', () => {
+      setRespectGroups(false, { persist: false });
+      expect(chrome.storage.local.set).not.toHaveBeenCalled();
     });
   });
 
   describe('saveUserPreference function', () => {
     test('should save preference to chrome storage', () => {
-      saveUserPreference('selectedMode', 'individual');
-      expect(chrome.storage.local.set).toHaveBeenCalledWith({ selectedMode: 'individual' });
+      saveUserPreference('respectGroups', false);
+      expect(chrome.storage.local.set).toHaveBeenCalledWith({ respectGroups: false });
     });
   });
 
   describe('loadUserPreferences function', () => {
-    test('should load and apply saved preferences', () => {
+    test('should load and apply an existing respectGroups preference without re-persisting', () => {
+      chrome.storage.local.get.mockImplementation((keys, callback) => {
+        callback({ respectGroups: false });
+      });
+
+      loadUserPreferences();
+      expect(chrome.storage.local.get).toHaveBeenCalledWith(
+        ['respectGroups', 'selectedMode'],
+        expect.any(Function)
+      );
+      expect(getRespectGroups()).toBe(false);
+      expect(chrome.storage.local.set).not.toHaveBeenCalled();
+    });
+
+    test('migrates the legacy selectedMode="individual" preference to respectGroups=false', () => {
       chrome.storage.local.get.mockImplementation((keys, callback) => {
         callback({ selectedMode: 'individual' });
       });
 
       loadUserPreferences();
-      expect(chrome.storage.local.get).toHaveBeenCalledWith(['selectedMode'], expect.any(Function));
+      expect(getRespectGroups()).toBe(false);
+      // The migrated value is persisted under the new key.
+      expect(chrome.storage.local.set).toHaveBeenCalledWith({ respectGroups: false });
+    });
+
+    test('migrates a missing/legacy "groups" preference to respectGroups=true', () => {
+      chrome.storage.local.get.mockImplementation((keys, callback) => {
+        callback({});
+      });
+
+      loadUserPreferences();
+      expect(getRespectGroups()).toBe(true);
+      expect(chrome.storage.local.set).toHaveBeenCalledWith({ respectGroups: true });
     });
   });
 
@@ -126,7 +164,7 @@ describe('Popup Script', () => {
       );
     });
 
-    test('flattenWindow should send correct message', () => {
+    test('flattenWindow should send correct message (background action name unchanged)', () => {
       flattenWindow();
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
         { action: 'flattenWindow' },

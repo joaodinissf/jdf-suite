@@ -49,7 +49,7 @@ test('each window is deduped independently', async ({ sw, context, extensionId }
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesAllWindows-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesAllWindows');
     await sleep(1500);
     await popup.close();
 
@@ -87,7 +87,7 @@ test('no cross-window deduplication occurs', async ({ sw, context, extensionId }
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesAllWindows-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesAllWindows');
     await sleep(1500);
     await popup.close();
 
@@ -129,7 +129,7 @@ test('pinned duplicate tabs are preserved', async ({ sw, context, extensionId })
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesAllWindows-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesAllWindows');
     await sleep(1500);
     await popup.close();
 
@@ -170,7 +170,7 @@ test('each window is sorted after dedup', async ({ sw, context, extensionId }) =
     if (mode === 'individual') {
       await switchMode(popup, 'individual');
     }
-    await clickPopupButton(popup, `removeDuplicatesAllWindows-${mode}`);
+    await clickPopupButton(popup, 'removeDuplicatesAllWindows');
     await sleep(1500);
     await popup.close();
 
