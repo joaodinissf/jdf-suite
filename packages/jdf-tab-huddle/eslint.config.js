@@ -78,6 +78,8 @@ export default [
         // DOM globals (jsdom-provided at test time)
         KeyboardEvent: 'readonly',
         MouseEvent: 'readonly',
+        TextEncoder: 'readonly',
+        TextDecoder: 'readonly',
 
         // Node.js globals for test setup
         eval: 'readonly',
@@ -158,7 +160,17 @@ export default [
         napRowTitle: 'readonly',
         napRowUrl: 'readonly',
         napGroupBadge: 'readonly',
-        napGroupByDay: 'readonly'
+        napGroupByDay: 'readonly',
+
+        // ai-proposal.js / callOpenRouter / handleAiGroupTabs exposures (loaded by setup.js)
+        escapeHtml: 'readonly',
+        moveTab: 'readonly',
+        renderGroup: 'readonly',
+        handleMessage: 'readonly',
+        setupActionButtons: 'readonly',
+        callOpenRouter: 'readonly',
+        handleAiGroupTabs: 'readonly',
+        handleApplyAiProposal: 'readonly'
       }
     },
     rules: {
