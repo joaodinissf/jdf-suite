@@ -11,6 +11,8 @@ import {
 } from '../helpers/tabs.js';
 import { openPopup, clickPopupButton, switchMode } from '../helpers/popup.js';
 import {
+  waitForSorted,
+  waitForSortedWithinGroups,
   assertTabsSorted,
   assertTabUrls,
   assertPinnedTabUrls,
@@ -32,7 +34,11 @@ test('1: Sorts tabs alphabetically by URL (both modes)', async ({ sw, context, e
   // Test groups mode
   const popup1 = await openPopup(context, extensionId);
   await clickPopupButton(popup1, 'sortCurrentWindow');
-  await sleep(1000);
+
+  // The popup click is fire-and-forget (no response the test can await), so
+  // poll for the real end state instead of a fixed sleep that can race the
+  // background sort under load.
+  await waitForSorted(sw, windowId, 5000);
   await popup1.close();
 
   await assertTabsSorted(sw, windowId);
@@ -47,7 +53,7 @@ test('1: Sorts tabs alphabetically by URL (both modes)', async ({ sw, context, e
   const popup2 = await openPopup(context, extensionId);
   await switchMode(popup2, 'individual');
   await clickPopupButton(popup2, 'sortCurrentWindow');
-  await sleep(1000);
+  await waitForSorted(sw, windowId2, 5000);
   await popup2.close();
 
   await assertTabsSorted(sw, windowId2);
@@ -74,7 +80,8 @@ test('2: Pinned tabs stay at front (both modes)', async ({ sw, context, extensio
   // Sort in groups mode
   const popup = await openPopup(context, extensionId);
   await clickPopupButton(popup, 'sortCurrentWindow');
-  await sleep(1000);
+  // Poll for the real end state rather than a fixed sleep.
+  await waitForSorted(sw, windowId, 5000);
   await popup.close();
 
   // Pinned tabs should still be pinned at the front
@@ -106,7 +113,9 @@ test('3: Grouped tabs sorted within group (groups mode)', async ({ sw, context, 
 
   const popup = await openPopup(context, extensionId);
   await clickPopupButton(popup, 'sortCurrentWindow');
-  await sleep(1000);
+  // Groups mode sorts within groups, not across the window, so poll for
+  // that end state rather than a fixed sleep.
+  await waitForSortedWithinGroups(sw, windowId);
   await popup.close();
 
   // Verify tabs within each group are sorted
@@ -139,7 +148,8 @@ test('4: Individual mode ignores groups', async ({ sw, context, extensionId }) =
   const popup = await openPopup(context, extensionId);
   await switchMode(popup, 'individual');
   await clickPopupButton(popup, 'sortCurrentWindow');
-  await sleep(1000);
+  // Poll for the real end state rather than a fixed sleep.
+  await waitForSorted(sw, windowId, 5000);
   await popup.close();
 
   // All unpinned tabs should be sorted flat, regardless of groups
@@ -159,7 +169,9 @@ test('5: Mix grouped + ungrouped (groups mode)', async ({ sw, context, extension
 
   const popup = await openPopup(context, extensionId);
   await clickPopupButton(popup, 'sortCurrentWindow');
-  await sleep(1000);
+  // Groups mode sorts within groups, not across the window, so poll for
+  // that end state rather than a fixed sleep.
+  await waitForSortedWithinGroups(sw, windowId);
   await popup.close();
 
   const tabs = await getWindowTabs(sw, windowId);
@@ -191,7 +203,8 @@ test('6: Tabs with pendingUrl (both modes)', async ({ sw, context, extensionId }
 
   const popup = await openPopup(context, extensionId);
   await clickPopupButton(popup, 'sortCurrentWindow');
-  await sleep(1000);
+  // Poll for the real end state rather than a fixed sleep.
+  await waitForSorted(sw, windowId, 5000);
   await popup.close();
 
   // Tabs should be sorted using url or pendingUrl
@@ -205,6 +218,7 @@ test('7: Single tab (no-op, both modes)', async ({ sw, context, extensionId }) =
 
   const popup = await openPopup(context, extensionId);
   await clickPopupButton(popup, 'sortCurrentWindow');
+  // Fixed sleep stays: this is a no-op, so polling would pass vacuously.
   await sleep(1000);
   await popup.close();
 
@@ -227,7 +241,8 @@ test('8: Special URLs mixed in (individual mode)', async ({ sw, context, extensi
   const popup = await openPopup(context, extensionId);
   await switchMode(popup, 'individual');
   await clickPopupButton(popup, 'sortCurrentWindow');
-  await sleep(1000);
+  // Poll for the real end state rather than a fixed sleep.
+  await waitForSorted(sw, windowId, 5000);
   await popup.close();
 
   // All tabs should be sorted lexicographically

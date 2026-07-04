@@ -2,6 +2,7 @@ import { test } from '../fixtures/extension.js';
 import { expect } from '@playwright/test';
 import { resetBrowserState, createWindow, sleep } from '../helpers/tabs.js';
 import { openPopup, switchMode } from '../helpers/popup.js';
+import { waitForCondition } from '../helpers/assertions.js';
 import { URLS } from '../helpers/constants.js';
 
 test.beforeEach(async ({ sw, context }) => {
@@ -32,11 +33,16 @@ test('55: Switch to Flat mode', async ({ context, extensionId }) => {
   await popup.close();
 });
 
-test('56: Toggle preference persisted', async ({ context, extensionId }) => {
+test('56: Toggle preference persisted', async ({ sw, context, extensionId }) => {
   // Open popup and switch to Flat mode
   const popup1 = await openPopup(context, extensionId);
   await switchMode(popup1, 'individual');
-  await sleep(300); // allow storage.local.set to complete
+  // The toggle's storage.local.set is fire-and-forget: poll for it to land
+  // instead of a fixed sleep.
+  await waitForCondition(async () => {
+    const result = await sw.evaluate(() => chrome.storage.local.get(['respectGroups']));
+    return result.respectGroups === false;
+  });
   await popup1.close();
 
   // Reopen popup and verify Flat mode is restored

@@ -14,7 +14,10 @@ import {
 } from '../helpers/tabs.js';
 import {
   waitForWindowCount,
+  waitForTabCount,
   waitForCondition,
+  waitForSorted,
+  waitForGroupTitle,
   assertTabsSorted,
 } from '../helpers/assertions.js';
 import { URLS } from '../helpers/constants.js';
@@ -49,7 +52,12 @@ test('47: All tabs consolidated', async ({ sw, context }) => {
       handleMoveAllToSingleWindow(params, resolve);
     });
   }, { activeTabId, respectGroups: true });
-  await sleep(1500);
+
+  // The handler responds before its internal setTimeout(200) sort runs, so
+  // poll for the real end state (all 6 tabs in window 1, sorted) instead of
+  // a fixed sleep that can race it under load.
+  await waitForTabCount(sw, windowId, 6);
+  await waitForSorted(sw, windowId, 5000);
 
   // Should have 1 window with all 6 unpinned tabs
   // (source windows may close if empty)
@@ -88,7 +96,9 @@ test('48: Pinned not moved from other windows', async ({ sw, context }) => {
       handleMoveAllToSingleWindow(params, resolve);
     });
   }, { activeTabId, respectGroups: true });
-  await sleep(1500);
+
+  // Poll for the real end state rather than a fixed sleep.
+  await waitForTabCount(sw, windowId, 2);
 
   const allWindows = await getAllWindows(sw);
   const targetWindow = allWindows.find(w => w.tabs.some(t => t.id === activeTabId));
@@ -132,7 +142,9 @@ test('49: Groups recreated in target window', async ({ sw, context }) => {
       handleMoveAllToSingleWindow(params, resolve);
     });
   }, { activeTabId, respectGroups: true });
-  await sleep(1500);
+
+  // Poll for the recreated group rather than a fixed sleep.
+  await waitForGroupTitle(sw, windowId, 'GitGroup');
 
   const allWindows = await getAllWindows(sw);
   const targetWindow = allWindows.find(w => w.tabs.some(t => t.id === activeTabId));
@@ -168,7 +180,11 @@ test('50: Individual mode drops groups', async ({ sw, context }) => {
       handleMoveAllToSingleWindow(params, resolve);
     });
   }, { activeTabId, respectGroups: false });
-  await sleep(1500);
+
+  // Poll for the real end state (all 3 tabs in window 1, then the handler's
+  // delayed sort) rather than a fixed sleep.
+  await waitForTabCount(sw, windowId, 3);
+  await waitForSorted(sw, windowId, 5000);
 
   const allWindows = await getAllWindows(sw);
   const targetWindow = allWindows.find(w => w.tabs.some(t => t.id === activeTabId));
@@ -206,6 +222,7 @@ test('51: Single window - no-op', async ({ sw, context }) => {
       handleMoveAllToSingleWindow(params, resolve);
     });
   }, { activeTabId, respectGroups: true });
+  // Fixed sleep stays: this is a no-op, so polling would pass vacuously.
   await sleep(1000);
 
   // Still 1 window
@@ -244,7 +261,10 @@ test('52: Target = window with active tab', async ({ sw, context }) => {
       handleMoveAllToSingleWindow(params, resolve);
     });
   }, { activeTabId, respectGroups: true });
-  await sleep(1500);
+
+  // Poll for the real end state (all 4 tabs in window 2) rather than a
+  // fixed sleep.
+  await waitForTabCount(sw, win2.windowId, 4);
 
   const allWindows = await getAllWindows(sw);
   const targetWindow = allWindows.find(w => w.tabs.some(t => t.id === activeTabId));
@@ -285,10 +305,9 @@ test('53: Source windows close after move', async ({ sw, context }) => {
       handleMoveAllToSingleWindow(params, resolve);
     });
   }, { activeTabId, respectGroups: true });
-  await sleep(1500);
 
   // Source windows with no remaining tabs should be closed by Chrome
-  // Only the target window should remain
+  // Only the target window should remain (polled, no fixed sleep needed)
   await waitForWindowCount(sw, 1);
 
   const allWindows = await getAllWindows(sw);

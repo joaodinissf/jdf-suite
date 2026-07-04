@@ -12,6 +12,8 @@ import {
 import { openPopup, clickPopupButton, switchMode } from '../helpers/popup.js';
 import {
   waitForTabCount,
+  waitForUrlCount,
+  waitForSorted,
   assertTabsSorted,
   assertTabUrls,
   assertPinnedTabUrls,
@@ -68,7 +70,12 @@ test('removes duplicates in current window, keeps first occurrence', async ({
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'removeDuplicatesWindow');
-    await sleep(1000);
+
+    // The popup click is fire-and-forget, so poll for the real end state
+    // (duplicate gone, then the handler's delayed sort) instead of a fixed
+    // sleep. Poll before closing the popup: its tab is part of the sort.
+    await waitForUrlCount(sw, wid, URLS.EXAMPLE_A, 1);
+    await waitForSorted(sw, wid, 5000);
     await popup.close();
 
     // Should have 2 tabs: A and B, sorted
@@ -97,6 +104,7 @@ test('no duplicates present - all tabs remain', async ({ sw, context, extensionI
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'removeDuplicatesWindow');
+    // Fixed sleep stays: nothing should be removed, so polling would pass vacuously.
     await sleep(1000);
     await popup.close();
 
@@ -125,7 +133,8 @@ test('all identical tabs reduced to one', async ({ sw, context, extensionId }) =
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'removeDuplicatesWindow');
-    await sleep(1000);
+    // Poll for the real end state rather than a fixed sleep.
+    await waitForUrlCount(sw, wid, URLS.EXAMPLE_A, 1);
     await popup.close();
 
     await waitForTabCount(sw, wid, 1);
@@ -157,6 +166,7 @@ test('pinned duplicates are not removed', async ({ sw, context, extensionId }) =
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'removeDuplicatesWindow');
+    // Fixed sleep stays: nothing should be removed, so polling would pass vacuously.
     await sleep(1000);
     await popup.close();
 
@@ -188,6 +198,7 @@ test('same URL in different groups is kept in groups mode', async ({
 
   const popup = await openPopup(context, extensionId);
   await clickPopupButton(popup, 'removeDuplicatesWindow');
+  // Fixed sleep stays: nothing should be removed, so polling would pass vacuously.
   await sleep(1000);
   await popup.close();
 
@@ -220,7 +231,8 @@ test('same URL in same group is removed in groups mode', async ({
 
   const popup = await openPopup(context, extensionId);
   await clickPopupButton(popup, 'removeDuplicatesWindow');
-  await sleep(1000);
+  // Poll for the real end state rather than a fixed sleep.
+  await waitForUrlCount(sw, wid, URLS.EXAMPLE_A, 1);
   await popup.close();
 
   // One duplicate removed, so 2 tabs remain: 1 EXAMPLE_A in group + 1 TEST_A ungrouped
@@ -251,7 +263,8 @@ test('individual mode removes cross-group duplicates', async ({
   const popup = await openPopup(context, extensionId);
   await switchMode(popup, 'individual');
   await clickPopupButton(popup, 'removeDuplicatesWindow');
-  await sleep(1000);
+  // Poll for the real end state rather than a fixed sleep.
+  await waitForUrlCount(sw, wid, URLS.EXAMPLE_A, 1);
   await popup.close();
 
   // Individual mode treats all tabs as one pool, so duplicate removed
@@ -287,7 +300,8 @@ test('uses pendingUrl for duplicate comparison', async ({ sw, context, extension
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'removeDuplicatesWindow');
-    await sleep(1000);
+    // Poll for the real end state rather than a fixed sleep.
+    await waitForUrlCount(sw, wid, URLS.EXAMPLE_A, 1);
     await popup.close();
 
     // Duplicate should be detected even if one tab uses pendingUrl
@@ -317,7 +331,10 @@ test('tabs are sorted after dedup', async ({ sw, context, extensionId }) => {
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'removeDuplicatesWindow');
-    await sleep(1000);
+    // Poll for the real end state (duplicate gone, then the delayed sort)
+    // rather than a fixed sleep.
+    await waitForUrlCount(sw, wid, URLS.TEST_A, 1);
+    await waitForSorted(sw, wid, 5000);
     await popup.close();
 
     // After dedup, duplicate TEST_A removed, remaining 3 tabs sorted

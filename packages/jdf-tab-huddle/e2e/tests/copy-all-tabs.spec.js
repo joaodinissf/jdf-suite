@@ -118,13 +118,14 @@ test('64: Copied feedback appears after clicking Copy this window', async ({ sw,
   await expect(feedback).not.toHaveClass(/visible/);
 
   await clickPopupButton(popup, 'copyThisWindow');
-  await sleep(500);
 
-  // Feedback should be visible after clicking
+  // Feedback should be visible after clicking. The copy round-trip is
+  // fire-and-forget, so rely on the web-first assertion's own polling rather
+  // than a fixed sleep.
   await expect(feedback).toHaveClass(/visible/);
 
-  // Wait for feedback to disappear
-  await sleep(1500);
+  // Wait for feedback to disappear (the popup's 1500 ms timer); polled by
+  // the assertion, which only passes after the class was seen above.
   await expect(feedback).not.toHaveClass(/visible/);
 
   await popup.close();

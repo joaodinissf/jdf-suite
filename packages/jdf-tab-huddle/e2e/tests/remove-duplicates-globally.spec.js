@@ -15,6 +15,8 @@ import { openPopup, clickPopupButton, switchMode } from '../helpers/popup.js';
 import {
   waitForTabCount,
   waitForWindowCount,
+  waitForUrlCount,
+  waitForSorted,
   assertTabsSorted,
   assertNoDuplicates,
   getTotalTabCount,
@@ -50,7 +52,10 @@ test('cross-window duplicates are removed globally', async ({ sw, context, exten
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'removeDuplicatesGlobally');
-    await sleep(1500);
+
+    // The popup click is fire-and-forget, so poll for the real end state
+    // instead of a fixed sleep.
+    await waitForUrlCount(sw, null, URLS.EXAMPLE_A, 1);
     await popup.close();
 
     // Global dedup: only one EXAMPLE_A should remain across all windows
@@ -86,7 +91,8 @@ test('first occurrence is kept during global dedup', async ({ sw, context, exten
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'removeDuplicatesGlobally');
-    await sleep(1500);
+    // Poll for the real end state rather than a fixed sleep.
+    await waitForUrlCount(sw, null, URLS.EXAMPLE_A, 1);
     await popup.close();
 
     // W1 should keep A (first occurrence), W2's A should be removed
@@ -130,6 +136,8 @@ test('pinned duplicate tabs are preserved in global dedup', async ({
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'removeDuplicatesGlobally');
+    // Fixed sleep stays: the pinned tab must NOT be removed, so polling would
+    // pass vacuously.
     await sleep(1500);
     await popup.close();
 
@@ -170,6 +178,7 @@ test('group-aware global dedup keeps same URL in different groups (same title, d
   await sw.evaluate(async (respectGroups) => {
     await new Promise((resolve) => handleRemoveDuplicatesGlobally(respectGroups, resolve));
   }, true);
+  // Fixed sleep stays: nothing should be removed, so polling would pass vacuously.
   await sleep(1500);
 
   // Groups mode dedups per real group (by groupId), not by title, so the same
@@ -202,7 +211,9 @@ test('group-aware global dedup removes duplicates within the same real group', a
   await sw.evaluate(async (respectGroups) => {
     await new Promise((resolve) => handleRemoveDuplicatesGlobally(respectGroups, resolve));
   }, true);
-  await sleep(1500);
+
+  // Poll for the real end state rather than a fixed sleep.
+  await waitForUrlCount(sw, null, URLS.EXAMPLE_A, 1);
 
   const allWindows = await getAllWindows(sw);
   const allUrls = allWindows.flatMap(w => w.tabs.filter(t => !t.pinned).map(t => t.url));
@@ -235,7 +246,13 @@ test('all windows are sorted after global dedup', async ({ sw, context, extensio
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'removeDuplicatesGlobally');
-    await sleep(1500);
+
+    // Poll for the real end state (duplicate gone, then the handler's delayed
+    // sort) rather than a fixed sleep. Poll before closing the popup: its tab
+    // is part of the sort.
+    await waitForUrlCount(sw, null, URLS.TEST_A, 1);
+    await waitForSorted(sw, w1Id, 5000);
+    await waitForSorted(sw, w2Id, 5000);
     await popup.close();
 
     // Both windows should be sorted
@@ -273,7 +290,8 @@ test('window left empty after global dedup gets new tab page', async ({
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'removeDuplicatesGlobally');
-    await sleep(1500);
+    // Poll for the real end state rather than a fixed sleep.
+    await waitForUrlCount(sw, null, URLS.EXAMPLE_A, 1);
     await popup.close();
 
     // W1 should keep A and B

@@ -12,6 +12,8 @@ import {
 import { openPopup, clickPopupButton, switchMode } from '../helpers/popup.js';
 import {
   waitForTabCount,
+  waitForUrlCount,
+  waitForSorted,
   assertTabsSorted,
   assertNoDuplicates,
 } from '../helpers/assertions.js';
@@ -50,7 +52,11 @@ test('each window is deduped independently', async ({ sw, context, extensionId }
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'removeDuplicatesAllWindows');
-    await sleep(1500);
+
+    // The popup click is fire-and-forget, so poll for the real end state
+    // (each window's duplicate gone) instead of a fixed sleep.
+    await waitForUrlCount(sw, w1Id, URLS.EXAMPLE_A, 1);
+    await waitForUrlCount(sw, w2Id, URLS.GITHUB_A, 1);
     await popup.close();
 
     // W1: A, B (duplicate A removed)
@@ -88,6 +94,7 @@ test('no cross-window deduplication occurs', async ({ sw, context, extensionId }
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'removeDuplicatesAllWindows');
+    // Fixed sleep stays: nothing should be removed, so polling would pass vacuously.
     await sleep(1500);
     await popup.close();
 
@@ -130,6 +137,7 @@ test('pinned duplicate tabs are preserved', async ({ sw, context, extensionId })
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'removeDuplicatesAllWindows');
+    // Fixed sleep stays: nothing should be removed, so polling would pass vacuously.
     await sleep(1500);
     await popup.close();
 
@@ -171,7 +179,14 @@ test('each window is sorted after dedup', async ({ sw, context, extensionId }) =
       await switchMode(popup, 'individual');
     }
     await clickPopupButton(popup, 'removeDuplicatesAllWindows');
-    await sleep(1500);
+
+    // Poll for the real end state (duplicates gone, then the handler's
+    // delayed sort) rather than a fixed sleep. Poll before closing the
+    // popup: its tab is part of the sort.
+    await waitForUrlCount(sw, w1Id, URLS.TEST_A, 1);
+    await waitForUrlCount(sw, w2Id, URLS.GITHUB_A, 1);
+    await waitForSorted(sw, w1Id, 5000);
+    await waitForSorted(sw, w2Id, 5000);
     await popup.close();
 
     // Both windows should be sorted after dedup
