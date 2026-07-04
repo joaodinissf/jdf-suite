@@ -159,6 +159,7 @@ The in-package [`docs/CI-CD.md`](docs/CI-CD.md) describes the pre-migration stan
 
 ## Version History
 
+- **v0.2.1**: Popup layout stability — reordered sections so the variable (conditionally-hidden) ones come last: the "All windows" section (hidden with a single window) and the "Sleeping" list (hidden when empty, and variable in height) now sit at the bottom, so the always-present controls never shift position.
 - **v0.2.0**: **Tab snoozing** — snooze a tab, selected tabs, a window, or a tab group until a chosen time (5 presets + custom); tabs auto-reopen in the background with a notification, managed via a Sleeping list and a full-page nap room. **Dark popup redesign** — single action panel with a Groups/Flat toggle (replacing the dual-mode tabs), spelled-out labels, "Flatten" renamed to "Ungroup". **Keyboard-drivable popup** — single-key hotkeys with visible hints on every action, plus a global `Ctrl/⌘+Shift+H` shortcut to open the popup. Major test-coverage expansion (AI-feature unit tests, keyboard/nap-room suites; 259 unit + 85 e2e). Adds `alarms` + `notifications` permissions and a `commands` block.
 - **v0.1.0**: First release in the jdf-suite monorepo. Renamed to **Huddle** (`jdf-tab-huddle`); version reset from the pre-monorepo v2.x dev stream since nothing had ever shipped publicly. Unit tests migrated Jest → Vitest. CWS publishing deferred to v1.0.0 (see jdf-suite#7).
 
