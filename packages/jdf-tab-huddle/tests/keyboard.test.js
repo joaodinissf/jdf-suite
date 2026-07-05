@@ -29,7 +29,7 @@ function buildPopupDom({ respectGroups = true, singleWindow = false, groupDisabl
           <button id="removeDuplicatesWindow" class="btn" data-action="removeDuplicatesWindow">Deduplicate</button>
           <button id="flattenWindow" class="btn" data-action="flattenWindow">Ungroup</button>
         </div>
-        <div class="grid2">
+        <div class="ai-row">
           <button id="aiOrganize" class="btn primary" data-action="aiGroupTabs">Organize with AI</button>
           <button id="aiSettings" class="btn ai-cog-btn" data-action="openAiSettings" style="display: none">cog</button>
         </div>

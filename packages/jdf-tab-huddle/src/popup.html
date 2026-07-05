@@ -253,6 +253,17 @@
       flex: 0 0 auto;
     }
 
+    .ai-row {
+      display: flex;
+      gap: 6px;
+      align-items: stretch;
+    }
+
+    .ai-row .btn.primary {
+      flex: 1;
+      min-width: 0;
+    }
+
     .ai-cog-btn {
       flex: 0 0 32px;
       justify-content: center;
@@ -581,9 +592,9 @@
         <button id="flattenWindow" class="btn" data-action="flattenWindow"
           title="Ungroup all tabs in this window">Ungroup</button>
       </div>
-      <div class="grid2">
-        <button id="aiOrganize" class="btn primary wide" data-action="aiGroupTabs"
-          title="Use AI to organize tabs into groups" style="grid-column: 1 / -1">Organize with AI</button>
+      <div class="ai-row">
+        <button id="aiOrganize" class="btn primary" data-action="aiGroupTabs"
+          title="Use AI to organize tabs into groups">Organize with AI</button>
         <button id="aiSettings" class="btn ai-cog-btn" data-action="openAiSettings" style="display: none"
           title="AI settings">&#9881;</button>
       </div>
