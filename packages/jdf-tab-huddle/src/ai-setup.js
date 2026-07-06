@@ -189,12 +189,26 @@ function setupEventListeners() {
   });
 }
 
+// Defensive: only auto-run against a real ai-setup.html page (which always has
+// these elements). This keeps the module safe to load in isolation (e.g. test
+// harnesses that eval this file against a DOM that doesn't have the page markup
+// yet) without ever affecting production behavior.
+function hasRequiredPageElements() {
+  return !!(
+    document.getElementById('modelSelect') &&
+    document.getElementById('expirySelect') &&
+    document.getElementById('saveButton')
+  );
+}
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    init();
-    setupEventListeners();
+    if (hasRequiredPageElements()) {
+      init();
+      setupEventListeners();
+    }
   });
-} else {
+} else if (hasRequiredPageElements()) {
   init();
   setupEventListeners();
 }

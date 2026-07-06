@@ -19,8 +19,11 @@ test.beforeEach(async ({ sw, context }) => {
 });
 
 test('9: Each window sorted independently (both modes)', async ({ sw, context, extensionId }) => {
-  // Set up window 1 with unsorted tabs
-  await createTabs(sw, [URLS.WIKI_A, URLS.EXAMPLE_A, URLS.GITHUB_A]);
+  // Set up window 1 with unsorted tabs (GITHUB_A/WIKI_A/EXAMPLE_A is NOT
+  // already in ascending URL order — creation order must differ from sorted
+  // order, otherwise the sort is a no-op and the assertion below proves
+  // nothing).
+  await createTabs(sw, [URLS.GITHUB_A, URLS.WIKI_A, URLS.EXAMPLE_A]);
   await sleep(300);
 
   // Create window 2 with unsorted tabs
@@ -41,7 +44,7 @@ test('9: Each window sorted independently (both modes)', async ({ sw, context, e
 
   // Reset and test individual mode
   await resetBrowserState(sw, context);
-  await createTabs(sw, [URLS.WIKI_A, URLS.EXAMPLE_A, URLS.GITHUB_A]);
+  await createTabs(sw, [URLS.GITHUB_A, URLS.WIKI_A, URLS.EXAMPLE_A]);
   await sleep(300);
 
   const win2b = await createWindow(sw, [URLS.TEST_B, URLS.MOZILLA_A, URLS.SO_A]);
@@ -60,36 +63,42 @@ test('9: Each window sorted independently (both modes)', async ({ sw, context, e
 });
 
 test('10: Pinned unaffected across windows (both modes)', async ({ sw, context, extensionId }) => {
-  // Window 1: pin a tab, add unsorted tabs
-  const win1Tabs = await createTabs(sw, [URLS.MOZILLA_A, URLS.EXAMPLE_A, URLS.GITHUB_A]);
-  await pinTab(sw, win1Tabs[0]);
-  await sleep(300);
+  for (const respectGroups of [true, false]) {
+    await resetBrowserState(sw, context);
 
-  // Window 2: pin a tab, add unsorted tabs
-  const win2 = await createWindow(sw, [URLS.TEST_B, URLS.MOZILLA_B, URLS.SO_A]);
-  await pinTab(sw, win2.tabIds[0]);
-  await sleep(300);
+    // Window 1: pin a tab, add unsorted (unpinned) tabs. GITHUB_A/EXAMPLE_A
+    // is NOT already in ascending URL order.
+    const win1Tabs = await createTabs(sw, [URLS.MOZILLA_A, URLS.GITHUB_A, URLS.EXAMPLE_A]);
+    await pinTab(sw, win1Tabs[0]);
+    await sleep(300);
 
-  const windowId1 = await getCurrentWindowId(sw);
+    // Window 2: pin a tab, add unsorted (unpinned) tabs. SO_A/MOZILLA_B is
+    // NOT already in ascending URL order.
+    const win2 = await createWindow(sw, [URLS.TEST_B, URLS.SO_A, URLS.MOZILLA_B]);
+    await pinTab(sw, win2.tabIds[0]);
+    await sleep(300);
 
-  // Invoke handler directly (multi-window buttons may be hidden in popup)
-  await sw.evaluate(async (respectGroups) => {
-    await new Promise((resolve) => handleSortAllWindows(respectGroups, resolve));
-  }, true);
-  await sleep(1000);
+    const windowId1 = await getCurrentWindowId(sw);
 
-  // Verify pinned tabs remain in both windows
-  const tabs1 = await getWindowTabs(sw, windowId1);
-  const pinned1 = tabs1.filter(t => t.pinned);
-  expect(pinned1.length).toBe(1);
+    // Invoke handler directly (multi-window buttons may be hidden in popup)
+    await sw.evaluate(async (rg) => {
+      await new Promise((resolve) => handleSortAllWindows(rg, resolve));
+    }, respectGroups);
+    await sleep(1000);
 
-  const tabs2 = await getWindowTabs(sw, win2.windowId);
-  const pinned2 = tabs2.filter(t => t.pinned);
-  expect(pinned2.length).toBe(1);
+    // Verify pinned tabs remain in both windows
+    const tabs1 = await getWindowTabs(sw, windowId1);
+    const pinned1 = tabs1.filter(t => t.pinned);
+    expect(pinned1.length).toBe(1);
 
-  // Unpinned tabs should still be sorted in both windows
-  await assertTabsSorted(sw, windowId1);
-  await assertTabsSorted(sw, win2.windowId);
+    const tabs2 = await getWindowTabs(sw, win2.windowId);
+    const pinned2 = tabs2.filter(t => t.pinned);
+    expect(pinned2.length).toBe(1);
+
+    // Unpinned tabs should still be sorted in both windows
+    await assertTabsSorted(sw, windowId1);
+    await assertTabsSorted(sw, win2.windowId);
+  }
 });
 
 test('11: Groups preserved per window (groups mode)', async ({ sw, context, extensionId }) => {
@@ -135,18 +144,26 @@ test('11: Groups preserved per window (groups mode)', async ({ sw, context, exte
 });
 
 test('12: Single window = same as sort current (both modes)', async ({ sw, context, extensionId }) => {
-  // Only one window with unsorted tabs
-  await createTabs(sw, [URLS.WIKI_A, URLS.EXAMPLE_A, URLS.GITHUB_A, URLS.TEST_A]);
-  await sleep(300);
+  for (const mode of ['groups', 'individual']) {
+    await resetBrowserState(sw, context);
 
-  const windowId = await getCurrentWindowId(sw);
+    // Only one window with unsorted tabs. TEST_A/GITHUB_A/WIKI_A/EXAMPLE_A is
+    // NOT already in ascending URL order.
+    await createTabs(sw, [URLS.TEST_A, URLS.GITHUB_A, URLS.WIKI_A, URLS.EXAMPLE_A]);
+    await sleep(300);
 
-  // In single-window mode, sortAllWindows button is hidden - use sortCurrentWindow
-  // which exercises the same sortWindowTabs() code path
-  const popup = await openPopup(context, extensionId);
-  await clickPopupButton(popup, 'sortCurrentWindow');
-  await sleep(1000);
-  await popup.close();
+    const windowId = await getCurrentWindowId(sw);
 
-  await assertTabsSorted(sw, windowId);
+    // In single-window mode, sortAllWindows button is hidden - use sortCurrentWindow
+    // which exercises the same sortWindowTabs() code path
+    const popup = await openPopup(context, extensionId);
+    if (mode === 'individual') {
+      await switchMode(popup, 'individual');
+    }
+    await clickPopupButton(popup, 'sortCurrentWindow');
+    await sleep(1000);
+    await popup.close();
+
+    await assertTabsSorted(sw, windowId);
+  }
 });

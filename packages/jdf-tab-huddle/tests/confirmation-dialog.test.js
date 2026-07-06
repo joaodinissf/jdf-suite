@@ -118,16 +118,28 @@ describe('Confirmation Dialog', () => {
   });
 
   describe('DOM Updates - branch coverage', () => {
-    test('totalWindows === 1 uses the singular "Window" label', () => {
+    test('totalWindows === 1 uses the singular "Window" label (button and window-count text)', () => {
       setLocationSearch('?extractable=1&single=0');
       loadConfirmationDialog();
 
       updateContent();
 
       expect(document.getElementById('windowCount').textContent).toBe(
-        'This will create 1 new browser windows.'
+        'This will create 1 new browser window.'
       );
       expect(document.getElementById('confirmButton').textContent).toBe('🚀 Create 1 Window');
+    });
+
+    test('totalWindows > 1 uses the plural "windows" label (button and window-count text)', () => {
+      setLocationSearch('?extractable=2&single=0');
+      loadConfirmationDialog();
+
+      updateContent();
+
+      expect(document.getElementById('windowCount').textContent).toBe(
+        'This will create 2 new browser windows.'
+      );
+      expect(document.getElementById('confirmButton').textContent).toBe('🚀 Create 2 Windows');
     });
 
     test('extractableCount === 0 omits the extractable-domains list item', () => {

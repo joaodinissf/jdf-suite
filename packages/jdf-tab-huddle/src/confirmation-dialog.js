@@ -9,7 +9,7 @@ function updateContent() {
   // Update window count
   const windowCountElement = document.getElementById('windowCount');
   if (windowCountElement) {
-    windowCountElement.textContent = `This will create ${totalWindows} new browser windows.`;
+    windowCountElement.textContent = `This will create ${totalWindows} new browser window${totalWindows === 1 ? '' : 's'}.`;
   }
 
   // Update operation list
