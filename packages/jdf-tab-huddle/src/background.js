@@ -858,8 +858,11 @@ function findDuplicateTabs(tabArrays, respectGroups = true) {
 
         // For per-window deduplication, track within each window/group
         // For global deduplication, track across all windows but respect groups if enabled
-        const seenMap = respectGroups 
-          ? (tabArrays.length === 1 ? urlSeen : groupUrlSeen)
+        // Groups mode always dedups per-group (groupUrlSeen is scoped to a single
+        // window+group pair), regardless of how many tab arrays were passed in —
+        // a URL repeated in two different groups is NOT a duplicate.
+        const seenMap = respectGroups
+          ? groupUrlSeen
           : (tabArrays.length === 1 ? urlSeen : localUrlSeen);
 
         if (seenMap.has(url)) {

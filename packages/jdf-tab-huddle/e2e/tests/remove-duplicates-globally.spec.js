@@ -141,8 +141,8 @@ test('pinned duplicate tabs are preserved in global dedup', async ({
   }
 });
 
-// #44 - Group-aware global dedup (groups mode)
-test('group-aware global dedup deduplicates within same group across windows', async ({
+// #44 - Group-aware global dedup (groups mode) keeps duplicates that live in different real groups
+test('group-aware global dedup keeps same URL in different groups (same title, different windows) in groups mode', async ({
   sw,
   context,
   extensionId,
@@ -159,7 +159,9 @@ test('group-aware global dedup deduplicates within same group across windows', a
   await createTabGroup(sw, [tabId1], 'News', 'blue');
   await sleep(200);
 
-  // W2: A in group "News" (same group title, same URL => should be deduped)
+  // W2: A in a group also titled "News" — but tab groups are always window-scoped
+  // in Chrome, so this is a DIFFERENT real group (distinct groupId) despite the
+  // matching title.
   const { windowId: w2Id, tabIds: w2TabIds } = await createWindow(sw, [URLS.EXAMPLE_A]);
   await createTabGroup(sw, [w2TabIds[0]], 'News', 'blue');
   await sleep(200);
@@ -170,8 +172,38 @@ test('group-aware global dedup deduplicates within same group across windows', a
   }, true);
   await sleep(1500);
 
-  // Global dedup with single array: seenMap is shared urlSeen, so same URL
-  // across different groups (even different windows) IS deduped.
+  // Groups mode dedups per real group (by groupId), not by title, so the same
+  // URL in two different groups is NOT a duplicate — both tabs survive.
+  const allWindows = await getAllWindows(sw);
+  const allUrls = allWindows.flatMap(w => w.tabs.filter(t => !t.pinned).map(t => t.url));
+  const exampleACount = allUrls.filter(u => u === URLS.EXAMPLE_A).length;
+  expect(exampleACount).toBe(2);
+});
+
+// #44b - Group-aware global dedup still removes true same-group duplicates
+test('group-aware global dedup removes duplicates within the same real group', async ({
+  sw,
+  context,
+  extensionId,
+}) => {
+  const w1Id = await getCurrentWindowId(sw);
+
+  // W1: A, A both in the same real group "News"
+  const [tabId1, tabId2] = await createTabs(sw, [URLS.EXAMPLE_A, URLS.EXAMPLE_A]);
+  const w1Tabs = await getWindowTabs(sw, w1Id);
+  const blankTab = w1Tabs.find(t => t.url === 'about:blank');
+  if (blankTab) {
+    await sw.evaluate(async (id) => chrome.tabs.remove(id), blankTab.id);
+  }
+  await createTabGroup(sw, [tabId1, tabId2], 'News', 'blue');
+  await sleep(200);
+
+  // Invoke handler directly (multi-window buttons may be hidden in popup)
+  await sw.evaluate(async (respectGroups) => {
+    await new Promise((resolve) => handleRemoveDuplicatesGlobally(respectGroups, resolve));
+  }, true);
+  await sleep(1500);
+
   const allWindows = await getAllWindows(sw);
   const allUrls = allWindows.flatMap(w => w.tabs.filter(t => !t.pinned).map(t => t.url));
   const exampleACount = allUrls.filter(u => u === URLS.EXAMPLE_A).length;

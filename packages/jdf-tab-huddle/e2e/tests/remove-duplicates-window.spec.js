@@ -191,13 +191,12 @@ test('same URL in different groups is kept in groups mode', async ({
   await sleep(1000);
   await popup.close();
 
-  // In groups mode with single-window dedup (tabArrays.length === 1),
-  // findDuplicateTabs uses a shared urlSeen map across groups,
-  // so same URL in different groups IS still deduped.
-  await waitForTabCount(sw, wid, 1);
+  // In groups mode, dedup is scoped per-group: the same URL in two
+  // different groups is NOT a duplicate, so both tabs survive.
+  await waitForTabCount(sw, wid, 2);
   const tabs = await getWindowTabs(sw, wid);
-  expect(tabs.length).toBe(1);
-  expect(tabs[0].url).toBe(URLS.EXAMPLE_A);
+  expect(tabs.length).toBe(2);
+  expect(tabs.every(t => t.url === URLS.EXAMPLE_A)).toBe(true);
 });
 
 // #33 - Same URL in same group removed (groups mode)
