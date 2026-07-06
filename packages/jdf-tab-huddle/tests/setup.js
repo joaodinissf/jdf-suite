@@ -176,6 +176,9 @@ const popupWrapper = `
   if (typeof aiOrganize !== 'undefined') global.aiOrganize = aiOrganize;
   if (typeof openAiSettings !== 'undefined') global.openAiSettings = openAiSettings;
   if (typeof updateAiButtonState !== 'undefined') global.updateAiButtonState = updateAiButtonState;
+  // Namespaced to avoid colliding with confirmation-dialog.js's own
+  // (differently-scoped) global.setupEventListeners export above.
+  if (typeof setupEventListeners !== 'undefined') global.popupSetupEventListeners = setupEventListeners;
 
   // Tab Snoozing popup exposures
   if (typeof formatWakeTime !== 'undefined') global.formatWakeTime = formatWakeTime;
@@ -239,6 +242,33 @@ const confirmationWrapper = `
 })();
 `;
 eval(confirmationWrapper);
+
+// Load and execute the AI setup/settings page script, exposing its pure
+// helper + test hooks. The module reads window.location.search once at
+// eval time (pageMode) and its bottom auto-run is guarded (see
+// hasRequiredPageElements() in the source) so evaluating it here — against
+// jsdom's default, mostly-empty document — is a safe no-op; individual
+// tests that need pageMode='edit' or a populated currentConfig re-eval the
+// source on demand (see tests/ai-setup.test.js), mirroring the pattern
+// tests/confirmation-dialog.test.js already uses for the same reason.
+const aiSetupJs = readFileSync(resolve(__dirname, '../src/ai-setup.js'), 'utf8');
+const aiSetupWrapper = `
+(function() {
+  ${aiSetupJs}
+
+  // Expose functions to global scope (namespaced to avoid colliding with
+  // same-named helpers already exposed from other pages above).
+  if (typeof formatTimeRemaining !== 'undefined') global.formatTimeRemaining = formatTimeRemaining;
+  if (typeof showError !== 'undefined') global.aiSetupShowError = showError;
+  if (typeof hideError !== 'undefined') global.aiSetupHideError = hideError;
+  if (typeof populateModels !== 'undefined') global.aiSetupPopulateModels = populateModels;
+  if (typeof populateExpiry !== 'undefined') global.aiSetupPopulateExpiry = populateExpiry;
+  if (typeof updateModelCost !== 'undefined') global.aiSetupUpdateModelCost = updateModelCost;
+  if (typeof init !== 'undefined') global.aiSetupInit = init;
+  if (typeof setupEventListeners !== 'undefined') global.aiSetupSetupEventListeners = setupEventListeners;
+})();
+`;
+eval(aiSetupWrapper);
 
 // Load and execute content-clumper script, exposing its pure helpers + test hooks
 const clumperJs = readFileSync(resolve(__dirname, '../src/content-clumper.js'), 'utf8');

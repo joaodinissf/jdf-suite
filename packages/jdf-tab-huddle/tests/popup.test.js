@@ -8,9 +8,18 @@ describe('Popup Script', () => {
       <button id="sortAllWindows">Sort All Windows</button>
       <button id="sortCurrentWindow">Sort Current Window</button>
       <button id="removeDuplicatesWindow">Remove Duplicates</button>
+      <button id="removeDuplicatesAllWindows">Remove Duplicates (All Windows)</button>
+      <button id="removeDuplicatesGlobally">Remove Duplicates (Globally)</button>
       <button id="extractDomain">Extract Domain</button>
+      <button id="extractAllDomains">Extract All Domains</button>
+      <button id="moveAllToSingleWindow">Move All To Single Window</button>
       <button id="copyAllTabs">Copy All Tabs</button>
+      <button id="flattenWindow">Ungroup</button>
       <div id="copyFeedback" class="copy-feedback">Copied!</div>
+      <button id="aiOrganize">Organize with AI</button>
+      <button id="aiSettings" style="display: none;">⚙️</button>
+      <span id="statusThisWindow"></span>
+      <span id="statusAllWindows"></span>
     `;
 
     chrome.storage.local.get.mockImplementation((keys, callback) => {
@@ -122,6 +131,10 @@ describe('Popup Script', () => {
         { active: true, currentWindow: true },
         expect.any(Function)
       );
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        { action: 'extractDomain', tabId: 1, url: 'https://example.com', respectGroups: true },
+        expect.any(Function)
+      );
     });
 
     test('removeDuplicatesWindow should send correct message', () => {
@@ -160,6 +173,10 @@ describe('Popup Script', () => {
       moveAllToSingleWindow(true);
       expect(chrome.tabs.query).toHaveBeenCalledWith(
         { active: true, currentWindow: true },
+        expect.any(Function)
+      );
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        { action: 'moveAllToSingleWindow', activeTabId: 1, respectGroups: true },
         expect.any(Function)
       );
     });
@@ -204,6 +221,103 @@ describe('Popup Script', () => {
       expect(consoleSpy).toHaveBeenCalled();
 
       delete chrome.runtime.lastError;
+    });
+  });
+
+  describe('updateStatusBar', () => {
+    test('singular counts: "1 tab" / "1 tab · 1 window" (no groups)', () => {
+      chrome.tabs.query.mockImplementation((query, callback) => {
+        callback([{ id: 1, windowId: 10 }]);
+      });
+      chrome.windows.getAll.mockImplementation((options, callback) => {
+        callback([{ id: 10, tabs: [{ id: 1 }] }]);
+      });
+      chrome.tabGroups.query.mockImplementation((query, callback) => {
+        callback([]);
+      });
+
+      updateStatusBar();
+
+      expect(document.getElementById('statusThisWindow').textContent).toBe('1 tab');
+      expect(document.getElementById('statusAllWindows').textContent).toBe('1 tab · 1 window');
+    });
+
+    test('plural counts with groups: "N tabs, M groups" style summaries', () => {
+      chrome.tabs.query.mockImplementation((query, callback) => {
+        callback([{ id: 1, windowId: 10 }, { id: 2, windowId: 10 }, { id: 3, windowId: 10 }]);
+      });
+      chrome.windows.getAll.mockImplementation((options, callback) => {
+        callback([
+          { id: 10, tabs: [{ id: 1 }, { id: 2 }, { id: 3 }] },
+          { id: 20, tabs: [{ id: 4 }, { id: 5 }] },
+        ]);
+      });
+      chrome.tabGroups.query.mockImplementation((query, callback) => {
+        callback([{ id: 100, windowId: 10 }, { id: 101, windowId: 10 }, { id: 102, windowId: 20 }]);
+      });
+
+      updateStatusBar();
+
+      expect(document.getElementById('statusThisWindow').textContent).toBe('3 tabs · 2 groups');
+      expect(document.getElementById('statusAllWindows').textContent).toBe('5 tabs · 2 windows · 3 groups');
+    });
+  });
+
+  describe('AI wiring — click-driven', () => {
+    beforeEach(() => {
+      popupSetupEventListeners();
+    });
+
+    test('clicking #aiOrganize sends aiGroupTabs with the current respectGroups toggle (Groups mode)', () => {
+      setRespectGroups(true, { persist: false });
+      document.getElementById('aiOrganize').click();
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        { action: 'aiGroupTabs', respectGroups: true },
+        expect.any(Function)
+      );
+    });
+
+    test('clicking #aiOrganize sends aiGroupTabs with the current respectGroups toggle (Flat mode)', () => {
+      setRespectGroups(false, { persist: false });
+      document.getElementById('aiOrganize').click();
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        { action: 'aiGroupTabs', respectGroups: false },
+        expect.any(Function)
+      );
+    });
+
+    test('clicking #aiSettings sends openAiSettings', () => {
+      document.getElementById('aiSettings').click();
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        { action: 'openAiSettings' },
+        expect.any(Function)
+      );
+    });
+  });
+
+  describe('updateAiButtonState', () => {
+    test('shows the AI settings cog when a key is configured', () => {
+      chrome.runtime.sendMessage.mockImplementation((message, callback) => {
+        if (message.action === 'loadAiConfig') {
+          callback({ config: { key: 'encoded-key' } });
+        }
+      });
+
+      updateAiButtonState();
+
+      expect(document.getElementById('aiSettings').style.display).toBe('flex');
+    });
+
+    test('hides the AI settings cog when no key is configured', () => {
+      chrome.runtime.sendMessage.mockImplementation((message, callback) => {
+        if (message.action === 'loadAiConfig') {
+          callback({ config: null });
+        }
+      });
+
+      updateAiButtonState();
+
+      expect(document.getElementById('aiSettings').style.display).toBe('none');
     });
   });
 });

@@ -80,6 +80,9 @@ export default [
         MouseEvent: 'readonly',
         TextEncoder: 'readonly',
         TextDecoder: 'readonly',
+        btoa: 'readonly',
+        atob: 'readonly',
+        setImmediate: 'readonly',
 
         // Node.js globals for test setup
         eval: 'readonly',
@@ -121,6 +124,7 @@ export default [
         aiOrganize: 'readonly',
         openAiSettings: 'readonly',
         updateAiButtonState: 'readonly',
+        popupSetupEventListeners: 'readonly',
 
         // Tab snoozing functions (loaded by setup.js)
         computePresetWakeTime: 'readonly',
@@ -170,7 +174,17 @@ export default [
         setupActionButtons: 'readonly',
         callOpenRouter: 'readonly',
         handleAiGroupTabs: 'readonly',
-        handleApplyAiProposal: 'readonly'
+        handleApplyAiProposal: 'readonly',
+
+        // ai-setup.js exposures (loaded by setup.js)
+        formatTimeRemaining: 'readonly',
+        aiSetupShowError: 'readonly',
+        aiSetupHideError: 'readonly',
+        aiSetupPopulateModels: 'readonly',
+        aiSetupPopulateExpiry: 'readonly',
+        aiSetupUpdateModelCost: 'readonly',
+        aiSetupInit: 'readonly',
+        aiSetupSetupEventListeners: 'readonly'
       }
     },
     rules: {
