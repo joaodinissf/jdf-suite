@@ -18,7 +18,10 @@ export async function resetBrowserState(sw, context) {
       const tabIdsToClose = tabs.slice(1).map(t => t.id);
       await chrome.tabs.remove(tabIdsToClose);
     }
-    await chrome.tabs.update(tabs[0].id, { url: 'about:blank' });
+    // Unpin the kept tab: pinned tabs sort to index 0, so without this a
+    // pinned tab from the previous test/iteration survives the reset still
+    // pinned and leaks into the next test's pinned-tab assertions.
+    await chrome.tabs.update(tabs[0].id, { url: 'about:blank', pinned: false });
   });
   // Small delay for state to settle
   await sleep(200);
