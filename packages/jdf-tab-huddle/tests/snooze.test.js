@@ -580,6 +580,50 @@ describe('Tab Snoozing', () => {
       expect(chrome.alarms.create).toHaveBeenCalledWith('snooze:missing', { when: futureMissing.wakeAt });
       expect(chrome.alarms.create).not.toHaveBeenCalledWith('snooze:live', expect.anything());
     });
+
+    test('pops all past-due records in a single storage write (batched)', async () => {
+      const now = Date.now();
+      const mkPast = (id) => ({
+        id, type: 'tab', summary: id, wakeAt: now - 1000, preset: 'tomorrow',
+        windowId: 1, tabs: [{ url: `https://${id}/`, title: id, pinned: false, index: 0 }],
+      });
+      const store = useMemoryStore({ snoozedItems: [mkPast('p1'), mkPast('p2'), mkPast('p3')] });
+
+      chrome.windows.getLastFocused.mockResolvedValue({ id: 5 });
+      chrome.tabs.create.mockResolvedValue({ id: 50 });
+      chrome.alarms.getAll.mockResolvedValue([]);
+
+      await reconcileSnoozeAlarms();
+
+      // All three woken, and the pop was one batched read-modify-write
+      // (previously one write per record).
+      expect(store.snoozedItems).toEqual([]);
+      expect(chrome.storage.local.set).toHaveBeenCalledTimes(1);
+      expect(chrome.notifications.create).toHaveBeenCalledTimes(3);
+    });
+
+    test('per-tab restore failures are logged with the failing URL', async () => {
+      const now = Date.now();
+      const rec = {
+        id: 'warn1', type: 'tab', summary: 'W', wakeAt: now - 1000, preset: 'tomorrow',
+        windowId: 1, tabs: [{ url: 'https://fails.example/', title: 'W', pinned: false, index: 0 }],
+      };
+      useMemoryStore({ snoozedItems: [rec] });
+
+      chrome.windows.getLastFocused.mockResolvedValue({ id: 5 });
+      chrome.tabs.create.mockRejectedValue(new Error('boom'));
+      chrome.alarms.getAll.mockResolvedValue([]);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      await reconcileSnoozeAlarms();
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to restore snoozed tab'),
+        'https://fails.example/',
+        'boom'
+      );
+      warnSpy.mockRestore();
+    });
   });
 
   describe('formatWakeTime (popup)', () => {

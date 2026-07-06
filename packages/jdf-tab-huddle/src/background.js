@@ -1689,11 +1689,14 @@ async function snoozeTabs(type, tabs, extras, wakeAt, preset) {
 
 async function guardLastWindowBeforeClose(tabsToClose) {
   try {
-    const windows = await chrome.windows.getAll({ populate: true, windowTypes: ['normal'] });
+    // Cheap check first: only pay for a tab query when there is exactly one
+    // normal window (populate:true on every snooze fetched every tab of every
+    // window just to service this guard).
+    const windows = await chrome.windows.getAll({ populate: false, windowTypes: ['normal'] });
     if (!Array.isArray(windows) || windows.length !== 1) return;
-    const win = windows[0];
+    const tabs = await chrome.tabs.query({ windowId: windows[0].id });
     const closingIds = new Set(tabsToClose.map((t) => t.id));
-    const remaining = (win.tabs || []).filter((t) => !closingIds.has(t.id));
+    const remaining = (tabs || []).filter((t) => !closingIds.has(t.id));
     if (remaining.length === 0) {
       await chrome.tabs.create({ url: 'chrome://newtab/', active: true });
     }
@@ -1815,17 +1818,30 @@ const snoozeNotificationTargets = new Map();
 
 // Find the window to restore tab/tabs/group records into: the last-focused
 // normal window, creating one if none exists.
+// Memoize the in-flight lookup so concurrent wakes (e.g. several alarms
+// firing at once with no normal window open) share one target window instead
+// of each creating its own and splitting the restore across windows.
+let restoreTargetInFlight = null;
+
 async function getRestoreTargetWindowId() {
-  try {
-    const win = await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
-    if (win && win.id !== undefined && win.id !== null) {
-      return win.id;
+  if (restoreTargetInFlight) return restoreTargetInFlight;
+  restoreTargetInFlight = (async () => {
+    try {
+      const win = await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
+      if (win && win.id !== undefined && win.id !== null) {
+        return win.id;
+      }
+    } catch (_e) {
+      // fall through to creating a window
     }
-  } catch (_e) {
-    // fall through to creating a window
+    const created = await chrome.windows.create({ focused: false });
+    return created.id;
+  })();
+  try {
+    return await restoreTargetInFlight;
+  } finally {
+    restoreTargetInFlight = null;
   }
-  const created = await chrome.windows.create({ focused: false });
-  return created.id;
 }
 
 // Recreate the tabs/window/group in the background. Never throws — per-tab
@@ -1908,8 +1924,9 @@ async function restoreSnoozedRecord(record) {
       createdCount++;
       createdTabIds.push(created.id);
       if (firstTabId === undefined) firstTabId = created.id;
-    } catch (_e) {
+    } catch (e) {
       failedCount++;
+      console.warn('[Tab Organizer] Failed to restore snoozed tab:', t.url, e && e.message);
     }
   }
 
@@ -1981,24 +1998,15 @@ function notifyWake(record, createdCount, failedCount, location = {}) {
   }
 }
 
-// Atomically pop the record, clear its alarm, restore it, optionally notify.
-// Idempotent: a missing id is a silent no-op (handles duplicate alarm fires).
-async function wakeSnoozedRecord(id, options = {}) {
+// Post-pop half of the wake flow: clear the alarm, restore, optionally
+// notify. On a restore throw the already-popped record is re-persisted with a
+// near-future retry alarm so snoozed tabs are never permanently lost. Shared
+// by wakeSnoozedRecord (single pop) and reconcileSnoozeAlarms (batched pop).
+async function restorePoppedRecord(record, options = {}) {
   const notify = options.notify === true;
 
-  const record = await withSnoozeLock(async () => {
-    const items = await loadSnoozedItems();
-    const idx = items.findIndex((r) => r.id === id);
-    if (idx === -1) return null;
-    const [popped] = items.splice(idx, 1);
-    await saveSnoozedItems(items);
-    return popped;
-  });
-
-  if (!record) return null;
-
   try {
-    await chrome.alarms.clear(SNOOZE_ALARM_PREFIX + id);
+    await chrome.alarms.clear(SNOOZE_ALARM_PREFIX + record.id);
   } catch (_e) {
     // harmless if already fired/cleared
   }
@@ -2010,9 +2018,9 @@ async function wakeSnoozedRecord(id, options = {}) {
     // restoreSnoozedRecord already try/catches every per-tab create; a throw
     // here means something failed outside that loop (e.g. chrome.windows.create
     // / getLastFocused for a window-type record). The record was already
-    // popped from storage above — without this recovery it would be gone for
-    // good. Re-persist it (under the same lock used everywhere else) and arm
-    // a near-future retry so the tabs are never permanently lost.
+    // popped from storage — without this recovery it would be gone for good.
+    // Re-persist it (under the same lock used everywhere else) and arm a
+    // near-future retry so the tabs are never permanently lost.
     console.error('[Tab Organizer] restoreSnoozedRecord failed; re-persisting snoozed record to avoid data loss:', error);
     await withSnoozeLock(async () => {
       const items = await loadSnoozedItems();
@@ -2020,7 +2028,7 @@ async function wakeSnoozedRecord(id, options = {}) {
       await saveSnoozedItems(items);
     });
     try {
-      await chrome.alarms.create(SNOOZE_ALARM_PREFIX + id, { when: Date.now() + 60000 });
+      await chrome.alarms.create(SNOOZE_ALARM_PREFIX + record.id, { when: Date.now() + 60000 });
     } catch (_alarmErr) {
       // best effort — reconcileSnoozeAlarms re-arms it on next startup/install
     }
@@ -2035,6 +2043,23 @@ async function wakeSnoozedRecord(id, options = {}) {
   }
 
   return { record, ...restoreResult };
+}
+
+// Atomically pop the record, clear its alarm, restore it, optionally notify.
+// Idempotent: a missing id is a silent no-op (handles duplicate alarm fires).
+async function wakeSnoozedRecord(id, options = {}) {
+  const record = await withSnoozeLock(async () => {
+    const items = await loadSnoozedItems();
+    const idx = items.findIndex((r) => r.id === id);
+    if (idx === -1) return null;
+    const [popped] = items.splice(idx, 1);
+    await saveSnoozedItems(items);
+    return popped;
+  });
+
+  if (!record) return null;
+
+  return restorePoppedRecord(record, options);
 }
 
 function handleSnoozeAlarm(alarm) {
@@ -2126,11 +2151,19 @@ async function handleWakeNotificationClicked(notificationId) {
 async function reconcileSnoozeAlarms() {
   try {
     const now = Date.now();
-    const items = await loadSnoozedItems();
 
-    const pastDue = items.filter((r) => r.wakeAt <= now);
+    // Pop ALL past-due records in one locked storage transaction (a single
+    // read-modify-write instead of one per record), then restore each.
+    const pastDue = await withSnoozeLock(async () => {
+      const items = await loadSnoozedItems();
+      const due = items.filter((r) => r.wakeAt <= now);
+      if (due.length > 0) {
+        await saveSnoozedItems(items.filter((r) => r.wakeAt > now));
+      }
+      return due;
+    });
     for (const r of pastDue) {
-      await wakeSnoozedRecord(r.id, { notify: true });
+      await restorePoppedRecord(r, { notify: true });
     }
 
     const remaining = await loadSnoozedItems();

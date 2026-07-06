@@ -454,7 +454,8 @@ function submitSnooze(wakeAt, preset) {
     if (response && response.success) {
       showSnoozeFeedback('Snoozed until ' + formatWakeTime(response.record.wakeAt));
       closeSnoozePicker();
-      renderSnoozedList();
+      // No explicit re-render: the background's storage write fires the
+      // chrome.storage.onChanged listener, which re-renders the list once.
     } else {
       showSnoozeFeedback((response && response.error) || 'Could not snooze');
     }
@@ -523,15 +524,13 @@ function renderSnoozedList() {
 }
 
 function wakeNow(id) {
-  chrome.runtime.sendMessage({ action: 'wakeSnoozed', id }, () => {
-    renderSnoozedList();
-  });
+  // Render happens via the storage.onChanged listener when the background
+  // mutates snoozedItems — no explicit re-render (avoids a double render).
+  chrome.runtime.sendMessage({ action: 'wakeSnoozed', id }, () => {});
 }
 
 function cancelSnooze(id) {
-  chrome.runtime.sendMessage({ action: 'cancelSnoozed', id }, () => {
-    renderSnoozedList();
-  });
+  chrome.runtime.sendMessage({ action: 'cancelSnoozed', id }, () => {});
 }
 
 // Human-friendly wake time: "Today 18:00", "Tomorrow 09:00", "Sat 09:00",
