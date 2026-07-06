@@ -110,7 +110,7 @@ describe('Background Script', () => {
       expect(result.tabsToRemove).toEqual([]);
     });
 
-    test('should handle group-aware duplicate detection', () => {
+    test('should handle group-aware duplicate detection (same group is a duplicate)', () => {
       const tabs = [
         [
           { id: 1, url: 'https://example.com', pinned: false, groupId: 1 },
@@ -118,11 +118,98 @@ describe('Background Script', () => {
           { id: 3, url: 'https://unique.com', pinned: false, groupId: 2 }
         ]
       ];
-      
+
       const result = findDuplicateTabs(tabs, true);
-      
+
       expect(result.tabsToRemove).toContain(2);
       expect(result.tabsToRemove).not.toContain(3);
+    });
+
+    test('single window, same URL in two different groups, respectGroups=true -> neither flagged', () => {
+      const tabs = [
+        [
+          { id: 1, url: 'https://example.com', pinned: false, groupId: 1 },
+          { id: 2, url: 'https://example.com', pinned: false, groupId: 2 } // different group - not a duplicate
+        ]
+      ];
+
+      const result = findDuplicateTabs(tabs, true);
+
+      expect(result.tabsToRemove).toEqual([]);
+    });
+
+    test('single window, same URL twice in the SAME group, respectGroups=true -> one flagged', () => {
+      const tabs = [
+        [
+          { id: 1, url: 'https://example.com', pinned: false, groupId: 1 },
+          { id: 2, url: 'https://example.com', pinned: false, groupId: 1 } // same group - duplicate
+        ]
+      ];
+
+      const result = findDuplicateTabs(tabs, true);
+
+      expect(result.tabsToRemove).toEqual([2]);
+    });
+
+    test('single window, same URL in different groups, respectGroups=false -> cross-group duplicate IS flagged', () => {
+      const tabs = [
+        [
+          { id: 1, url: 'https://example.com', pinned: false, groupId: 1 },
+          { id: 2, url: 'https://example.com', pinned: false, groupId: 2 }
+        ]
+      ];
+
+      const result = findDuplicateTabs(tabs, false);
+
+      expect(result.tabsToRemove).toEqual([2]);
+    });
+
+    test('two windows, same URL in different groups across windows, respectGroups=true -> neither flagged (unchanged multi-window behavior)', () => {
+      const tabs = [
+        [
+          { id: 1, url: 'https://example.com', pinned: false, groupId: 1 }
+        ],
+        [
+          { id: 2, url: 'https://example.com', pinned: false, groupId: 1 }
+        ]
+      ];
+
+      const result = findDuplicateTabs(tabs, true);
+
+      expect(result.tabsToRemove).toEqual([]);
+    });
+
+    test('two windows, same URL in the same group id repeated within one window, respectGroups=true -> duplicate within that window flagged', () => {
+      const tabs = [
+        [
+          { id: 1, url: 'https://example.com', pinned: false, groupId: 1 },
+          { id: 2, url: 'https://example.com', pinned: false, groupId: 1 }
+        ],
+        [
+          { id: 3, url: 'https://example.com', pinned: false, groupId: 1 }
+        ]
+      ];
+
+      const result = findDuplicateTabs(tabs, true);
+
+      expect(result.tabsToRemove).toEqual([2]);
+    });
+
+    test('pinned tabs are never removed and are not counted as the "seen" occurrence', () => {
+      const tabs = [
+        [
+          { id: 1, url: 'https://example.com', pinned: true, groupId: 1 },
+          { id: 2, url: 'https://example.com', pinned: false, groupId: 1 },
+          { id: 3, url: 'https://example.com', pinned: false, groupId: 1 }
+        ]
+      ];
+
+      const result = findDuplicateTabs(tabs, true);
+
+      // Pinned tab (id 1) is skipped entirely and never marked "seen", so
+      // the first unpinned tab (id 2) becomes the kept occurrence and only
+      // the second unpinned duplicate (id 3) is flagged for removal.
+      expect(result.tabsToRemove).toEqual([3]);
     });
   });
 
