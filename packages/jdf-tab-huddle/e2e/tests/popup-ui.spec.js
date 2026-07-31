@@ -126,10 +126,11 @@ test('59: All buttons have correct IDs (single action set)', async ({ sw, contex
     'removeDuplicatesWindow',
     'removeDuplicatesAllWindows',
     'removeDuplicatesGlobally',
-    'copyAllTabs',
+    'copyThisWindow',
+    'copyAllWindows',
   ];
 
-  expect(allButtonIds).toHaveLength(9);
+  expect(allButtonIds).toHaveLength(10);
 
   for (const id of allButtonIds) {
     const button = popup.locator(`#${id}`);

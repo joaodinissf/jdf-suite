@@ -16,7 +16,7 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 - **Extract Domain**: Move all tabs from the current domain into a new window
 - **Extract All Domains**: Organize all domains into separate windows
 - **Move All to Single Window**: Consolidate all tabs into one window
-- **Copy All Tabs**: Copy all open tab URLs to clipboard, paragraph-separated by tab group
+- **Copy this window / Copy all windows**: Copy tab URLs to the clipboard (current window only, or every window), paragraph-separated by tab group when Groups mode is on
 
 ### Duplicate Management
 - **Remove Duplicates (Window)**: Remove duplicates within current window
@@ -125,7 +125,7 @@ pnpm run test:coverage   # With coverage report
 | remove-duplicates-all-windows | 4 | Per-window independent dedup |
 | remove-duplicates-globally | 6 | Cross-window dedup |
 | move-all-to-single-window | 7 | Consolidation, group recreation |
-| copy-all-tabs | 5 | Clipboard copy, group headers, feedback |
+| copy-all-tabs | 8 | Clipboard copy, window vs all-windows scope, group sections, feedback |
 | popup-ui | 6 | Mode switching, button visibility |
 | confirmation-dialog | 4 | Confirm/cancel flow |
 

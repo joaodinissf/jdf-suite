@@ -45,10 +45,11 @@ function buildPopupDom({ respectGroups = true, singleWindow = false, groupDisabl
       </div>
 
       <div class="grp">
-        <div class="grid3">
+        <div class="grid2">
           <button id="extractDomain" class="btn mini" data-action="extractDomain">Extract domain</button>
           <button id="extractAllDomains" class="btn mini" data-action="extractAllDomains">Split domains</button>
-          <button id="copyAllTabs" class="btn mini" data-action="copyAllTabs">Copy all tabs</button>
+          <button id="copyThisWindow" class="btn mini" data-action="copyThisWindow">Copy this window</button>
+          <button id="copyAllWindows" class="btn mini" data-action="copyAllWindows">Copy all windows</button>
         </div>
       </div>
 
@@ -136,7 +137,8 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
       // Extract & copy
       expect(map.get('e')?.id).toBe('extractDomain');
       expect(map.get('x')?.id).toBe('extractAllDomains');
-      expect(map.get('c')?.id).toBe('copyAllTabs');
+      expect(map.get('c')?.id).toBe('copyThisWindow');
+      expect(map.get('y')?.id).toBe('copyAllWindows');
       // Snooze units
       expect(map.get('t')?.id).toBe('snoozeTab');
       expect(map.get('l')?.id).toBe('snoozeSelected');
