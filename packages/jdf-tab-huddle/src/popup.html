@@ -269,6 +269,18 @@
       justify-content: center;
     }
 
+    .ai-model-line {
+      margin-top: 4px;
+      font-size: 10.5px;
+      color: var(--mu);
+      line-height: 1.35;
+      word-break: break-word;
+    }
+
+    .ai-model-line[hidden] {
+      display: none !important;
+    }
+
     /* keyboard hotkey hint badges */
     .hotkey-hint {
       display: inline-block;
@@ -598,6 +610,7 @@
         <button id="aiSettings" class="btn ai-cog-btn" data-action="openAiSettings" style="display: none"
           title="AI settings">&#9881;</button>
       </div>
+      <div id="aiModelLine" class="ai-model-line" hidden></div>
     </div>
 
     <div class="grp">

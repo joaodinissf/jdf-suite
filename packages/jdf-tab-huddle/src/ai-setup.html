@@ -47,15 +47,6 @@
       margin-bottom: 6px;
     }
 
-    .warning-collapsed {
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .warning-collapsed .warning-body {
-      display: none;
-    }
-
     .expired-notice {
       background: rgba(255, 193, 7, 0.25);
       padding: 14px 18px;
@@ -147,10 +138,129 @@
       opacity: 0.8;
     }
 
-    .model-cost {
+    .model-cost,
+    .model-schema-hint,
+    .models-status,
+    .field-help {
       font-size: 11px;
       opacity: 0.7;
       margin-top: 4px;
+    }
+
+    .field-help {
+      line-height: 1.4;
+    }
+
+    .current-config {
+      background: rgba(0, 0, 0, 0.28);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 18px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .current-config[hidden] {
+      display: none !important;
+    }
+
+    .current-config h3 {
+      margin: 0 0 10px;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      opacity: 0.75;
+      font-weight: 600;
+    }
+
+    .current-config dl {
+      margin: 0;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 6px 14px;
+    }
+
+    .current-config dt {
+      opacity: 0.65;
+      font-weight: 500;
+    }
+
+    .current-config dd {
+      margin: 0;
+      word-break: break-word;
+    }
+
+    .current-config .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+    }
+
+    .model-filter {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(0, 0, 0, 0.25);
+      color: inherit;
+      font-size: 13px;
+      margin-bottom: 8px;
+      box-sizing: border-box;
+    }
+
+    .model-filter::placeholder {
+      opacity: 0.5;
+    }
+
+    #modelSelect {
+      width: 100%;
+      min-height: 140px;
+      padding: 6px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(0, 0, 0, 0.25);
+      color: inherit;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+
+    .model-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .model-actions .secondary {
+      min-width: auto;
+      padding: 8px 14px;
+      font-size: 13px;
+      background: rgba(255, 255, 255, 0.12);
+      color: white;
+      box-shadow: none;
+    }
+
+    .model-actions .secondary:hover {
+      background: rgba(255, 255, 255, 0.2);
+      transform: none;
+    }
+
+    .model-actions .secondary:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    #customModelId {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(0, 0, 0, 0.25);
+      color: inherit;
+      font-size: 13px;
+      box-sizing: border-box;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     }
 
     .actions {
@@ -239,6 +349,22 @@
     </div>
   </div>
 
+  <div id="currentConfigCard" class="current-config" hidden>
+    <h3>Current configuration</h3>
+    <dl>
+      <dt>Model</dt>
+      <dd id="cfgModel">—</dd>
+      <dt>Model id</dt>
+      <dd id="cfgModelId" class="mono">—</dd>
+      <dt>Structured outputs</dt>
+      <dd id="cfgSchema">—</dd>
+      <dt>Key</dt>
+      <dd id="cfgKey">—</dd>
+      <dt>Expiry policy</dt>
+      <dd id="cfgExpiry">—</dd>
+    </dl>
+  </div>
+
   <div class="form-section">
     <div class="form-group">
       <label for="apiKeyInput">OpenRouter API Key</label>
@@ -247,12 +373,24 @@
         <button class="key-toggle" id="keyToggle" title="Show/hide key">👁</button>
       </div>
       <div id="keyStatus" class="key-status"></div>
+      <div id="keyHelp" class="field-help" hidden>
+        Leave blank to keep your current key. Only fill this field to rotate the key.
+        You can change the model or expiry without re-entering the key.
+      </div>
     </div>
 
     <div class="form-group">
-      <label for="modelSelect">Model</label>
-      <select id="modelSelect"></select>
+      <label for="modelFilter">Model</label>
+      <input type="search" id="modelFilter" class="model-filter" placeholder="Filter models…" autocomplete="off">
+      <select id="modelSelect" size="8"></select>
+      <div class="model-actions">
+        <button type="button" class="secondary" id="refreshModels">Refresh catalog</button>
+        <span id="modelsStatus" class="models-status"></span>
+      </div>
+      <label for="customModelId" style="margin-top: 12px;">Or custom model id</label>
+      <input type="text" id="customModelId" placeholder="provider/model-name" autocomplete="off" spellcheck="false">
       <div id="modelCost" class="model-cost"></div>
+      <div id="modelSchemaHint" class="model-schema-hint"></div>
     </div>
 
     <div class="form-group">

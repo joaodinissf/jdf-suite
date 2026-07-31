@@ -5,10 +5,12 @@ console.log('Tab Organizer service worker starting...');
 // AI Tab Grouping — Constants and Helpers
 // ============================================================
 
+// Curated defaults — always available offline; enriched from the live catalog
+// when present. Full OpenRouter list is fetched/cached separately.
 const AI_MODELS = [
-  { id: 'anthropic/claude-haiku-4.5', name: 'Claude Haiku 4.5', cost: '$0.80/M in' },
-  { id: 'google/gemini-3.1-flash-lite-preview-20260303', name: 'Gemini 3.1 Flash Lite', cost: '$0.25/M in' },
-  { id: 'qwen/qwen3.5-flash-20260224', name: 'Qwen 3.5 Flash', cost: '$0.065/M in' },
+  { id: 'anthropic/claude-haiku-4.5', name: 'Claude Haiku 4.5', cost: '$0.80/M in', curated: true },
+  { id: 'google/gemini-3.1-flash-lite-preview-20260303', name: 'Gemini 3.1 Flash Lite', cost: '$0.25/M in', curated: true },
+  { id: 'qwen/qwen3.5-flash-20260224', name: 'Qwen 3.5 Flash', cost: '$0.065/M in', curated: true },
 ];
 const DEFAULT_MODEL = AI_MODELS[0].id;
 
@@ -22,6 +24,244 @@ const EXPIRY_PRESETS = [
 const DEFAULT_EXPIRY = 86400000; // 24 hours
 
 const VALID_TAB_GROUP_COLORS = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
+
+// OpenRouter model catalog cache (chrome.storage.local)
+const MODELS_CACHE_KEY = 'openRouterModelsCache';
+const MODELS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function formatModelCost(pricing) {
+  if (!pricing || pricing.prompt == null || pricing.prompt === '') return 'price unknown';
+  const perToken = Number(pricing.prompt);
+  if (!Number.isFinite(perToken)) return 'price unknown';
+  if (perToken === 0) return 'free';
+  const perMillion = perToken * 1e6;
+  if (perMillion < 0.01) return `$${perMillion.toFixed(4)}/M in`;
+  if (perMillion < 1) return `$${perMillion.toFixed(3)}/M in`;
+  return `$${perMillion.toFixed(2)}/M in`;
+}
+
+function normalizeOpenRouterModel(raw) {
+  if (!raw || !raw.id) return null;
+  const params = raw.supported_parameters || [];
+  return {
+    id: raw.id,
+    name: raw.name || raw.id,
+    cost: formatModelCost(raw.pricing),
+    supportsStructuredOutputs: params.includes('structured_outputs'),
+    curated: false,
+  };
+}
+
+// The curated entries carry no structured-output facts of their own — only the
+// live catalog knows. Pass the flag through undefined rather than coercing to
+// false so the UI can say "unknown" instead of asserting an unsupported "no".
+function curatedModelsAsPickerEntries() {
+  return AI_MODELS.map((m) => ({
+    id: m.id,
+    name: m.name,
+    cost: m.cost,
+    supportsStructuredOutputs: m.supportsStructuredOutputs,
+    curated: true,
+  }));
+}
+
+function mergeModelsForPicker(remoteModels) {
+  const remote = Array.isArray(remoteModels) ? remoteModels : [];
+  const byId = new Map(remote.map((m) => [m.id, m]));
+  const curated = AI_MODELS.map((c) => {
+    const hit = byId.get(c.id);
+    if (!hit) {
+      // Not in the catalog — leave the flag undefined ("unknown"), not false.
+      return {
+        id: c.id,
+        name: c.name,
+        cost: c.cost,
+        supportsStructuredOutputs: c.supportsStructuredOutputs,
+        curated: true,
+      };
+    }
+    return {
+      id: c.id,
+      name: c.name || hit.name,
+      cost: hit.cost || c.cost,
+      supportsStructuredOutputs: !!hit.supportsStructuredOutputs,
+      curated: true,
+    };
+  });
+  const curatedIds = new Set(curated.map((m) => m.id));
+  const rest = remote
+    .filter((m) => m && m.id && !curatedIds.has(m.id))
+    .slice()
+    .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+  return curated.concat(rest);
+}
+
+async function fetchOpenRouterModels() {
+  let response;
+  try {
+    response = await fetch('https://openrouter.ai/api/v1/models', {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        // OpenRouter documents optional app identification; helps some edge filters.
+        'HTTP-Referer': chrome.runtime.getURL(''),
+        'X-Title': 'Huddle',
+      },
+    });
+  } catch (err) {
+    console.error('[Tab Organizer] Models catalog network error:', err);
+    throw new Error(`Network error loading catalog: ${err.message || err}`, { cause: err });
+  }
+
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const text = await response.text();
+      detail = text ? `: ${text.slice(0, 120)}` : '';
+    } catch (_e) {
+      // ignore body read failures
+    }
+    console.error('[Tab Organizer] Models catalog HTTP', response.status, detail);
+    throw new Error(`Failed to fetch models (${response.status})${detail}`);
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch (err) {
+    console.error('[Tab Organizer] Models catalog JSON parse error:', err);
+    throw new Error('Models catalog returned invalid JSON', { cause: err });
+  }
+
+  const list = Array.isArray(data.data) ? data.data : [];
+  if (list.length === 0) {
+    throw new Error('Models catalog was empty');
+  }
+  return list.map(normalizeOpenRouterModel).filter(Boolean);
+}
+
+async function getOpenRouterModels({ forceRefresh = false } = {}) {
+  if (!forceRefresh) {
+    const stored = await chrome.storage.local.get([MODELS_CACHE_KEY]);
+    const cache = stored[MODELS_CACHE_KEY];
+    if (cache && Array.isArray(cache.models) && cache.models.length > 0
+        && typeof cache.fetchedAt === 'number'
+        && (Date.now() - cache.fetchedAt) < MODELS_CACHE_TTL_MS) {
+      return {
+        models: mergeModelsForPicker(cache.models),
+        fetchedAt: cache.fetchedAt,
+        fromCache: true,
+      };
+    }
+  }
+
+  try {
+    const remote = await fetchOpenRouterModels();
+    const fetchedAt = Date.now();
+    try {
+      await chrome.storage.local.set({
+        [MODELS_CACHE_KEY]: { models: remote, fetchedAt },
+      });
+    } catch (cacheErr) {
+      // Still return the live catalog even if caching fails (quota, etc.).
+      console.warn('[Tab Organizer] Models catalog cache write failed:', cacheErr);
+    }
+    return {
+      models: mergeModelsForPicker(remote),
+      fetchedAt,
+      fromCache: false,
+    };
+  } catch (error) {
+    console.error('[Tab Organizer] getOpenRouterModels failed:', error);
+    const stored = await chrome.storage.local.get([MODELS_CACHE_KEY]);
+    const cache = stored[MODELS_CACHE_KEY];
+    if (cache && Array.isArray(cache.models) && cache.models.length > 0) {
+      return {
+        models: mergeModelsForPicker(cache.models),
+        fetchedAt: cache.fetchedAt,
+        fromCache: true,
+        stale: true,
+        error: error.message,
+      };
+    }
+    return {
+      models: curatedModelsAsPickerEntries(),
+      fetchedAt: null,
+      fromCache: false,
+      fallback: true,
+      error: error.message,
+    };
+  }
+}
+
+async function modelSupportsStructuredOutputs(modelId) {
+  if (!modelId) return false;
+  const stored = await chrome.storage.local.get([MODELS_CACHE_KEY]);
+  const cache = stored[MODELS_CACHE_KEY];
+  if (cache && Array.isArray(cache.models)) {
+    const hit = cache.models.find((m) => m.id === modelId);
+    if (hit) return !!hit.supportsStructuredOutputs;
+  }
+  const curated = AI_MODELS.find((m) => m.id === modelId);
+  if (curated && curated.supportsStructuredOutputs != null) {
+    return !!curated.supportsStructuredOutputs;
+  }
+  return false;
+}
+
+async function resolveModelDisplayName(modelId) {
+  if (!modelId) return modelId;
+  const curated = AI_MODELS.find((m) => m.id === modelId);
+  if (curated) return curated.name;
+  const stored = await chrome.storage.local.get([MODELS_CACHE_KEY]);
+  const cache = stored[MODELS_CACHE_KEY];
+  const hit = cache && Array.isArray(cache.models)
+    ? cache.models.find((m) => m.id === modelId)
+    : null;
+  return (hit && hit.name) || modelId;
+}
+
+function buildTabGroupsJsonSchema(tabIds) {
+  const ids = Array.isArray(tabIds) ? tabIds.filter((id) => typeof id === 'number') : [];
+  return {
+    name: 'tab_groups',
+    strict: true,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['groups'],
+      properties: {
+        groups: {
+          type: 'array',
+          description: 'Logical tab groups; every input tab id should appear in exactly one group',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['name', 'color', 'tabIds'],
+            properties: {
+              name: {
+                type: 'string',
+                description: 'Short group name (2-4 words)',
+              },
+              color: {
+                type: 'string',
+                enum: VALID_TAB_GROUP_COLORS.slice(),
+                description: 'Chrome tab group color',
+              },
+              tabIds: {
+                type: 'array',
+                description: 'Tab IDs belonging to this group',
+                items: ids.length > 0
+                  ? { type: 'integer', enum: ids }
+                  : { type: 'integer' },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+}
 
 function encodeKey(plaintext) {
   return btoa(plaintext);
@@ -38,12 +278,22 @@ function isKeyExpired(aiConfig) {
 }
 
 async function saveAiConfig(config) {
-  const expiresAt = config.expiryDuration !== null
-    ? Date.now() + config.expiryDuration
-    : null;
+  const key = encodeKey(config.key);
+  const previous = await loadAiConfig();
+
+  // Editing the model must not restart the key's countdown. Only a new key or a
+  // changed expiry policy resets it; re-saving the same key keeps its deadline.
+  const keptKey = !!previous
+    && previous.key === key
+    && previous.expiryDuration === config.expiryDuration
+    && previous.expiresAt !== undefined;
+
+  const expiresAt = keptKey
+    ? previous.expiresAt
+    : (config.expiryDuration !== null ? Date.now() + config.expiryDuration : null);
 
   const aiConfig = {
-    key: encodeKey(config.key),
+    key,
     model: config.model || DEFAULT_MODEL,
     expiresAt,
     expiryDuration: config.expiryDuration,
@@ -114,32 +364,29 @@ ${tabLines}`
   return [systemMessage, userMessage];
 }
 
-async function callOpenRouter(apiKey, model, messages, onChunk) {
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': chrome.runtime.getURL(''),
-      'X-Title': 'Tab Organizer',
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.3,
-      response_format: { type: 'json_object' },
-      stream: true,
-    }),
-  });
+function buildOpenRouterRequestBody(model, messages, { useJsonSchema = false, jsonSchema = null } = {}) {
+  const body = {
+    model,
+    messages,
+    temperature: 0.3,
+    stream: true,
+  };
 
-  if (!response.ok) {
-    const status = response.status;
-    if (status === 401) throw new Error('Invalid API key. Please check your OpenRouter key.');
-    if (status === 429) throw new Error('Rate limited. Please try again in a moment.');
-    if (status === 402) throw new Error('Insufficient credits. Please add credits on OpenRouter.');
-    throw new Error(`OpenRouter API error (${status})`);
+  if (useJsonSchema && jsonSchema) {
+    body.response_format = {
+      type: 'json_schema',
+      json_schema: jsonSchema,
+    };
+    // Only route to providers that honor structured outputs for this model.
+    body.provider = { require_parameters: true };
+  } else {
+    body.response_format = { type: 'json_object' };
   }
 
+  return body;
+}
+
+async function readOpenRouterResponse(response, onChunk) {
   const contentType = response.headers.get('content-type') || '';
 
   // If the response is not SSE, fall back to reading it as plain JSON
@@ -184,6 +431,68 @@ async function callOpenRouter(apiKey, model, messages, onChunk) {
   }
 
   return fullText;
+}
+
+function mapOpenRouterHttpError(status) {
+  const error = status === 401
+    ? new Error('Invalid API key. Please check your OpenRouter key.')
+    : status === 429
+      ? new Error('Rate limited. Please try again in a moment.')
+      : status === 402
+        ? new Error('Insufficient credits. Please add credits on OpenRouter.')
+        : new Error(`OpenRouter API error (${status})`);
+  error.status = status;
+  return error;
+}
+
+// Statuses an endpoint uses to refuse the request itself — the only ones that
+// can mean "this provider won't take the json_schema". 401/402/429 describe the
+// account, not the payload: they would fail identically without the schema, so
+// retrying just burns a second call (and hammers an already rate-limited API).
+const SCHEMA_REJECTION_STATUSES = new Set([400, 404, 422, 501]);
+
+// options: { useJsonSchema, jsonSchema }
+// When useJsonSchema is true and the endpoint refuses the schema outright,
+// retries once with plain json_object so organize still works there.
+async function callOpenRouter(apiKey, model, messages, onChunk, options = {}) {
+  const postRequest = async (opts) => {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': chrome.runtime.getURL(''),
+        'X-Title': 'Tab Organizer',
+      },
+      body: JSON.stringify(buildOpenRouterRequestBody(model, messages, opts)),
+    });
+
+    if (!response.ok) {
+      throw mapOpenRouterHttpError(response.status);
+    }
+    return response;
+  };
+
+  const wantSchema = !!(options.useJsonSchema && options.jsonSchema);
+  let response;
+  try {
+    response = await postRequest({
+      useJsonSchema: wantSchema,
+      jsonSchema: options.jsonSchema || null,
+    });
+  } catch (error) {
+    if (!wantSchema || !SCHEMA_REJECTION_STATUSES.has(error.status)) throw error;
+    console.warn(
+      '[Tab Organizer] Endpoint refused the JSON schema; retrying with json_object:',
+      error.message
+    );
+    response = await postRequest({ useJsonSchema: false, jsonSchema: null });
+  }
+
+  // Past this point the response is streaming into onChunk, and the proposal UI
+  // has already rendered those chunks. A retry here would append a second
+  // generation onto the partial text on screen, so failures must propagate.
+  return readOpenRouterResponse(response, onChunk);
 }
 
 function parseAiResponse(responseText, originalTabs) {
@@ -294,15 +603,36 @@ async function handleAiGroupTabs(message, sendResponse) {
 
     // Build prompt and send debug info
     const messages = buildAiPrompt(unpinnedTabs, userInstructions);
-    const modelName = AI_MODELS.find(m => m.id === config.model)?.name || config.model;
-    send({ type: 'ai-debug', model: config.model, modelName, messages, respectGroups });
-    send({ type: 'ai-status', text: 'Calling ' + modelName + '...' });
-
-    // Stream API call
-    const apiKey = decodeKey(config.key);
-    const responseText = await callOpenRouter(apiKey, config.model, messages, (chunk) => {
-      send({ type: 'ai-chunk', text: chunk });
+    const modelName = await resolveModelDisplayName(config.model);
+    const useJsonSchema = await modelSupportsStructuredOutputs(config.model);
+    const tabIds = unpinnedTabs.map((t) => t.id);
+    const jsonSchema = useJsonSchema ? buildTabGroupsJsonSchema(tabIds) : null;
+    send({
+      type: 'ai-debug',
+      model: config.model,
+      modelName,
+      messages,
+      respectGroups,
+      useJsonSchema,
     });
+    send({
+      type: 'ai-status',
+      text: useJsonSchema
+        ? `Calling ${modelName} (structured output)...`
+        : `Calling ${modelName}...`,
+    });
+
+    // Stream API call (strict json_schema when the catalog says the model supports it)
+    const apiKey = decodeKey(config.key);
+    const responseText = await callOpenRouter(
+      apiKey,
+      config.model,
+      messages,
+      (chunk) => {
+        send({ type: 'ai-chunk', text: chunk });
+      },
+      { useJsonSchema, jsonSchema }
+    );
 
     // Parse response
     send({ type: 'ai-status', text: 'Parsing response...' });
@@ -578,9 +908,79 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     });
     return true;
   } else if (message.action === 'loadAiConfig') {
-    loadAiConfig().then(config => {
-      sendResponse({ config, models: AI_MODELS, expiryPresets: EXPIRY_PRESETS });
+    Promise.all([loadAiConfig(), getOpenRouterModels({ forceRefresh: false })]).then(
+      ([config, catalog]) => {
+        sendResponse({
+          config,
+          models: catalog.models,
+          expiryPresets: EXPIRY_PRESETS,
+          modelsMeta: {
+            fetchedAt: catalog.fetchedAt,
+            fromCache: catalog.fromCache,
+            stale: !!catalog.stale,
+            fallback: !!catalog.fallback,
+            error: catalog.error || null,
+          },
+        });
+      }
+    ).catch((err) => {
+      sendResponse({
+        config: null,
+        models: curatedModelsAsPickerEntries(),
+        expiryPresets: EXPIRY_PRESETS,
+        modelsMeta: { fetchedAt: null, fromCache: false, fallback: true, error: err.message },
+      });
     });
+    return true;
+  } else if (message.action === 'loadAiStatus') {
+    // The popup only needs the cog state and a model label. Deliberately does
+    // not touch the catalog: loadAiConfig can fire a network fetch on a cold
+    // cache, which would stall the popup's first paint once every TTL.
+    loadAiConfig().then(async (config) => {
+      const model = config && config.model;
+      sendResponse({
+        config,
+        modelName: model ? await resolveModelDisplayName(model) : null,
+      });
+    }).catch((err) => {
+      console.error('[Tab Organizer] loadAiStatus failed:', err);
+      sendResponse({ config: null, modelName: null });
+    });
+    return true;
+  } else if (message.action === 'refreshOpenRouterModels') {
+    // Always respond with a models array so the setup page never gets an empty
+    // message (which used to surface as the opaque "Refresh failed").
+    getOpenRouterModels({ forceRefresh: true })
+      .then((catalog) => {
+        const models = Array.isArray(catalog.models)
+          ? catalog.models
+          : curatedModelsAsPickerEntries();
+        sendResponse({
+          success: !catalog.fallback,
+          models,
+          modelsMeta: {
+            fetchedAt: catalog.fetchedAt,
+            fromCache: !!catalog.fromCache,
+            stale: !!catalog.stale,
+            fallback: !!catalog.fallback,
+            error: catalog.error || null,
+          },
+        });
+      })
+      .catch((err) => {
+        console.error('[Tab Organizer] refreshOpenRouterModels handler error:', err);
+        sendResponse({
+          success: false,
+          error: err.message || String(err),
+          models: curatedModelsAsPickerEntries(),
+          modelsMeta: {
+            fetchedAt: null,
+            fromCache: false,
+            fallback: true,
+            error: err.message || String(err),
+          },
+        });
+      });
     return true;
   } else if (message.action === 'openAiSettings') {
     const url = chrome.runtime.getURL('ai-setup.html?mode=edit');

@@ -114,12 +114,26 @@ const backgroundWrapper = `
   if (typeof handleCopyAllTabs !== 'undefined') global.handleCopyAllTabs = handleCopyAllTabs;
   if (typeof encodeKey !== 'undefined') global.encodeKey = encodeKey;
   if (typeof decodeKey !== 'undefined') global.decodeKey = decodeKey;
+  if (typeof saveAiConfig !== 'undefined') global.saveAiConfig = saveAiConfig;
+  if (typeof loadAiConfig !== 'undefined') global.loadAiConfig = loadAiConfig;
   if (typeof isKeyExpired !== 'undefined') global.isKeyExpired = isKeyExpired;
   if (typeof buildAiPrompt !== 'undefined') global.buildAiPrompt = buildAiPrompt;
   if (typeof parseAiResponse !== 'undefined') global.parseAiResponse = parseAiResponse;
   if (typeof stripQueryParams !== 'undefined') global.stripQueryParams = stripQueryParams;
   if (typeof AI_MODELS !== 'undefined') global.AI_MODELS = AI_MODELS;
   if (typeof VALID_TAB_GROUP_COLORS !== 'undefined') global.VALID_TAB_GROUP_COLORS = VALID_TAB_GROUP_COLORS;
+  if (typeof formatModelCost !== 'undefined') global.formatModelCost = formatModelCost;
+  if (typeof normalizeOpenRouterModel !== 'undefined') global.normalizeOpenRouterModel = normalizeOpenRouterModel;
+  if (typeof mergeModelsForPicker !== 'undefined') global.mergeModelsForPicker = mergeModelsForPicker;
+  if (typeof curatedModelsAsPickerEntries !== 'undefined') global.curatedModelsAsPickerEntries = curatedModelsAsPickerEntries;
+  if (typeof getOpenRouterModels !== 'undefined') global.getOpenRouterModels = getOpenRouterModels;
+  if (typeof fetchOpenRouterModels !== 'undefined') global.fetchOpenRouterModels = fetchOpenRouterModels;
+  if (typeof modelSupportsStructuredOutputs !== 'undefined') global.modelSupportsStructuredOutputs = modelSupportsStructuredOutputs;
+  if (typeof buildTabGroupsJsonSchema !== 'undefined') global.buildTabGroupsJsonSchema = buildTabGroupsJsonSchema;
+  if (typeof buildOpenRouterRequestBody !== 'undefined') global.buildOpenRouterRequestBody = buildOpenRouterRequestBody;
+  if (typeof resolveModelDisplayName !== 'undefined') global.resolveModelDisplayName = resolveModelDisplayName;
+  if (typeof MODELS_CACHE_KEY !== 'undefined') global.MODELS_CACHE_KEY = MODELS_CACHE_KEY;
+  if (typeof MODELS_CACHE_TTL_MS !== 'undefined') global.MODELS_CACHE_TTL_MS = MODELS_CACHE_TTL_MS;
 
   // Tab Snoozing exposures
   if (typeof computePresetWakeTime !== 'undefined') global.computePresetWakeTime = computePresetWakeTime;

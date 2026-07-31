@@ -280,14 +280,28 @@ function openAiSettings() {
   sendAction('openAiSettings');
 }
 
-// Show/hide the AI settings cog based on whether a key is configured
+// Show/hide the AI settings cog based on whether a key is configured, and
+// surface the active model under Organize with AI.
 function updateAiButtonState() {
-  chrome.runtime.sendMessage({ action: 'loadAiConfig' }, function (response) {
+  chrome.runtime.sendMessage({ action: 'loadAiStatus' }, function (response) {
     if (chrome.runtime.lastError || !response) return;
 
     const hasKey = response.config && response.config.key;
     const cog = document.getElementById('aiSettings');
     if (cog) cog.style.display = hasKey ? 'flex' : 'none';
+
+    const line = document.getElementById('aiModelLine');
+    if (line) {
+      if (hasKey && response.config.model) {
+        line.textContent = `Model: ${response.modelName || response.config.model}`;
+        line.title = response.config.model;
+        line.hidden = false;
+      } else {
+        line.textContent = '';
+        line.hidden = true;
+      }
+    }
+
     // The AI settings cog visibility changed — recompute hotkeys.
     refreshHotkeys();
   });
