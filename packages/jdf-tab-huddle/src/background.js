@@ -546,7 +546,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     handleMoveAllToSingleWindow(message, sendResponse);
     return true; // Keep message channel open for async response
   } else if (message.action === 'copyAllTabs') {
-    handleCopyAllTabs(message.respectGroups, sendResponse);
+    // scope: 'window' (current window only) | 'all' (every window; default for
+    // backward compatibility with callers that omit the field).
+    handleCopyAllTabs(message.respectGroups, sendResponse, message.scope || 'all');
     return true; // Keep message channel open for async response
   } else if (message.action === 'flattenWindow') {
     handleFlattenWindow(sendResponse);
@@ -1241,14 +1243,28 @@ async function handleFlattenWindow(sendResponse) {
   }
 }
 
-async function handleCopyAllTabs(respectGroups = true, sendResponse) {
+async function handleCopyAllTabs(respectGroups = true, sendResponse, scope = 'all') {
   try {
-    console.log('[Tab Organizer] Copying all tabs', respectGroups ? '(preserving groups)' : '(individual tabs)');
+    const scopeLabel = scope === 'window' ? 'current window' : 'all windows';
+    console.log(
+      '[Tab Organizer] Copying tabs from',
+      scopeLabel,
+      respectGroups ? '(preserving groups)' : '(individual tabs)'
+    );
 
-    const tabs = await getTabsWithGroupInfo();
+    let tabs;
+    if (scope === 'window') {
+      // Same "current window" resolution as sort/dedupe/flatten: the last
+      // focused window (the one the popup was opened from).
+      const currentTabs = await chrome.tabs.query({ currentWindow: true });
+      const windowId = currentTabs[0] && currentTabs[0].windowId;
+      tabs = windowId != null ? await getTabsWithGroupInfo(windowId) : [];
+    } else {
+      tabs = await getTabsWithGroupInfo();
+    }
     const text = formatTabsAsText(tabs, respectGroups);
 
-    sendResponse({ success: true, text });
+    sendResponse({ success: true, text, tabCount: tabs.length });
   } catch (error) {
     console.error('[Tab Organizer] Error in copyAllTabs:', error);
     sendResponse({ success: false, error: error.message });

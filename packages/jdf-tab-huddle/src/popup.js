@@ -110,7 +110,8 @@ function setupEventListeners() {
   document.getElementById('extractDomain').addEventListener('click', () => extractDomain(getRespectGroups()));
   document.getElementById('extractAllDomains').addEventListener('click', () => extractAllDomains(getRespectGroups()));
   document.getElementById('moveAllToSingleWindow').addEventListener('click', () => moveAllToSingleWindow(getRespectGroups()));
-  document.getElementById('copyAllTabs').addEventListener('click', () => copyAllTabs(getRespectGroups()));
+  document.getElementById('copyThisWindow').addEventListener('click', () => copyThisWindow(getRespectGroups()));
+  document.getElementById('copyAllWindows').addEventListener('click', () => copyAllWindows(getRespectGroups()));
   document.getElementById('flattenWindow').addEventListener('click', () => flattenWindow());
 
   // AI listeners
@@ -213,17 +214,30 @@ function moveAllToSingleWindow(respectGroups = true) {
   });
 }
 
-// Copy all tab URLs to clipboard
-function copyAllTabs(respectGroups = true) {
-  chrome.runtime.sendMessage({ action: 'copyAllTabs', respectGroups }, function (response) {
+// Both copy buttons share one feedback line, so a bare "Copied!" leaves it
+// ambiguous which scope actually ran. Name the scope and the tab count.
+// Falls back to "Copied!" if the background sent no count.
+function copyFeedbackMessage(tabCount, scope) {
+  if (typeof tabCount !== 'number') return 'Copied!';
+  const tabs = tabCount === 1 ? '1 tab' : `${tabCount} tabs`;
+  return scope === 'window'
+    ? `Copied ${tabs} (this window)`
+    : `Copied ${tabs} (all windows)`;
+}
+
+// Copy tab URLs to the clipboard.
+// scope: 'window' (current window only) | 'all' (every open window).
+function copyTabsToClipboard(scope = 'all', respectGroups = true) {
+  chrome.runtime.sendMessage({ action: 'copyAllTabs', respectGroups, scope }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error copying tabs:', chrome.runtime.lastError.message);
       return;
     }
-    if (response && response.success && response.text) {
+    if (response && response.success && response.text !== undefined) {
       navigator.clipboard.writeText(response.text).then(() => {
         const feedback = document.getElementById('copyFeedback');
         if (feedback) {
+          feedback.textContent = copyFeedbackMessage(response.tabCount, scope);
           feedback.classList.add('visible');
           setTimeout(() => feedback.classList.remove('visible'), 1500);
         }
@@ -232,6 +246,16 @@ function copyAllTabs(respectGroups = true) {
       });
     }
   });
+}
+
+// Copy tab URLs from the current window only.
+function copyThisWindow(respectGroups = true) {
+  copyTabsToClipboard('window', respectGroups);
+}
+
+// Copy tab URLs from every open window.
+function copyAllWindows(respectGroups = true) {
+  copyTabsToClipboard('all', respectGroups);
 }
 
 // Update UI based on number of windows
@@ -590,7 +614,8 @@ const HOTKEY_PREFERENCES = {
   // Extract & copy
   extractDomain: ['e'],               // Extract domain
   extractAllDomains: ['x'],           // split domains (X)
-  copyAllTabs: ['c'],                 // Copy all tabs
+  copyThisWindow: ['c'],              // Copy this window
+  copyAllWindows: ['y'],              // copY all windows
   // Snooze unit buttons
   snoozeTab: ['t'],                   // Tab
   snoozeSelected: ['l'],              // seLected

@@ -170,7 +170,10 @@ const popupWrapper = `
   if (typeof removeDuplicatesGlobally !== 'undefined') global.removeDuplicatesGlobally = removeDuplicatesGlobally;
   if (typeof extractAllDomains !== 'undefined') global.extractAllDomains = extractAllDomains;
   if (typeof moveAllToSingleWindow !== 'undefined') global.moveAllToSingleWindow = moveAllToSingleWindow;
-  if (typeof copyAllTabs !== 'undefined') global.copyAllTabs = copyAllTabs;
+  if (typeof copyTabsToClipboard !== 'undefined') global.copyTabsToClipboard = copyTabsToClipboard;
+  if (typeof copyFeedbackMessage !== 'undefined') global.copyFeedbackMessage = copyFeedbackMessage;
+  if (typeof copyThisWindow !== 'undefined') global.copyThisWindow = copyThisWindow;
+  if (typeof copyAllWindows !== 'undefined') global.copyAllWindows = copyAllWindows;
   if (typeof flattenWindow !== 'undefined') global.flattenWindow = flattenWindow;
   if (typeof updateStatusBar !== 'undefined') global.updateStatusBar = updateStatusBar;
   if (typeof aiOrganize !== 'undefined') global.aiOrganize = aiOrganize;

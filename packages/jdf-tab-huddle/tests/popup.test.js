@@ -13,7 +13,8 @@ describe('Popup Script', () => {
       <button id="extractDomain">Extract Domain</button>
       <button id="extractAllDomains">Extract All Domains</button>
       <button id="moveAllToSingleWindow">Move All To Single Window</button>
-      <button id="copyAllTabs">Copy All Tabs</button>
+      <button id="copyThisWindow">Copy this window</button>
+      <button id="copyAllWindows">Copy all windows</button>
       <button id="flattenWindow">Ungroup</button>
       <div id="copyFeedback" class="copy-feedback">Copied!</div>
       <button id="aiOrganize">Organize with AI</button>
@@ -190,21 +191,56 @@ describe('Popup Script', () => {
     });
   });
 
-  describe('Copy All Tabs', () => {
-    test('copyAllTabs should send correct message with respectGroups true', () => {
-      copyAllTabs(true);
+  describe('Copy tabs (this window / all windows)', () => {
+    test('copyThisWindow sends scope=window with respectGroups true', () => {
+      copyThisWindow(true);
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-        { action: 'copyAllTabs', respectGroups: true },
+        { action: 'copyAllTabs', respectGroups: true, scope: 'window' },
         expect.any(Function)
       );
     });
 
-    test('copyAllTabs should send correct message with respectGroups false', () => {
-      copyAllTabs(false);
+    test('copyThisWindow sends scope=window with respectGroups false', () => {
+      copyThisWindow(false);
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-        { action: 'copyAllTabs', respectGroups: false },
+        { action: 'copyAllTabs', respectGroups: false, scope: 'window' },
         expect.any(Function)
       );
+    });
+
+    test('copyAllWindows sends scope=all with respectGroups true', () => {
+      copyAllWindows(true);
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        { action: 'copyAllTabs', respectGroups: true, scope: 'all' },
+        expect.any(Function)
+      );
+    });
+
+    test('copyAllWindows sends scope=all with respectGroups false', () => {
+      copyAllWindows(false);
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        { action: 'copyAllTabs', respectGroups: false, scope: 'all' },
+        expect.any(Function)
+      );
+    });
+  });
+
+  describe('Copy feedback message', () => {
+    test('names the scope so the two buttons are distinguishable', () => {
+      expect(copyFeedbackMessage(12, 'window')).toBe('Copied 12 tabs (this window)');
+      expect(copyFeedbackMessage(12, 'all')).toBe('Copied 12 tabs (all windows)');
+    });
+
+    test('singularises a single tab', () => {
+      expect(copyFeedbackMessage(1, 'window')).toBe('Copied 1 tab (this window)');
+    });
+
+    test('reports an empty copy rather than claiming tabs were copied', () => {
+      expect(copyFeedbackMessage(0, 'all')).toBe('Copied 0 tabs (all windows)');
+    });
+
+    test('falls back to "Copied!" when the background sends no count', () => {
+      expect(copyFeedbackMessage(undefined, 'window')).toBe('Copied!');
     });
   });
 
