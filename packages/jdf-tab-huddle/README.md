@@ -17,6 +17,7 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 - **Extract All Domains**: Organize all domains into separate windows
 - **Move All to Single Window**: Consolidate all tabs into one window
 - **Copy this window / Copy all windows**: Copy tab URLs to the clipboard (current window only, or every window), paragraph-separated by tab group when Groups mode is on
+- **Organize with AI** (OpenRouter): pick any catalog model (recommended + full OpenRouter list, filterable, or a custom model id). When the chosen model supports structured outputs, Huddle requests a strict JSON schema; otherwise it uses JSON object mode. Responses are always reconciled so no input tab is dropped.
 
 ### Duplicate Management
 - **Remove Duplicates (Window)**: Remove duplicates within current window

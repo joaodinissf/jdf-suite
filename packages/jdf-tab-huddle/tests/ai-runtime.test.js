@@ -118,3 +118,58 @@ describe('callOpenRouter - non-streaming JSON fallback', () => {
     expect(result).toBe('No callback here');
   });
 });
+
+describe('callOpenRouter - structured output options', () => {
+  test('sends json_schema body when useJsonSchema is true', async () => {
+    global.fetch = vi.fn().mockResolvedValue(makeNonStreamingResponse('{"groups":[]}'));
+    const jsonSchema = buildTabGroupsJsonSchema([1, 2]);
+
+    await callOpenRouter('key', 'model', [{ role: 'user', content: 'hi' }], null, {
+      useJsonSchema: true,
+      jsonSchema,
+    });
+
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body.response_format.type).toBe('json_schema');
+    expect(body.response_format.json_schema).toEqual(jsonSchema);
+    expect(body.provider).toEqual({ require_parameters: true });
+  });
+
+  test('falls back to json_object after a failed structured-output request', async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(makeErrorResponse(400))
+      .mockResolvedValueOnce(makeNonStreamingResponse('{"groups":[]}'));
+
+    const result = await callOpenRouter('key', 'model', [], null, {
+      useJsonSchema: true,
+      jsonSchema: buildTabGroupsJsonSchema([1]),
+    });
+
+    expect(result).toBe('{"groups":[]}');
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    const firstBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+    const secondBody = JSON.parse(global.fetch.mock.calls[1][1].body);
+    expect(firstBody.response_format.type).toBe('json_schema');
+    expect(secondBody.response_format.type).toBe('json_object');
+    expect(secondBody.provider).toBeUndefined();
+  });
+
+  test('does not retry when json_object request fails', async () => {
+    global.fetch = vi.fn().mockResolvedValue(makeErrorResponse(500));
+    await expect(
+      callOpenRouter('key', 'model', [], null, { useJsonSchema: false })
+    ).rejects.toThrow('OpenRouter API error (500)');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not retry structured-output failures that are account/rate-limit errors', async () => {
+    global.fetch = vi.fn().mockResolvedValue(makeErrorResponse(401));
+    await expect(
+      callOpenRouter('key', 'model', [], null, {
+        useJsonSchema: true,
+        jsonSchema: buildTabGroupsJsonSchema([1]),
+      })
+    ).rejects.toThrow('Invalid API key');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+});

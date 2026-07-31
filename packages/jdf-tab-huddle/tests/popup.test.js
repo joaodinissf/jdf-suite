@@ -19,6 +19,7 @@ describe('Popup Script', () => {
       <div id="copyFeedback" class="copy-feedback">Copied!</div>
       <button id="aiOrganize">Organize with AI</button>
       <button id="aiSettings" style="display: none;">⚙️</button>
+      <div id="aiModelLine" hidden></div>
       <span id="statusThisWindow"></span>
       <span id="statusAllWindows"></span>
     `;
@@ -332,12 +333,26 @@ describe('Popup Script', () => {
   });
 
   describe('updateAiButtonState', () => {
-    test('shows the AI settings cog when a key is configured', () => {
+    const mockStatus = (payload) => {
       chrome.runtime.sendMessage.mockImplementation((message, callback) => {
-        if (message.action === 'loadAiConfig') {
-          callback({ config: { key: 'encoded-key' } });
-        }
+        if (message.action === 'loadAiStatus') callback(payload);
       });
+    };
+
+    test('asks for the lightweight status, not the whole model catalog', () => {
+      mockStatus({ config: { key: 'encoded-key' }, modelName: null });
+
+      updateAiButtonState();
+
+      // loadAiConfig fetches the OpenRouter catalog and would stall first paint.
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        { action: 'loadAiStatus' },
+        expect.any(Function)
+      );
+    });
+
+    test('shows the AI settings cog when a key is configured', () => {
+      mockStatus({ config: { key: 'encoded-key' }, modelName: null });
 
       updateAiButtonState();
 
@@ -345,15 +360,34 @@ describe('Popup Script', () => {
     });
 
     test('hides the AI settings cog when no key is configured', () => {
-      chrome.runtime.sendMessage.mockImplementation((message, callback) => {
-        if (message.action === 'loadAiConfig') {
-          callback({ config: null });
-        }
-      });
+      document.getElementById('aiSettings').style.display = 'flex';
+      mockStatus({ config: null, modelName: null });
 
       updateAiButtonState();
 
       expect(document.getElementById('aiSettings').style.display).toBe('none');
+    });
+
+    test('labels the model line with the resolved name, keeping the id as title', () => {
+      mockStatus({
+        config: { key: 'encoded-key', model: 'anthropic/claude-haiku-4.5' },
+        modelName: 'Claude Haiku 4.5',
+      });
+
+      updateAiButtonState();
+
+      const line = document.getElementById('aiModelLine');
+      expect(line.hidden).toBe(false);
+      expect(line.textContent).toBe('Model: Claude Haiku 4.5');
+      expect(line.title).toBe('anthropic/claude-haiku-4.5');
+    });
+
+    test('falls back to the raw id when the name cannot be resolved', () => {
+      mockStatus({ config: { key: 'k', model: 'weird/model' }, modelName: null });
+
+      updateAiButtonState();
+
+      expect(document.getElementById('aiModelLine').textContent).toBe('Model: weird/model');
     });
   });
 });

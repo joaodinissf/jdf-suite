@@ -33,6 +33,10 @@ function loadAiSetup() {
         populateModels,
         populateExpiry,
         updateModelCost,
+        updateCurrentConfigCard,
+        schemaLabelForModel,
+        keyStatusLabel,
+        formatModelsStatus,
       };
     })();
   `;
@@ -53,12 +57,28 @@ function buildAiSetupDom() {
     <h1 id="pageTitle">🤖 Set up AI Organize</h1>
     <div id="expiredNotice" style="display: none;"></div>
     <div id="warningSection"><strong>⚠️ Important: You are responsible for your API key</strong></div>
+    <div id="currentConfigCard" class="current-config" hidden>
+      <h3>Current configuration</h3>
+      <dl>
+        <dt>Model</dt><dd id="cfgModel">—</dd>
+        <dt>Model id</dt><dd id="cfgModelId">—</dd>
+        <dt>Structured outputs</dt><dd id="cfgSchema">—</dd>
+        <dt>Key</dt><dd id="cfgKey">—</dd>
+        <dt>Expiry policy</dt><dd id="cfgExpiry">—</dd>
+      </dl>
+    </div>
     <div id="errorMsg" style="display: none;"></div>
     <button id="keyToggle">Show</button>
     <input id="apiKeyInput" type="password" value="" />
     <span id="keyStatus"></span>
+    <div id="keyHelp" class="field-help" hidden>Leave blank to keep your current key.</div>
+    <input id="modelFilter" type="search" value="" />
     <select id="modelSelect"></select>
+    <button id="refreshModels">Refresh catalog</button>
+    <span id="modelsStatus"></span>
+    <input id="customModelId" type="text" value="" />
     <span id="modelCost"></span>
+    <span id="modelSchemaHint"></span>
     <select id="expirySelect"></select>
     <button id="saveButton">Set up</button>
     <button id="cancelButton">Cancel</button>
@@ -70,8 +90,12 @@ function flushPromises() {
   return new Promise((r) => setTimeout(r, 0));
 }
 
-const MODELS = [{ id: 'm1', name: 'Model One', cost: '$0.01/tab' }];
+const MODELS = [
+  { id: 'm1', name: 'Model One', cost: '$0.01/tab', curated: true, supportsStructuredOutputs: true },
+  { id: 'm2', name: 'Model Two', cost: '$0.02/tab', curated: false, supportsStructuredOutputs: false },
+];
 const EXPIRY_PRESETS = [{ value: 86400000, label: '1 day' }, { value: null, label: 'Never' }];
+const MODELS_META = { fetchedAt: Date.now(), fromCache: true, stale: false, fallback: false, error: null };
 
 describe('ai-setup.js', () => {
   beforeEach(() => {
@@ -145,6 +169,7 @@ describe('ai-setup.js', () => {
       mockBackground({
         models: MODELS,
         expiryPresets: EXPIRY_PRESETS,
+        modelsMeta: MODELS_META,
         config: { key: storedKey, model: 'm1', expiryDuration: 86400000, expiresAt: null },
       });
       window.close = vi.fn();
@@ -172,6 +197,7 @@ describe('ai-setup.js', () => {
       mockBackground({
         models: MODELS,
         expiryPresets: EXPIRY_PRESETS,
+        modelsMeta: MODELS_META,
         // Not valid base64 — atob() must throw for this input.
         config: { key: '***not-valid-base64***', model: 'm1', expiryDuration: 86400000, expiresAt: null },
       });
@@ -207,7 +233,12 @@ describe('ai-setup.js', () => {
     test('success branch (setup mode): closes the tab and triggers aiGroupTabs', async () => {
       setLocationSearch('');
       mockBackground({
-        loadConfigResponse: { models: MODELS, expiryPresets: EXPIRY_PRESETS, config: null },
+        loadConfigResponse: {
+          models: MODELS,
+          expiryPresets: EXPIRY_PRESETS,
+          modelsMeta: MODELS_META,
+          config: null,
+        },
         saveConfigResponse: { success: true },
       });
       window.close = vi.fn();
@@ -231,7 +262,12 @@ describe('ai-setup.js', () => {
     test('failure branch: shows the server-provided error and does not close the tab', async () => {
       setLocationSearch('');
       mockBackground({
-        loadConfigResponse: { models: MODELS, expiryPresets: EXPIRY_PRESETS, config: null },
+        loadConfigResponse: {
+          models: MODELS,
+          expiryPresets: EXPIRY_PRESETS,
+          modelsMeta: MODELS_META,
+          config: null,
+        },
         saveConfigResponse: { success: false, error: 'Invalid API key' },
       });
       window.close = vi.fn();
@@ -256,7 +292,12 @@ describe('ai-setup.js', () => {
     test('failure branch falls back to a generic message when no error is provided', async () => {
       setLocationSearch('');
       mockBackground({
-        loadConfigResponse: { models: MODELS, expiryPresets: EXPIRY_PRESETS, config: null },
+        loadConfigResponse: {
+          models: MODELS,
+          expiryPresets: EXPIRY_PRESETS,
+          modelsMeta: MODELS_META,
+          config: null,
+        },
         saveConfigResponse: { success: false },
       });
 
@@ -270,6 +311,176 @@ describe('ai-setup.js', () => {
       await flushPromises();
 
       expect(document.getElementById('errorMsg').textContent).toBe('Failed to save configuration.');
+    });
+  });
+
+  describe('model picker', () => {
+    function mockBackground(loadConfigResponse) {
+      chrome.runtime.sendMessage.mockImplementation(async (message) => {
+        if (message.action === 'loadAiConfig') return loadConfigResponse;
+        if (message.action === 'saveAiConfig') {
+          return { success: true, config: message.config };
+        }
+        if (message.action === 'refreshOpenRouterModels') {
+          return { success: true, models: MODELS, modelsMeta: MODELS_META };
+        }
+        return {};
+      });
+    }
+
+    test('custom model id overrides the select on save', async () => {
+      setLocationSearch('?mode=edit');
+      mockBackground({
+        models: MODELS,
+        expiryPresets: EXPIRY_PRESETS,
+        modelsMeta: MODELS_META,
+        config: { key: btoa('sk-existing'), model: 'm1', expiryDuration: 86400000, expiresAt: null },
+      });
+      window.close = vi.fn();
+
+      const mod = loadAiSetup();
+      buildAiSetupDom();
+      await mod.init();
+      mod.setupEventListeners();
+
+      document.getElementById('customModelId').value = 'custom/provider-model';
+      document.getElementById('saveButton').click();
+      await flushPromises();
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'saveAiConfig',
+          config: expect.objectContaining({ model: 'custom/provider-model' }),
+        })
+      );
+    });
+
+    test('filter narrows the select options', async () => {
+      setLocationSearch('?mode=edit');
+      mockBackground({
+        models: MODELS,
+        expiryPresets: EXPIRY_PRESETS,
+        modelsMeta: MODELS_META,
+        config: { key: btoa('sk'), model: 'm1', expiryDuration: 86400000, expiresAt: null },
+      });
+
+      const mod = loadAiSetup();
+      buildAiSetupDom();
+      await mod.init();
+      mod.setupEventListeners();
+
+      expect(document.getElementById('modelSelect').options.length).toBeGreaterThanOrEqual(2);
+      document.getElementById('modelFilter').value = 'two';
+      document.getElementById('modelFilter').dispatchEvent(new window.Event('input'));
+      const values = Array.from(document.getElementById('modelSelect').options).map((o) => o.value);
+      // m1 kept if still selected; m2 matches filter
+      expect(values).toContain('m2');
+      expect(values).toContain('m1'); // previous selection preserved
+    });
+
+    test('schema hint reflects supportsStructuredOutputs', async () => {
+      setLocationSearch('?mode=edit');
+      mockBackground({
+        models: MODELS,
+        expiryPresets: EXPIRY_PRESETS,
+        modelsMeta: MODELS_META,
+        config: { key: btoa('sk'), model: 'm1', expiryDuration: 86400000, expiresAt: null },
+      });
+
+      const mod = loadAiSetup();
+      buildAiSetupDom();
+      await mod.init();
+
+      expect(document.getElementById('modelSchemaHint').textContent).toMatch(/yes/i);
+
+      document.getElementById('modelSelect').value = 'm2';
+      document.getElementById('modelSelect').dispatchEvent(new window.Event('change'));
+      expect(document.getElementById('modelSchemaHint').textContent).toMatch(/no/i);
+    });
+
+    test('schema hint says unknown when the flag is missing (not "no")', async () => {
+      setLocationSearch('?mode=edit');
+      const unknownModels = [
+        { id: 'u1', name: 'Unknown', cost: '?', curated: true },
+      ];
+      mockBackground({
+        models: unknownModels,
+        expiryPresets: EXPIRY_PRESETS,
+        modelsMeta: MODELS_META,
+        config: { key: btoa('sk'), model: 'u1', expiryDuration: 86400000, expiresAt: null },
+      });
+
+      const mod = loadAiSetup();
+      buildAiSetupDom();
+      await mod.init();
+
+      expect(document.getElementById('modelSchemaHint').textContent).toMatch(/unknown/i);
+      expect(document.getElementById('modelSchemaHint').textContent).not.toMatch(/:\s*no/i);
+    });
+
+    test('current configuration card shows model, key, and expiry', async () => {
+      setLocationSearch('?mode=edit');
+      mockBackground({
+        models: MODELS,
+        expiryPresets: EXPIRY_PRESETS,
+        modelsMeta: MODELS_META,
+        config: {
+          key: btoa('sk'),
+          model: 'm1',
+          expiryDuration: 86400000,
+          expiresAt: null,
+        },
+      });
+
+      const mod = loadAiSetup();
+      buildAiSetupDom();
+      await mod.init();
+      mod.setupEventListeners();
+
+      const card = document.getElementById('currentConfigCard');
+      expect(card.hidden).toBe(false);
+      expect(document.getElementById('cfgModel').textContent).toContain('Model One');
+      expect(document.getElementById('cfgModelId').textContent).toBe('m1');
+      expect(document.getElementById('cfgKey').textContent).toMatch(/on file/i);
+      expect(document.getElementById('cfgExpiry').textContent).toMatch(/1 day|day/i);
+      expect(document.getElementById('keyHelp').hidden).toBe(false);
+    });
+
+    test('edit mode can change model with an empty key field', async () => {
+      setLocationSearch('?mode=edit');
+      mockBackground({
+        models: MODELS,
+        expiryPresets: EXPIRY_PRESETS,
+        modelsMeta: MODELS_META,
+        config: {
+          key: btoa('sk-existing'),
+          model: 'm1',
+          expiryDuration: 86400000,
+          expiresAt: null,
+        },
+      });
+      window.close = vi.fn();
+
+      const mod = loadAiSetup();
+      buildAiSetupDom();
+      await mod.init();
+      mod.setupEventListeners();
+
+      document.getElementById('apiKeyInput').value = '';
+      document.getElementById('modelSelect').value = 'm2';
+      document.getElementById('modelSelect').dispatchEvent(new window.Event('change'));
+      document.getElementById('saveButton').click();
+      await flushPromises();
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'saveAiConfig',
+          config: expect.objectContaining({
+            key: 'sk-existing',
+            model: 'm2',
+          }),
+        })
+      );
     });
   });
 });
