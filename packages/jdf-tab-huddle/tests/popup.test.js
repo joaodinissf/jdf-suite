@@ -196,7 +196,7 @@ describe('Popup Script', () => {
     test('copyThisWindow sends scope=window with respectGroups true', () => {
       copyThisWindow(true);
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-        { action: 'copyAllTabs', respectGroups: true, scope: 'window' },
+        { action: 'copyTabs', respectGroups: true, scope: 'window' },
         expect.any(Function)
       );
     });
@@ -204,7 +204,7 @@ describe('Popup Script', () => {
     test('copyThisWindow sends scope=window with respectGroups false', () => {
       copyThisWindow(false);
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-        { action: 'copyAllTabs', respectGroups: false, scope: 'window' },
+        { action: 'copyTabs', respectGroups: false, scope: 'window' },
         expect.any(Function)
       );
     });
@@ -212,7 +212,7 @@ describe('Popup Script', () => {
     test('copyAllWindows sends scope=all with respectGroups true', () => {
       copyAllWindows(true);
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-        { action: 'copyAllTabs', respectGroups: true, scope: 'all' },
+        { action: 'copyTabs', respectGroups: true, scope: 'all' },
         expect.any(Function)
       );
     });
@@ -220,7 +220,7 @@ describe('Popup Script', () => {
     test('copyAllWindows sends scope=all with respectGroups false', () => {
       copyAllWindows(false);
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-        { action: 'copyAllTabs', respectGroups: false, scope: 'all' },
+        { action: 'copyTabs', respectGroups: false, scope: 'all' },
         expect.any(Function)
       );
     });

@@ -228,7 +228,7 @@ function copyFeedbackMessage(tabCount, scope) {
 // Copy tab URLs to the clipboard.
 // scope: 'window' (current window only) | 'all' (every open window).
 function copyTabsToClipboard(scope = 'all', respectGroups = true) {
-  chrome.runtime.sendMessage({ action: 'copyAllTabs', respectGroups, scope }, function (response) {
+  chrome.runtime.sendMessage({ action: 'copyTabs', respectGroups, scope }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error copying tabs:', chrome.runtime.lastError.message);
       return;
