@@ -1,8 +1,8 @@
-# pnpm 11 no longer reads the "pnpm" field from package.json — settings live here.
+# flatted <= 3.4.1 is vulnerable to prototype pollution via parse()
+# (GHSA-rf6f-7fwh-wjgh). eslint reaches it transitively through flat-cache,
+# whose ^3.2.9 range is wide enough to resolve a vulnerable version.
 #
-# Security floor rather than a pin: flatted <= 3.4.1 is vulnerable to prototype
-# pollution via parse() (GHSA-rf6f-7fwh-wjgh, Dependabot alert #13). eslint pulls
-# it in transitively via flat-cache, which asks for ^3.2.9. Using >= keeps the
-# floor enforced while still letting later patches through.
+# A floor rather than a pin: the advisory sets a minimum, so pinning an exact
+# version would block later patches without adding safety.
 overrides:
   flatted: '>=3.4.2'
