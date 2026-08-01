@@ -115,7 +115,7 @@ export default [
         flattenWindow: 'readonly',
         updateStatusBar: 'readonly',
         formatTabsAsText: 'readonly',
-        handleCopyAllTabs: 'readonly',
+        handleCopyTabs: 'readonly',
         updateContent: 'readonly',
         setupEventListeners: 'readonly',
         respond: 'readonly',

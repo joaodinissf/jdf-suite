@@ -17,7 +17,7 @@ test('60: Copy all windows (ungrouped) returns flat URL list', async ({ sw, cont
   const text = await popup.evaluate(async () => {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(
-        { action: 'copyAllTabs', respectGroups: true, scope: 'all' },
+        { action: 'copyTabs', respectGroups: true, scope: 'all' },
         (response) => {
           resolve(response.text);
         }
@@ -42,7 +42,7 @@ test('61: Copy grouped tabs (groups mode) has group sections', async ({ sw, cont
   const text = await popup.evaluate(async () => {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(
-        { action: 'copyAllTabs', respectGroups: true, scope: 'all' },
+        { action: 'copyTabs', respectGroups: true, scope: 'all' },
         (response) => {
           resolve(response.text);
         }
@@ -72,7 +72,7 @@ test('62: Copy tabs (individual mode) returns flat list without headers', async 
   const text = await popup.evaluate(async () => {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(
-        { action: 'copyAllTabs', respectGroups: false, scope: 'all' },
+        { action: 'copyTabs', respectGroups: false, scope: 'all' },
         (response) => {
           resolve(response.text);
         }
@@ -141,7 +141,7 @@ test('65: Copy this window excludes tabs from other windows', async ({ sw, conte
   const text = await popup.evaluate(async () => {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(
-        { action: 'copyAllTabs', respectGroups: true, scope: 'window' },
+        { action: 'copyTabs', respectGroups: true, scope: 'window' },
         (response) => {
           resolve(response.text);
         }
@@ -167,7 +167,7 @@ test('66: Copy all windows includes tabs from every window', async ({ sw, contex
   const text = await popup.evaluate(async () => {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(
-        { action: 'copyAllTabs', respectGroups: true, scope: 'all' },
+        { action: 'copyTabs', respectGroups: true, scope: 'all' },
         (response) => {
           resolve(response.text);
         }
@@ -194,7 +194,7 @@ test('67: Copy this window sections by group without pulling in other windows', 
   const text = await popup.evaluate(async () => {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(
-        { action: 'copyAllTabs', respectGroups: true, scope: 'window' },
+        { action: 'copyTabs', respectGroups: true, scope: 'window' },
         (response) => {
           resolve(response.text);
         }

@@ -875,10 +875,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   } else if (message.action === 'moveAllToSingleWindow') {
     handleMoveAllToSingleWindow(message, sendResponse);
     return true; // Keep message channel open for async response
-  } else if (message.action === 'copyAllTabs') {
-    // scope: 'window' (current window only) | 'all' (every window; default for
-    // backward compatibility with callers that omit the field).
-    handleCopyAllTabs(message.respectGroups, sendResponse, message.scope || 'all');
+  } else if (message.action === 'copyTabs') {
+    // scope: 'window' (current window only) | 'all' (every window; default
+    // for callers that omit the field).
+    handleCopyTabs(message.respectGroups, sendResponse, message.scope || 'all');
     return true; // Keep message channel open for async response
   } else if (message.action === 'flattenWindow') {
     handleFlattenWindow(sendResponse);
@@ -1639,17 +1639,17 @@ function formatTabsAsText(tabs, respectGroups = true) {
       ungrouped.push(tab);
     } else {
       if (!groups.has(tab.groupId)) {
-        groups.set(tab.groupId, { info: tab.groupInfo, tabs: [] });
+        groups.set(tab.groupId, []);
       }
-      groups.get(tab.groupId).tabs.push(tab);
+      groups.get(tab.groupId).push(tab);
     }
   }
 
   const sections = [];
 
   // Add grouped sections (URLs only, no headers)
-  for (const [_groupId, group] of groups.entries()) {
-    const urls = group.tabs.map(tab => tab.pendingUrl || tab.url);
+  for (const [_groupId, groupTabs] of groups.entries()) {
+    const urls = groupTabs.map(tab => tab.pendingUrl || tab.url);
     urls.sort();
     sections.push(urls.join('\n'));
   }
@@ -1684,7 +1684,7 @@ async function handleFlattenWindow(sendResponse) {
   }
 }
 
-async function handleCopyAllTabs(respectGroups = true, sendResponse, scope = 'all') {
+async function handleCopyTabs(respectGroups = true, sendResponse, scope = 'all') {
   try {
     const scopeLabel = scope === 'window' ? 'current window' : 'all windows';
     console.log(
@@ -1697,9 +1697,8 @@ async function handleCopyAllTabs(respectGroups = true, sendResponse, scope = 'al
     if (scope === 'window') {
       // Same "current window" resolution as sort/dedupe/flatten: the last
       // focused window (the one the popup was opened from).
-      const currentTabs = await chrome.tabs.query({ currentWindow: true });
-      const windowId = currentTabs[0] && currentTabs[0].windowId;
-      tabs = windowId != null ? await getTabsWithGroupInfo(windowId) : [];
+      const win = await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
+      tabs = win && win.id != null ? await getTabsWithGroupInfo(win.id) : [];
     } else {
       tabs = await getTabsWithGroupInfo();
     }
@@ -1707,7 +1706,7 @@ async function handleCopyAllTabs(respectGroups = true, sendResponse, scope = 'al
 
     sendResponse({ success: true, text, tabCount: tabs.length });
   } catch (error) {
-    console.error('[Tab Organizer] Error in copyAllTabs:', error);
+    console.error('[Tab Organizer] Error in copyTabs:', error);
     sendResponse({ success: false, error: error.message });
   }
 }

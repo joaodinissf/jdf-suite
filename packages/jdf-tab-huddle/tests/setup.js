@@ -113,7 +113,7 @@ const backgroundWrapper = `
   if (typeof handleExtractAllDomains !== 'undefined') global.handleExtractAllDomains = handleExtractAllDomains;
   if (typeof handleMoveAllToSingleWindow !== 'undefined') global.handleMoveAllToSingleWindow = handleMoveAllToSingleWindow;
   if (typeof formatTabsAsText !== 'undefined') global.formatTabsAsText = formatTabsAsText;
-  if (typeof handleCopyAllTabs !== 'undefined') global.handleCopyAllTabs = handleCopyAllTabs;
+  if (typeof handleCopyTabs !== 'undefined') global.handleCopyTabs = handleCopyTabs;
   if (typeof encodeKey !== 'undefined') global.encodeKey = encodeKey;
   if (typeof decodeKey !== 'undefined') global.decodeKey = decodeKey;
   if (typeof saveAiConfig !== 'undefined') global.saveAiConfig = saveAiConfig;
