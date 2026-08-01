@@ -12,13 +12,27 @@ const __dirname = path.dirname(__filename);
  * Provides `context`, `extensionId`, and `sw` (service worker) to each test.
  */
 export const test = base.extend({
-  // eslint-disable-next-line no-empty-pattern
   context: async ({}, use) => {
     const pathToExtension = path.resolve(__dirname, '../../src');
     const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-ext-'));
     const context = await chromium.launchPersistentContext(userDataDir, {
+      // MV3 extensions load in Chrome's new headless mode (full Chrome, not
+      // the old stripped headless_shell), so tests run without taking over a
+      // display. Set HEADED=1 to watch a run.
+      //
+      // headless stays false at the Playwright level on purpose: headless:true
+      // selects the stripped headless_shell build, which has no extension
+      // system. The --headless=new arg below gets full Chrome, headless.
+      //
+      // PW_EXECUTABLE points the run at a specific Chromium / Chrome for
+      // Testing binary (e.g. a newer build than the pinned one). Branded
+      // Google Chrome will not work: it ignores --load-extension.
       headless: false,
+      ...(process.env.PW_EXECUTABLE
+        ? { executablePath: process.env.PW_EXECUTABLE }
+        : {}),
       args: [
+        ...(process.env.HEADED ? [] : ['--headless=new']),
         `--disable-extensions-except=${pathToExtension}`,
         `--load-extension=${pathToExtension}`,
         '--no-first-run',
