@@ -1268,14 +1268,25 @@ function findDuplicateTabs(tabArrays, respectGroups = true) {
           : (tabArrays.length === 1 ? urlSeen : localUrlSeen);
 
         if (seenMap.has(url)) {
-          // This is a duplicate - mark for removal
-          tabsToRemove.push(tab.id);
+          // Duplicate. Prefer keeping the copy in a Split View — closing it
+          // would pull a page off the user's screen mid-use while a background
+          // duplicate survives. (Pinned tabs never reach this point at all.)
+          const kept = seenMap.get(url);
+          if (tabSplitViewId(tab) !== null && tabSplitViewId(kept) === null) {
+            tabsToRemove.push(kept.id);
+            seenMap.set(url, tab);
+            if (tabArrays.length === 1) {
+              urlSeen.set(url, tab);
+            }
+          } else {
+            tabsToRemove.push(tab.id);
+          }
         } else {
           // First occurrence - keep it
-          seenMap.set(url, tab.id);
+          seenMap.set(url, tab);
           if (tabArrays.length === 1) {
             // For global deduplication, also track in the global map
-            urlSeen.set(url, tab.id);
+            urlSeen.set(url, tab);
           }
         }
       }
@@ -1485,6 +1496,48 @@ async function performExtractAllDomains(domainAnalysis, respectGroups = true) {
   }
 }
 
+// Split View pairs share a positive splitViewId; everything else — including
+// every tab on Chrome versions without the property, and the API's documented
+// "not guaranteed even when split" case — reads as null here, which downstream
+// code treats as "not split".
+const SPLIT_VIEW_ID_NONE = (chrome.tabs && chrome.tabs.SPLIT_VIEW_ID_NONE) ?? -1;
+
+function tabSplitViewId(tab) {
+  const id = tab.splitViewId;
+  return (id == null || id === SPLIT_VIEW_ID_NONE) ? null : id;
+}
+
+// Sort tabs by URL, but keep Split View pairs together: a pair sorts as one
+// unit keyed by its left tab's URL, members staying in left-to-right order.
+// Best effort — Chrome may still dissolve a split on programmatic moves, but
+// adjacency is the arrangement most likely to preserve it, and the worst case
+// is two neighboring tabs. Expects tabs in tab-strip order; a pair whose
+// members were partitioned apart (one pinned, different groups) degrades to
+// two independent tabs.
+function sortTabsAsUnits(tabs) {
+  const units = [];
+  const unitBySplitId = new Map();
+
+  for (const tab of tabs) {
+    const splitId = tabSplitViewId(tab);
+    if (splitId !== null && unitBySplitId.has(splitId)) {
+      unitBySplitId.get(splitId).push(tab);
+    } else {
+      const unit = [tab];
+      units.push(unit);
+      if (splitId !== null) unitBySplitId.set(splitId, unit);
+    }
+  }
+
+  units.sort((a, b) => {
+    const urlA = a[0].pendingUrl || a[0].url;
+    const urlB = b[0].pendingUrl || b[0].url;
+    return urlA.localeCompare(urlB);
+  });
+
+  return units.flat();
+}
+
 // Helper function to sort tabs within a specific window
 async function sortWindowTabs(windowId, respectGroups = true) {
   try {
@@ -1495,18 +1548,14 @@ async function sortWindowTabs(windowId, respectGroups = true) {
     const unpinnedTabs = tabsWithGroups.filter(tab => !tab.pinned);
     
     if (!respectGroups) {
-      // Simple sort for individual mode
-      unpinnedTabs.sort((a, b) => {
-        const urlA = a.pendingUrl || a.url;
-        const urlB = b.pendingUrl || b.url;
-        return urlA.localeCompare(urlB);
-      });
+      // Simple sort for individual mode (Split View pairs stay together)
+      const sortedTabs = sortTabsAsUnits(unpinnedTabs);
 
       // Move tabs to sorted positions as a batch (omit windowId — tabs are
       // already in this window)
-      if (unpinnedTabs.length > 0) {
+      if (sortedTabs.length > 0) {
         await chrome.tabs.move(
-          unpinnedTabs.map(t => t.id),
+          sortedTabs.map(t => t.id),
           { index: pinnedTabs.length }
         );
       }
@@ -1528,20 +1577,12 @@ async function sortWindowTabs(windowId, respectGroups = true) {
       }
     }
 
-    // Sort ungrouped tabs by URL
-    ungroupedTabs.sort((a, b) => {
-      const urlA = a.pendingUrl || a.url;
-      const urlB = b.pendingUrl || b.url;
-      return urlA.localeCompare(urlB);
-    });
+    // Sort ungrouped tabs by URL (Split View pairs stay together)
+    const sortedUngrouped = sortTabsAsUnits(ungroupedTabs);
 
-    // Sort tabs within each group by URL
-    for (const [_groupId, groupTabs] of groupedTabsMap.entries()) {
-      groupTabs.sort((a, b) => {
-        const urlA = a.pendingUrl || a.url;
-        const urlB = b.pendingUrl || b.url;
-        return urlA.localeCompare(urlB);
-      });
+    // Sort tabs within each group by URL (Split View pairs stay together)
+    for (const [groupId, groupTabs] of groupedTabsMap.entries()) {
+      groupedTabsMap.set(groupId, sortTabsAsUnits(groupTabs));
     }
 
     // Determine the final order: pinned tabs, then ungrouped tabs, then grouped tabs
@@ -1550,13 +1591,13 @@ async function sortWindowTabs(windowId, respectGroups = true) {
     // Move ungrouped tabs first as a batch (omit windowId — tabs are already
     // in this window, and passing windowId can trigger Chrome's cross-window
     // group migration)
-    if (ungroupedTabs.length > 0) {
+    if (sortedUngrouped.length > 0) {
       await chrome.tabs.move(
-        ungroupedTabs.map(t => t.id),
+        sortedUngrouped.map(t => t.id),
         { index: currentIndex }
       );
     }
-    currentIndex += ungroupedTabs.length;
+    currentIndex += sortedUngrouped.length;
 
     // Move grouped tabs as a batch per group to avoid Chrome's group migration
     // behavior that can occur with sequential single-tab moves

@@ -24,6 +24,9 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 - **Remove Duplicates (All Windows Per Window)**: Remove duplicates within each window separately
 - **Remove Duplicates (Globally)**: Remove duplicates across all windows
 
+### Split View awareness
+- Sorting keeps a Split View pair together, positioned by its left tab; deduplication keeps the Split View copy of a duplicated URL rather than closing a page that is on screen. Chrome's API is read-only here — a dissolved split cannot be recreated — so preservation is best-effort. On Chrome versions without Split View, behavior is unchanged.
+
 ### Smart Features
 - Respects pinned tabs (never moves or removes them)
 - Confirmation dialogs for large operations (>5 new windows)

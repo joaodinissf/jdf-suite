@@ -102,6 +102,8 @@ const backgroundWrapper = `
   if (typeof findDuplicateTabs !== 'undefined') global.findDuplicateTabs = findDuplicateTabs;
   if (typeof analyzeDomainDistribution !== 'undefined') global.analyzeDomainDistribution = analyzeDomainDistribution;
   if (typeof sortWindowTabs !== 'undefined') global.sortWindowTabs = sortWindowTabs;
+  if (typeof sortTabsAsUnits !== 'undefined') global.sortTabsAsUnits = sortTabsAsUnits;
+  if (typeof tabSplitViewId !== 'undefined') global.tabSplitViewId = tabSplitViewId;
   if (typeof handleSortAllWindows !== 'undefined') global.handleSortAllWindows = handleSortAllWindows;
   if (typeof handleSortCurrentWindow !== 'undefined') global.handleSortCurrentWindow = handleSortCurrentWindow;
   if (typeof handleRemoveDuplicatesWindow !== 'undefined') global.handleRemoveDuplicatesWindow = handleRemoveDuplicatesWindow;
