@@ -1,6 +1,6 @@
 {
   "name": "jdf-tab-huddle",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Huddle — Chrome extension for organizing and huddling loose tabs",
   "type": "module",
   "scripts": {
