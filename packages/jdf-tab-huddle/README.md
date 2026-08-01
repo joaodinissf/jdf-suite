@@ -58,8 +58,8 @@ The link-clumping feature is inspired by [linkclump](https://github.com/benblack
 ### For Developers
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (66 tests)
-pnpm test:e2e          # Run E2E tests (68 tests, requires Chromium)
+pnpm test              # Run unit tests (350 tests)
+pnpm test:e2e          # Run E2E tests (89 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
 pnpm run package       # Create extension zip
@@ -89,18 +89,18 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Confirmation dialog for large operations
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (66 tests)
+├── tests/                         # Vitest unit tests (350 tests)
 │   ├── setup.js                   # Test setup with jest-chrome mocks
 │   ├── background.test.js         # Background script logic tests
 │   ├── popup.test.js              # Popup UI tests
 │   ├── focused.test.js            # Core functionality tests
 │   ├── confirmation-dialog.test.js
 │   └── simple.test.js             # Framework verification
-├── e2e/                           # Playwright E2E tests (68 tests)
+├── e2e/                           # Playwright E2E tests (89 tests)
 │   ├── playwright.config.js       # Playwright configuration
 │   ├── fixtures/extension.js      # Custom fixture loading extension into Chromium
 │   ├── helpers/                   # Tab management, popup interaction, assertions
-│   └── tests/                     # 10 spec files covering all features
+│   └── tests/                     # 14 spec files covering all features
 ├── docs/                          # Documentation
 ├── .github/workflows/             # CI/CD (test, e2e, lint, build, release)
 ├── package.json
@@ -110,14 +110,14 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ## Testing
 
 ### Unit Tests (Vitest + jest-chrome shim)
-66 tests across 5 suites covering core logic with mocked Chrome APIs:
+350 tests across 16 suites covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report
 ```
 
 ### E2E Tests (Playwright + real Chromium)
-68 tests across 11 spec files that load the extension into a real browser:
+89 tests across 14 spec files that load the extension into a real browser:
 
 | Spec File | Tests | Coverage |
 |---|---|---|
@@ -132,17 +132,17 @@ pnpm run test:coverage   # With coverage report
 | copy-all-tabs | 8 | Clipboard copy, window vs all-windows scope, group sections, feedback |
 | popup-ui | 6 | Mode switching, button visibility |
 | confirmation-dialog | 4 | Confirm/cancel flow |
+| flatten-window | 3 | Ungrouping, pinned immunity |
+| keyboard | 3 | Popup hotkey dispatch |
+| snooze | 11 | Tab/window/group snooze, wake, alarms, edge cases |
 
 ```bash
-pnpm test:e2e            # Run E2E tests (headed Chromium)
+pnpm test:e2e            # Run E2E tests (headless; HEADED=1 to watch)
 ```
 
 ## CI/CD
 
-CI lives at the monorepo root: [`.github/workflows/jdf-tab-huddle-ci.yml`](../../.github/workflows/jdf-tab-huddle-ci.yml) — runs pnpm install + lint + Vitest unit tests + manifest validation on every PR touching this package.
-
-- **Lint + tests on PR**: ✅ wired up in v0.1.0
-- **E2E (Playwright)**: deferred — tracked in [jdf-suite#6](https://github.com/joaodinissf/jdf-suite/issues/6)
+CI lives at the monorepo root: [`.github/workflows/jdf-tab-huddle-ci.yml`](../../.github/workflows/jdf-tab-huddle-ci.yml) — two jobs on every PR touching this package: lint + Vitest unit tests + manifest validation, and the Playwright E2E suite in headless Chromium.
 - **Release (CWS upload)**: deferred until v1.0.0 — tracked in [jdf-suite#7](https://github.com/joaodinissf/jdf-suite/issues/7)
 - **Tag pattern for future releases**: `jdf-tab-huddle-v*`
 
