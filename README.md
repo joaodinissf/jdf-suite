@@ -7,7 +7,7 @@ A collection of developer tools by [João Dinis Ferreira](https://github.com/joa
 | Tool | Description | Status | Install |
 |------|-------------|--------|---------|
 | [jdf-hooks](packages/jdf-hooks) | Git hooks framework with interactive CLI | [![PyPI](https://img.shields.io/pypi/v/jdf-hooks)](https://pypi.org/project/jdf-hooks/) | `uvx jdf-hooks setup` |
-| [jdf-tab-huddle](packages/jdf-tab-huddle) | Chrome extension — **Huddle** — for sorting, grouping, and de-duplicating browser tabs | v0.2.2 (pre-release, not yet in Chrome Web Store) | Load unpacked `packages/jdf-tab-huddle/src/` in Chrome |
+| [jdf-tab-huddle](packages/jdf-tab-huddle) | Chrome extension — **Huddle** — for sorting, grouping, de-duplicating, snoozing, and AI-organizing browser tabs | v0.3.0 (pre-release, not yet in Chrome Web Store) | Load unpacked `packages/jdf-tab-huddle/src/` in Chrome |
 | jdf-stt | Local offline speech-to-text using Whisper.cpp | [Planned](https://github.com/joaodinissf/jdf-suite/issues/30) | — |
 
 ## License
