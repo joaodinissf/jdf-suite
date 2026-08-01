@@ -148,6 +148,19 @@ describe('findDuplicateTabs prefers keeping the Split View copy', () => {
     expect(tabsToRemove).toEqual([2]);
   });
 
+  test('a page split with itself is still deduplicated', () => {
+    // Same URL as both halves of one split. The split preference chooses
+    // which copy of a URL survives — it never changes whether a duplicate
+    // is removed. Closing one half here loses nothing visible: the
+    // surviving half shows the identical page.
+    const tabs = [
+      t(1, 'https://dup.test', { splitViewId: 5 }),
+      t(2, 'https://dup.test', { splitViewId: 5 }),
+    ];
+    const { tabsToRemove } = findDuplicateTabs([tabs], false);
+    expect(tabsToRemove).toEqual([2]);
+  });
+
   test('pinned still beats split: a pinned duplicate is never removed', () => {
     const tabs = [
       t(1, 'https://dup.test', { pinned: true }),
