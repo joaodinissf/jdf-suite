@@ -1,0 +1,22 @@
+[project]
+name = "jdf-mcp-raindrop-extensions"
+version = "0.1.0"
+description = "Raindrop.io MCP extensions for operations not exposed by the official Raindrop MCP server"
+readme = "README.md"
+authors = [
+    { name = "João Dinis Ferreira", email = "hello@joaof.eu" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "fastmcp>=3.2.4",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.6,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.10",
+]
