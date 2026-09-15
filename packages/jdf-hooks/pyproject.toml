@@ -1,6 +1,6 @@
 [project]
 name = "jdf-hooks"
-version = "1.0.1"
+version = "1.1.0"
 description = "Interactive CLI to set up JDF hooks for any project"
 readme = "README.md"
 license = { text = "MIT" }
@@ -29,7 +29,7 @@ Documentation = "https://github.com/joaodinissf/jdf-suite/tree/main/packages/jdf
 jdf-hooks = "jdf_hooks.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest", "pyyaml", "ruff", "pyright"]
+dev = ["pytest", "pyyaml", "ruff", "ty"]
 
 [build-system]
 requires = ["hatchling"]
@@ -73,12 +73,6 @@ max-args = 8
 max-branches = 15
 max-returns = 6
 max-statements = 50
-
-[tool.pyright]
-venvPath = "."
-venv = ".venv"
-pythonVersion = "3.12"
-exclude = ["tests/integration/example_files"]
 
 [tool.ty.src]
 exclude = ["tests/integration/example_files/"]

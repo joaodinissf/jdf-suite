@@ -7,9 +7,6 @@
       - name: ruff-check
         run: ruff check --force-exclude {staged_files}
         glob: '*.{py,pyi}'
-      - name: pyright
-        run: pyright {staged_files}
-        glob: '*.py'
       - name: ty
         run: ty check {staged_files}
         glob: '*.py'

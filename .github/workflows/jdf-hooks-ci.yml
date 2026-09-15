@@ -60,7 +60,6 @@ jobs:
         uv tool install pycln
         uv tool install isort
         uv tool install ruff
-        uv tool install pyright
         uv tool install ty
         uv tool install yamlfix
         uv tool install sqlfluff

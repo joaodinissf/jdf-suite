@@ -174,7 +174,7 @@ def print_next_steps(hook_manager: str, languages: set[str]) -> None:
 
     # Language-specific tool installation hints
     tool_hints: dict[str, list[str]] = {
-        "python": ["pycln", "isort", "ruff", "pyright"],
+        "python": ["pycln", "isort", "ruff", "ty"],
         "javascript": ["prettier (npm install -g prettier)"],
         "rust": ["rustfmt, clippy (rustup component add rustfmt clippy)"],
         "java": ["pmd, checkstyle"],
