@@ -6,10 +6,11 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .check import CheckReport, FileState, UnmanagedProjectError, check_project, diff_file
+from .check import CheckReport, FileState, UnmanagedProjectError, check_project, diff_file, undetected_languages
 from .detect import LANGUAGE_DETECTORS, detect_languages, get_language_display
 from .generate import generate_configs, get_templates_dir
 from .lock import LOCK_FILENAME, LockError
+from .update import apply_update, plan_update
 
 # ANSI color codes
 GREEN = "\033[92m"
@@ -286,16 +287,20 @@ def setup_command(args: argparse.Namespace) -> int:
     return 0
 
 
-# Exit codes for `jdf-hooks check`, stable for CI use
+# Exit codes for `jdf-hooks check` / `jdf-hooks update`, stable for CI use
 CHECK_OK = 0
 CHECK_DRIFT = 1
 CHECK_UNMANAGED = 2
+UPDATE_OK = CHECK_OK
+UPDATE_REFUSED = CHECK_DRIFT  # modified files without --force, or --dry-run with changes pending
+UPDATE_UNMANAGED = CHECK_UNMANAGED
 
 _STATE_PRINTERS = {
     FileState.UP_TO_DATE: (print_success, "up to date"),
     FileState.UPDATE_AVAILABLE: (print_info, "update available"),
     FileState.MODIFIED: (print_warning, "modified locally"),
     FileState.MISSING: (print_error, "missing"),
+    FileState.OBSOLETE: (print_warning, "no longer generated"),
 }
 
 
@@ -320,9 +325,14 @@ def print_check_report(report: CheckReport) -> None:
     counts = {state: sum(1 for f in report.files if f.state is state) for state in FileState}
     parts = [f"{counts[s]} {s.value}" for s in FileState if counts[s] and s is not FileState.UP_TO_DATE]
     print(f"{YELLOW}Drift detected:{RESET} " + ", ".join(parts))
-    print("  Re-run `jdf-hooks setup` to regenerate (a `jdf-hooks update` command is planned).")
-    if counts[FileState.MODIFIED]:
-        print("  Local edits are overwritten on regeneration — keep project-specific hooks in lefthook-local.yml.")
+
+
+def print_detection_hint(target_dir: Path, languages: list[str]) -> None:
+    """Point out languages present in the project that have no hooks yet."""
+    for lang, reasons in undetected_languages(target_dir, languages).items():
+        why = ", ".join(reasons[:2])
+        name = get_language_display(lang)
+        print_info(f"Detected {name} ({why}) — not in your hook set; `jdf-hooks update --add {lang}`")
 
 
 def check_command(args: argparse.Namespace) -> int:
@@ -343,6 +353,10 @@ def check_command(args: argparse.Namespace) -> int:
         return CHECK_UNMANAGED
 
     print_check_report(report)
+    if report.has_drift:
+        print("  Run `jdf-hooks update` to regenerate ")
+        print("  (local edits need --force; keep project-specific hooks in lefthook-local.yml)")
+    print_detection_hint(target_dir, report.lock.languages)
 
     if args.diff:
         for f in report.files:
@@ -354,6 +368,60 @@ def check_command(args: argparse.Namespace) -> int:
                 print(diff, end="")
 
     return CHECK_DRIFT if report.has_drift else CHECK_OK
+
+
+def update_command(args: argparse.Namespace) -> int:
+    """Run the update command: regenerate from the lock, overwriting drift."""
+    target_dir = Path(args.directory).resolve()
+
+    if not target_dir.exists():
+        print_error(f"Directory does not exist: {target_dir}")
+        return UPDATE_UNMANAGED
+
+    try:
+        plan = plan_update(target_dir, add=set(args.add), remove=set(args.remove))
+    except (UnmanagedProjectError, LockError, ValueError) as e:
+        print_error(str(e))
+        return UPDATE_UNMANAGED
+
+    print_check_report(plan.report)
+    if plan.languages_changed:
+        print_info(f"Languages: {', '.join(plan.report.lock.languages)} → {', '.join(plan.languages)}")
+
+    if plan.blocked and not args.force:
+        print(f"\n{RED}Refusing to overwrite locally modified files:{RESET}")
+        for path in plan.blocked:
+            print(f"  - {path}")
+        print("  Re-run with --force to overwrite, or move project-specific hooks to lefthook-local.yml.")
+        print_detection_hint(target_dir, plan.languages)
+        return UPDATE_REFUSED
+
+    to_write = plan.to_write(force=args.force)
+    if plan.is_noop(force=args.force):
+        print(f"\n{GREEN}Nothing to update.{RESET}")
+        print_detection_hint(target_dir, plan.languages)
+        return UPDATE_OK
+
+    if args.dry_run:
+        print(f"\n{BOLD}Dry run:{RESET} would write {len(to_write)} file(s), delete {len(plan.to_delete)} file(s).")
+        for path in to_write:
+            print(f"  write  {path}")
+        for path in plan.to_delete:
+            print(f"  delete {path}")
+        print_detection_hint(target_dir, plan.languages)
+        return UPDATE_REFUSED
+
+    # plan.blocked was handled above, so apply_update cannot raise ModifiedFilesError here.
+    result = apply_update(target_dir, plan, force=args.force)
+
+    print()
+    for path in result.deleted:
+        print_success(f"Removed {path}")
+    for path in result.written:
+        print_success(f"Updated {path}")
+    print_success(f"Updated {LOCK_FILENAME}")
+    print_detection_hint(target_dir, plan.languages)
+    return UPDATE_OK
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -400,6 +468,44 @@ def create_parser() -> argparse.ArgumentParser:
         help="Show a unified diff from each drifted file to a fresh render",
     )
 
+    # update command
+    update_parser = subparsers.add_parser(
+        "update",
+        help=f"Regenerate hook files from {LOCK_FILENAME}, overwriting drift; "
+        f"exit {UPDATE_OK} = done/nothing to do, {UPDATE_REFUSED} = refused or dry-run pending, "
+        f"{UPDATE_UNMANAGED} = no lock",
+    )
+    update_parser.add_argument(
+        "directory",
+        nargs="?",
+        default=".",
+        help="Project directory to update (default: current directory)",
+    )
+    update_parser.add_argument(
+        "--add",
+        action="append",
+        default=[],
+        metavar="LANG",
+        help="Add a language to the hook set (repeatable)",
+    )
+    update_parser.add_argument(
+        "--remove",
+        action="append",
+        default=[],
+        metavar="LANG",
+        help="Remove a language from the hook set (repeatable)",
+    )
+    update_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite files that were modified locally",
+    )
+    update_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would change without writing anything",
+    )
+
     return parser
 
 
@@ -412,6 +518,8 @@ def main() -> int:
         return setup_command(args)
     elif args.command == "check":
         return check_command(args)
+    elif args.command == "update":
+        return update_command(args)
     elif args.command is None:
         # Default to setup in current directory
         args.command = "setup"

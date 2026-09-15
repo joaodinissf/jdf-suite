@@ -305,7 +305,7 @@ model as `npx skills`: regenerating overwrites them. Keep project-specific hooks
 
 - **Lefthook**: put extra jobs in `lefthook-local.yml`; lefthook merges it over `lefthook.yml` automatically.
 - **Pre-commit**: there is no local-override file, so edits to `.pre-commit-config.yaml` are reported by
-  `jdf-hooks check` as *modified locally* and will be overwritten when you regenerate.
+  `jdf-hooks check` as *modified locally*; `jdf-hooks update` refuses to overwrite them without `--force`.
 
 ## Keeping Hooks Up to Date
 
@@ -326,7 +326,25 @@ locally** (the file no longer matches the lock), or **missing**. Exit codes are 
 | `1`  | Drift: at least one file stale, modified locally, or missing |
 | `2`  | Not managed: no (or invalid) `.jdf-hooks.lock`              |
 
-To bring a project up to date today, re-run `jdf-hooks setup` (a non-interactive `jdf-hooks update` is planned).
+### Updating
+
+```bash
+uvx jdf-hooks update                     # regenerate from the lock (manager + languages), overwrite drift
+uvx jdf-hooks update --dry-run           # list what would be written/deleted, change nothing
+uvx jdf-hooks update --add rust          # grow the hook set (repeatable; also --remove LANG)
+uvx jdf-hooks update --force             # also overwrite files you edited locally
+```
+
+`update` is all-or-nothing: if any generated file was modified locally it writes nothing and exits `1`,
+listing the files — use `--force`, or move the edits to `lefthook-local.yml`. Removing a language deletes
+its config files (e.g. `configs/markdown/`). Both `check` and `update` point out languages detected in the
+project that are not in your hook set.
+
+| Exit | `update` meaning                                                    |
+|------|---------------------------------------------------------------------|
+| `0`  | Updated, or nothing to do                                           |
+| `1`  | Refused (modified files without `--force`), or `--dry-run` has changes |
+| `2`  | Not managed / invalid lock / unknown language                       |
 
 ```yaml
 # .github/workflows/hooks-drift.yml
@@ -339,11 +357,12 @@ To bring a project up to date today, re-run `jdf-hooks setup` (a non-interactive
 ```text
 jdf-hooks/
 ├── src/jdf_hooks/     # Python CLI package
-│   ├── cli.py              # Interactive CLI (setup, check)
+│   ├── cli.py              # CLI (setup, check, update)
 │   ├── detect.py           # Language detection
 │   ├── generate.py         # Config generation
 │   ├── lock.py             # .jdf-hooks.lock read/write
-│   └── check.py            # Drift detection
+│   ├── check.py            # Drift detection
+│   └── update.py           # Regenerate from the lock
 ├── configs/                # Tool configuration files
 │   ├── markdown/
 │   ├── yaml/

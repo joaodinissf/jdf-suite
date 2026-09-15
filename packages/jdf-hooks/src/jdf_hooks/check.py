@@ -6,6 +6,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from . import __version__
+from .detect import detect_languages
 from .generate import render_all
 from .lock import LOCK_FILENAME, LockFile, hash_bytes, read_lock
 
@@ -19,6 +20,7 @@ class FileState(StrEnum):
     UPDATE_AVAILABLE = "update-available"
     MODIFIED = "modified"
     MISSING = "missing"
+    OBSOLETE = "obsolete"  # in the lock but no longer generated for this language set
 
 
 @dataclass(frozen=True)
@@ -44,8 +46,18 @@ class CheckReport:
         return self.lock.jdf_hooks != self.tool_version
 
 
-def check_project(target_dir: Path, templates_dir: Path | None = None) -> CheckReport:
+def check_project(
+    target_dir: Path,
+    templates_dir: Path | None = None,
+    *,
+    languages: set[str] | None = None,
+) -> CheckReport:
     """Compare every locked file against disk and against a fresh render.
+
+    Args:
+        target_dir: Project directory containing the lock file.
+        templates_dir: Optional templates directory (bundled templates if omitted).
+        languages: Override the lock's language set (used by `update --add/--remove`).
 
     Raises:
         UnmanagedProjectError: if there is no lock file in target_dir.
@@ -58,7 +70,7 @@ def check_project(target_dir: Path, templates_dir: Path | None = None) -> CheckR
             "Run `jdf-hooks setup` to adopt this project."
         )
 
-    fresh = render_all(set(lock.languages), lock.manager, templates_dir)
+    fresh = render_all(languages if languages is not None else set(lock.languages), lock.manager, templates_dir)
     reports: list[FileReport] = []
 
     for rel_path in sorted(set(lock.files) | set(fresh)):
@@ -73,7 +85,9 @@ def check_project(target_dir: Path, templates_dir: Path | None = None) -> CheckR
             continue
 
         stale = fresh_hash != locked_hash
-        if disk_hash is None:
+        if fresh_hash is None:
+            state = FileState.OBSOLETE
+        elif disk_hash is None:
             state = FileState.MISSING
         elif disk_hash != locked_hash:
             state = FileState.MODIFIED
@@ -84,6 +98,12 @@ def check_project(target_dir: Path, templates_dir: Path | None = None) -> CheckR
         reports.append(FileReport(rel_path, state, stale=stale))
 
     return CheckReport(lock=lock, tool_version=__version__, files=reports)
+
+
+def undetected_languages(target_dir: Path, languages: list[str]) -> dict[str, list[str]]:
+    """Languages detected in the project that are not in the given hook set, with detection reasons."""
+    detected = detect_languages(target_dir)
+    return {lang: reasons for lang, reasons in detected.items() if lang not in languages}
 
 
 def diff_file(target_dir: Path, rel_path: str, templates_dir: Path | None = None, lock: LockFile | None = None) -> str:
