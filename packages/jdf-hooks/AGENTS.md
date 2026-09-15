@@ -162,7 +162,18 @@ project's own hooks (as of v1.1.0):
 - ✅ Configure via `[tool.ty]` in `pyproject.toml` (this project uses `[tool.ty.src] exclude`)
 - ❌ Do not reintroduce pyright or mypy jobs, hints, or commented "alternative" blocks — they drift
 
-### Rule #6: Version Management and Semantic Versioning
+### Rule #6: Generated Files Are Owned by jdf-hooks
+
+`setup` writes `.jdf-hooks.lock` (JSON: `jdf_hooks` version, `manager`, sorted `languages`, `files` → sha256)
+alongside the generated files. This is the `npx skills` model — the lock is the provenance, updates overwrite:
+
+- ✅ `generate_configs()` is the only writer; it renders through `render_all()` and then writes the lock
+- ✅ `check_project()` (`jdf-hooks check`) compares lock ↔ disk ↔ a fresh render; it never writes
+- ✅ Users keep project-specific hooks in `lefthook-local.yml`; edits to generated files are reported as *modified*
+- ❌ Never add in-file markers or merge logic — if a file needs preserving, it belongs outside the generated set
+- ❌ Never put timestamps in generated files or the lock (generation must stay deterministic)
+
+### Rule #7: Version Management and Semantic Versioning
 
 ⚠️ **CRITICAL**: After EVERY commit to main, create and push an appropriate semantic version tag.
 
@@ -588,7 +599,9 @@ line-length = 88
 │   ├── __main__.py
 │   ├── cli.py                  # Interactive CLI
 │   ├── detect.py               # Language detection
-│   ├── generate.py             # Config generation (fragment-based)
+│   ├── generate.py             # Config generation (fragment-based); render_all() + lock write
+│   ├── lock.py                 # .jdf-hooks.lock model + read/write
+│   ├── check.py                # Drift detection for `jdf-hooks check`
 │   └── templates/              # Bundled template library (shipped in wheel)
 │       ├── precommit/          # Per-language pre-commit fragments (11 files)
 │       ├── lefthook/           # Per-language lefthook fragments (11 files)
@@ -599,6 +612,9 @@ line-length = 88
 │           └── yaml/yamlfix.toml
 ├── tests/                      # Test suite
 │   ├── test_generate.py        # Automated pytest tests
+│   ├── test_lock.py            # Lock file round-trip / validation
+│   ├── test_check.py           # Drift detection + `check` CLI exit codes
+│   ├── test_version.py         # __version__ matches pyproject.toml
 │   └── integration/            # Integration tests (require actual tools)
 │       ├── test_precommit.py
 │       └── test_lefthook.py
@@ -622,6 +638,13 @@ line-length = 88
 > **Note**: Version was reset to 1.0.0 for the first public PyPI release. Pre-release
 > versions (v1.x–v4.x below) were internal development milestones under the old
 > "sensible-hooks" name and are not published on PyPI.
+
+- **v1.2.0** (PyPI): Lockfile + `jdf-hooks check`
+  - `setup` now writes `.jdf-hooks.lock` (version, manager, languages, per-file sha256) — see Rule #6
+  - New `jdf-hooks check [dir] [--diff]`: reports each generated file as up to date / update available /
+    modified locally / missing; exit 0 = clean, 1 = drift, 2 = unmanaged (no lock)
+  - `generate.py` split into `render_*` (pure) and write wrappers; `render_all()` is shared by setup and check
+  - `__version__` is read from package metadata (was a hardcoded literal that had drifted)
 
 - **v1.1.0** (PyPI): ty is the sole Python type checker
   - pyright removed from `lefthook.yml`, both `python_typechecking` template fragments, the CLI install hints,

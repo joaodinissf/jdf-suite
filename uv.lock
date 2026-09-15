@@ -459,7 +459,7 @@ wheels = [
 
 [[package]]
 name = "jdf-hooks"
-version = "1.1.0"
+version = "1.2.0"
 source = { editable = "packages/jdf-hooks" }
 
 [package.optional-dependencies]
