@@ -169,6 +169,9 @@ alongside the generated files. This is the `npx skills` model — the lock is th
 
 - ✅ `generate_configs()` is the only writer; it renders through `render_all()` and then writes the lock
 - ✅ `check_project()` (`jdf-hooks check`) compares lock ↔ disk ↔ a fresh render; it never writes
+- ✅ `apply_update()` (`jdf-hooks update`) deletes obsolete files, then calls `generate_configs()` — it is
+  all-or-nothing: any locally modified file makes it refuse (exit 1) unless `--force`
+- ✅ `--add`/`--remove` change the language set through `check_project(languages=...)`; nothing else mutates the lock
 - ✅ Users keep project-specific hooks in `lefthook-local.yml`; edits to generated files are reported as *modified*
 - ❌ Never add in-file markers or merge logic — if a file needs preserving, it belongs outside the generated set
 - ❌ Never put timestamps in generated files or the lock (generation must stay deterministic)
@@ -602,6 +605,7 @@ line-length = 88
 │   ├── generate.py             # Config generation (fragment-based); render_all() + lock write
 │   ├── lock.py                 # .jdf-hooks.lock model + read/write
 │   ├── check.py                # Drift detection for `jdf-hooks check`
+│   ├── update.py               # plan_update()/apply_update() for `jdf-hooks update`
 │   └── templates/              # Bundled template library (shipped in wheel)
 │       ├── precommit/          # Per-language pre-commit fragments (11 files)
 │       ├── lefthook/           # Per-language lefthook fragments (11 files)
@@ -614,6 +618,7 @@ line-length = 88
 │   ├── test_generate.py        # Automated pytest tests
 │   ├── test_lock.py            # Lock file round-trip / validation
 │   ├── test_check.py           # Drift detection + `check` CLI exit codes
+│   ├── test_update.py          # Update planning/apply + `update` CLI exit codes
 │   ├── test_version.py         # __version__ matches pyproject.toml
 │   └── integration/            # Integration tests (require actual tools)
 │       ├── test_precommit.py
@@ -638,6 +643,13 @@ line-length = 88
 > **Note**: Version was reset to 1.0.0 for the first public PyPI release. Pre-release
 > versions (v1.x–v4.x below) were internal development milestones under the old
 > "sensible-hooks" name and are not published on PyPI.
+
+- **v1.3.0** (PyPI): `jdf-hooks update`
+  - New `jdf-hooks update [dir] [--add LANG] [--remove LANG] [--force] [--dry-run]`: regenerates from the lock,
+    all-or-nothing (refuses when any file is modified locally unless `--force`); removing a language deletes
+    its config files. Exit 0 = done/nothing to do, 1 = refused or dry-run pending, 2 = unmanaged
+  - `check` gains the `obsolete` state and a `languages=` override; both commands hint at detected languages
+    that are not in the hook set
 
 - **v1.2.0** (PyPI): Lockfile + `jdf-hooks check`
   - `setup` now writes `.jdf-hooks.lock` (version, manager, languages, per-file sha256) — see Rule #6
