@@ -300,19 +300,50 @@ Both lefthook and pre-commit use the same tool configurations from `configs/`:
 
 ### Customizing Hooks
 
-**For Lefthook**: Edit `lefthook.yml`
-**For Pre-commit**: Edit the generated `.pre-commit-config.yaml` in your project
+The generated `lefthook.yml`, `.pre-commit-config.yaml` and `configs/` are **owned by jdf-hooks** — the same
+model as `npx skills`: regenerating overwrites them. Keep project-specific hooks beside them:
 
-Refer to `AGENTS.md` for guidelines on keeping both configurations in sync.
+- **Lefthook**: put extra jobs in `lefthook-local.yml`; lefthook merges it over `lefthook.yml` automatically.
+- **Pre-commit**: there is no local-override file, so edits to `.pre-commit-config.yaml` are reported by
+  `jdf-hooks check` as *modified locally* and will be overwritten when you regenerate.
+
+## Keeping Hooks Up to Date
+
+`jdf-hooks setup` writes a `.jdf-hooks.lock` next to the generated files (commit it). It records the jdf-hooks
+version, the hook manager, the selected languages, and a hash of every generated file — like `skills-lock.json`.
+
+```bash
+uvx jdf-hooks check          # compare lock, disk and the bundled templates
+uvx jdf-hooks check --diff   # also show what a regeneration would change
+```
+
+Each file is reported as **up to date**, **update available** (the bundled templates moved on), **modified
+locally** (the file no longer matches the lock), or **missing**. Exit codes are stable for CI:
+
+| Exit | Meaning                                                     |
+|------|-------------------------------------------------------------|
+| `0`  | Everything up to date                                       |
+| `1`  | Drift: at least one file stale, modified locally, or missing |
+| `2`  | Not managed: no (or invalid) `.jdf-hooks.lock`              |
+
+To bring a project up to date today, re-run `jdf-hooks setup` (a non-interactive `jdf-hooks update` is planned).
+
+```yaml
+# .github/workflows/hooks-drift.yml
+- uses: astral-sh/setup-uv@v7
+- run: uvx jdf-hooks check
+```
 
 ## Project Structure
 
 ```text
 jdf-hooks/
 ├── src/jdf_hooks/     # Python CLI package
-│   ├── cli.py              # Interactive CLI
+│   ├── cli.py              # Interactive CLI (setup, check)
 │   ├── detect.py           # Language detection
-│   └── generate.py         # Config generation
+│   ├── generate.py         # Config generation
+│   ├── lock.py             # .jdf-hooks.lock read/write
+│   └── check.py            # Drift detection
 ├── configs/                # Tool configuration files
 │   ├── markdown/
 │   ├── yaml/

@@ -6,8 +6,10 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .check import CheckReport, FileState, UnmanagedProjectError, check_project, diff_file
 from .detect import LANGUAGE_DETECTORS, detect_languages, get_language_display
 from .generate import generate_configs, get_templates_dir
+from .lock import LOCK_FILENAME, LockError
 
 # ANSI color codes
 GREEN = "\033[92m"
@@ -198,6 +200,12 @@ def print_next_steps(hook_manager: str, languages: set[str]) -> None:
             print(f"    ... and {len(relevant_tools) - 5} more (see README)")
 
 
+def find_existing_outputs(target_dir: Path) -> list[str]:
+    """List generated files/directories already present in target_dir."""
+    candidates = ["lefthook.yml", ".pre-commit-config.yaml", "configs/", LOCK_FILENAME]
+    return [name for name in candidates if (target_dir / name.rstrip("/")).exists()]
+
+
 def setup_command(args: argparse.Namespace) -> int:
     """Run the setup command.
 
@@ -236,14 +244,7 @@ def setup_command(args: argparse.Namespace) -> int:
     hook_manager = select_hook_manager()
 
     # Check for existing files that would be overwritten
-    existing_files: list[str] = []
-    if (target_dir / "lefthook.yml").exists():
-        existing_files.append("lefthook.yml")
-    if (target_dir / ".pre-commit-config.yaml").exists():
-        existing_files.append(".pre-commit-config.yaml")
-    if (target_dir / "configs").is_dir():
-        existing_files.append("configs/")
-
+    existing_files = find_existing_outputs(target_dir)
     if existing_files:
         print(f"\n{YELLOW}The following files/directories already exist:{RESET}")
         for f in existing_files:
@@ -275,11 +276,84 @@ def setup_command(args: argparse.Namespace) -> int:
         rel_path = path.relative_to(target_dir)
         print_success(f"Created {rel_path}")
 
+    for path in result["lock"]:
+        print_success(f"Created {path.name}")
+
     # Print next steps
     print_next_steps(hook_manager, languages)
 
     print(f"\n{GREEN}Setup complete!{RESET}\n")
     return 0
+
+
+# Exit codes for `jdf-hooks check`, stable for CI use
+CHECK_OK = 0
+CHECK_DRIFT = 1
+CHECK_UNMANAGED = 2
+
+_STATE_PRINTERS = {
+    FileState.UP_TO_DATE: (print_success, "up to date"),
+    FileState.UPDATE_AVAILABLE: (print_info, "update available"),
+    FileState.MODIFIED: (print_warning, "modified locally"),
+    FileState.MISSING: (print_error, "missing"),
+}
+
+
+def print_check_report(report: CheckReport) -> None:
+    """Print one line per generated file plus a summary."""
+    versions = f"lock: jdf-hooks {report.lock.jdf_hooks}, installed: {report.tool_version}"
+    print(f"\n{BOLD}Generated files:{RESET}  ({versions})\n")
+    for f in report.files:
+        printer, label = _STATE_PRINTERS[f.state]
+        suffix = ""
+        if f.new:
+            suffix = " (new file in current templates)"
+        elif f.state is FileState.MODIFIED and f.stale:
+            suffix = " — update also available"
+        printer(f"{f.path}: {label}{suffix}")
+
+    print()
+    if not report.has_drift:
+        print(f"{GREEN}All generated files are up to date.{RESET}")
+        return
+
+    counts = {state: sum(1 for f in report.files if f.state is state) for state in FileState}
+    parts = [f"{counts[s]} {s.value}" for s in FileState if counts[s] and s is not FileState.UP_TO_DATE]
+    print(f"{YELLOW}Drift detected:{RESET} " + ", ".join(parts))
+    print("  Re-run `jdf-hooks setup` to regenerate (a `jdf-hooks update` command is planned).")
+    if counts[FileState.MODIFIED]:
+        print("  Local edits are overwritten on regeneration — keep project-specific hooks in lefthook-local.yml.")
+
+
+def check_command(args: argparse.Namespace) -> int:
+    """Run the check command: report drift between lock, disk, and bundled templates."""
+    target_dir = Path(args.directory).resolve()
+
+    if not target_dir.exists():
+        print_error(f"Directory does not exist: {target_dir}")
+        return CHECK_UNMANAGED
+
+    try:
+        report = check_project(target_dir)
+    except UnmanagedProjectError as e:
+        print_error(str(e))
+        return CHECK_UNMANAGED
+    except LockError as e:
+        print_error(str(e))
+        return CHECK_UNMANAGED
+
+    print_check_report(report)
+
+    if args.diff:
+        for f in report.files:
+            if f.state is FileState.UP_TO_DATE:
+                continue
+            diff = diff_file(target_dir, f.path, lock=report.lock)
+            if diff:
+                print()
+                print(diff, end="")
+
+    return CHECK_DRIFT if report.has_drift else CHECK_OK
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -308,6 +382,24 @@ def create_parser() -> argparse.ArgumentParser:
         help="Target project directory (default: current directory)",
     )
 
+    # check command
+    check_parser = subparsers.add_parser(
+        "check",
+        help=f"Report generated files that are stale or modified (reads {LOCK_FILENAME}); "
+        f"exit {CHECK_OK} = up to date, {CHECK_DRIFT} = drift, {CHECK_UNMANAGED} = no lock",
+    )
+    check_parser.add_argument(
+        "directory",
+        nargs="?",
+        default=".",
+        help="Project directory to check (default: current directory)",
+    )
+    check_parser.add_argument(
+        "--diff",
+        action="store_true",
+        help="Show a unified diff from each drifted file to a fresh render",
+    )
+
     return parser
 
 
@@ -318,6 +410,8 @@ def main() -> int:
 
     if args.command == "setup":
         return setup_command(args)
+    elif args.command == "check":
+        return check_command(args)
     elif args.command is None:
         # Default to setup in current directory
         args.command = "setup"
