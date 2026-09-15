@@ -48,7 +48,7 @@ def check_lefthook():
 def check_required_tools():
     """Check if required tools are installed."""
     tools = {
-        "Python": ["pycln", "isort", "ruff", "pyright", "ty"],
+        "Python": ["pycln", "isort", "ruff", "ty"],
         "JavaScript": ["npx"],
         "Rust": ["rustfmt", "cargo"],
         "Markdown": ["markdownlint"],

@@ -51,8 +51,7 @@ This repository supports **both** hook managers to get the best of both worlds:
 - **pycln** - Remove unused imports
 - **isort** - Sort imports
 - **ruff** - Format and lint (replaces black + pylint)
-- **pyright** - Type checking (default, fast)
-- **ty** - Experimental type checker (10-60x faster, optional)
+- **ty** - Type checking (Astral's Python type checker)
 
 ### JavaScript/TypeScript
 
@@ -182,10 +181,10 @@ Lefthook requires tools to be installed in your PATH. Pre-commit auto-manages en
 
 ```bash
 # Using uv (recommended)
-uv tool install pycln isort ruff pyright yamlfix sqlfluff
+uv tool install pycln isort ruff ty yamlfix sqlfluff
 
 # Or using pipx
-pipx install pycln isort ruff pyright yamlfix sqlfluff
+pipx install pycln isort ruff ty yamlfix sqlfluff
 ```
 
 ### JavaScript Tools
@@ -253,7 +252,7 @@ LEFTHOOK=0 git commit
 Skip specific hooks:
 
 ```bash
-LEFTHOOK_EXCLUDE=ruff-check,pyright git commit
+LEFTHOOK_EXCLUDE=ruff-check,ty git commit
 ```
 
 ### Using Pre-commit
@@ -279,7 +278,7 @@ SKIP=all git commit
 Skip specific hooks:
 
 ```bash
-SKIP=ruff-check,pyright git commit
+SKIP=ruff-check,ty git commit
 ```
 
 Update hook versions:
@@ -356,7 +355,7 @@ jobs:
       run: npm install -g lefthook
     - name: Install tools
       run: |
-        pip install pycln isort ruff pyright yamlfix sqlfluff
+        pip install pycln isort ruff ty yamlfix sqlfluff
         npm install -g prettier markdownlint-cli
         rustup component add rustfmt clippy
     - name: Run lefthook

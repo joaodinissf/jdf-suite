@@ -16,7 +16,7 @@ This package lives at `packages/jdf-hooks/` within the **jdf-suite** monorepo (<
 
 A centralized collection of Git hooks for enforcing code quality across multiple languages and file types:
 
-- **Python**: pycln, isort, ruff (format & check), mypy, ty (experimental)
+- **Python**: pycln, isort, ruff (format & check), ty
 - **JavaScript/TypeScript**: prettier
 - **Rust**: rustfmt, clippy
 - **Java**: pmd, cpd, checkstyle (google-java-format temporarily removed in 1.0.1 — pending redesign without the git submodule; see [jdf-suite#4](https://github.com/joaodinissf/jdf-suite/issues/4))
@@ -116,7 +116,7 @@ These modify the same files and conflict if run concurrently.
 **Safe to parallelize**:
 
 - Different languages (Python vs Rust vs JS)
-- Read-only checks (mypy, ruff-check, clippy)
+- Read-only checks (ty, ruff-check, clippy)
 - Independent formatters (shfmt vs prettier)
 
 ### Rule #3: Tool Configuration Consistency
@@ -153,14 +153,14 @@ pre-commit validate-config
 lefthook dump
 ```
 
-### Rule #5: ty is Experimental
+### Rule #5: ty is the Python Type Checker
 
-The `ty` type checker is **optional and experimental** (v0.0.8):
+[ty](https://github.com/astral-sh/ty) (Astral) is the **only** Python type checker in the templates and in this
+project's own hooks (as of v1.1.0):
 
-- ❌ **Never** make ty the default
-- ✅ **Always** keep pyright as default
-- ✅ Document experimental status
-- ✅ Keep ty as an additional experimental checker
+- ✅ `ty check` runs in both lefthook and pre-commit `python_typechecking` fragments
+- ✅ Configure via `[tool.ty]` in `pyproject.toml` (this project uses `[tool.ty.src] exclude`)
+- ❌ Do not reintroduce pyright or mypy jobs, hints, or commented "alternative" blocks — they drift
 
 ### Rule #6: Version Management and Semantic Versioning
 
@@ -329,7 +329,7 @@ pre-commit:
 
 - Number prefixes ensure formatters run 01 → 02 → 03 before other commands start
 - Different language tools (10, 20, 30) can run truly in parallel
-- Read-only checks (ruff-check, mypy) are safe to overlap
+- Read-only checks (ruff-check, ty) are safe to overlap
 
 **Future alternative** (when [Issue #846](https://github.com/evilmartians/lefthook/issues/846) is resolved):
 
@@ -560,26 +560,21 @@ line-length = 88
 # Both configs reference the same file
 ```
 
-### ❌ Making ty the Default
+### ❌ Multiple Python Type Checkers
 
 **Wrong**:
 
 ```yaml
-# Uncommenting ty, commenting mypy
-# - id: mypy
+- id: pyright
 - id: ty
 ```
 
 **Right**:
 
 ```yaml
-# Keep mypy as default, ty commented
-- id: mypy
+# ty is the sole type checker (see Rule #5)
+- id: ty
   types: [python]
-
-# EXPERIMENTAL: ty (uncomment to use)
-# - id: ty
-#   types: [python]
 ```
 
 ---
@@ -627,6 +622,14 @@ line-length = 88
 > **Note**: Version was reset to 1.0.0 for the first public PyPI release. Pre-release
 > versions (v1.x–v4.x below) were internal development milestones under the old
 > "sensible-hooks" name and are not published on PyPI.
+
+- **v1.1.0** (PyPI): ty is the sole Python type checker
+  - pyright removed from `lefthook.yml`, both `python_typechecking` template fragments, the CLI install hints,
+    the integration test tool list, CI, and docs; the commented-out mypy "alternative" block is gone too
+  - `[tool.pyright]` dropped from `pyproject.toml`; dev extra now installs `ty` instead of `pyright`
+  - Lineage note: this package is the direct continuation of `joaodinissf/Sensible-Pre-Commit-Hooks`
+    (history preserved through the v0.5.0 rename and the monorepo assimilation); nothing from that repo
+    remains to be integrated
 
 - **v1.0.1** (PyPI): Assimilation into jdf-suite monorepo
   - Package relocated from standalone `joaodinissf/jdf-hooks` to `joaodinissf/jdf-suite` under `packages/jdf-hooks/`
