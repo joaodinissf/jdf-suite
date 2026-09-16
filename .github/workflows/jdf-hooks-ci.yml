@@ -25,7 +25,9 @@ jobs:
       with:
         python-version: '3.12'
     - uses: astral-sh/setup-uv@v7
-    - run: uv run --extra dev pytest tests/test_generate.py -v
+    - run: uv run --extra dev pytest -v
+    - name: Own hooks are in sync with the bundled templates (dogfooding)
+      run: uv run jdf-hooks check --offline
 
   integration:
     name: Integration (${{ matrix.manager }})

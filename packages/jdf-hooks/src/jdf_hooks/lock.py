@@ -7,7 +7,7 @@ updates overwrite rather than merge.
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 LOCK_FILENAME = ".jdf-hooks.lock"
@@ -30,14 +30,17 @@ class LockFile:
     manager: str
     languages: list[str]
     files: dict[str, str]  # relative POSIX path -> content hash
+    options: dict[str, bool] = field(default_factory=dict)  # e.g. {"github_workflow": True}
 
     def to_json(self) -> str:
-        data = {
+        data: dict[str, object] = {
             "jdf_hooks": self.jdf_hooks,
             "manager": self.manager,
             "languages": sorted(self.languages),
             "files": dict(sorted(self.files.items())),
         }
+        if self.options:
+            data["options"] = dict(sorted(self.options.items()))
         return json.dumps(data, indent=2) + "\n"
 
     @classmethod
@@ -49,6 +52,7 @@ class LockFile:
                 manager=str(data["manager"]),
                 languages=sorted(str(lang) for lang in data["languages"]),
                 files={str(k): str(v) for k, v in data["files"].items()},
+                options={str(k): bool(v) for k, v in data.get("options", {}).items()},
             )
         except (json.JSONDecodeError, KeyError, TypeError, AttributeError) as e:
             raise LockError(f"Invalid {LOCK_FILENAME}: {e}") from e

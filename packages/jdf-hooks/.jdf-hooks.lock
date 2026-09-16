@@ -1,0 +1,10 @@
+{
+  "jdf_hooks": "1.4.0",
+  "manager": "lefthook",
+  "languages": [
+    "python"
+  ],
+  "files": {
+    "lefthook.yml": "sha256:48dcbaf7348092e3f7bd5cb688404c6a246f5d4531973c9c935e79c36f988344"
+  }
+}

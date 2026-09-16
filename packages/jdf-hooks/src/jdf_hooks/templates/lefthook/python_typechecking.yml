@@ -8,5 +8,5 @@
         run: ruff check --force-exclude {staged_files}
         glob: '*.{py,pyi}'
       - name: ty
-        run: ty check {staged_files}
+        run: ty check --force-exclude {staged_files}
         glob: '*.py'

@@ -21,6 +21,7 @@ import tempfile
 from pathlib import Path
 
 from jdf_hooks.generate import generate_configs
+from jdf_hooks.tools import missing_tools
 
 
 def run_command(cmd, cwd=None, check=True):
@@ -46,28 +47,12 @@ def check_lefthook():
 
 
 def check_required_tools():
-    """Check if required tools are installed."""
-    tools = {
-        "Python": ["pycln", "isort", "ruff", "ty"],
-        "JavaScript": ["npx"],
-        "Rust": ["rustfmt", "cargo"],
-        "Markdown": ["markdownlint"],
-        "YAML": ["yamlfix"],
-        "TOML": ["taplo"],
-        "SQL": ["sqlfluff"],
-        "Shell": ["shfmt"],
-    }
-
-    missing = {}
-    for category, tool_list in tools.items():
-        missing_tools = [t for t in tool_list if not shutil.which(t)]
-        if missing_tools:
-            missing[category] = missing_tools
-
+    """Check if required tools are installed (same table `jdf-hooks doctor` uses)."""
+    missing = missing_tools(ALL_LANGUAGES, "lefthook")
     if missing:
         print("Some tools are missing:")
-        for category, tool_list in missing.items():
-            print(f"  {category}: {', '.join(tool_list)}")
+        for tool in missing:
+            print(f"  {tool.name}: {tool.install}")
         print("\nSome hooks may fail. See README for installation instructions.")
         return False
 

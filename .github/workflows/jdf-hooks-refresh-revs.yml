@@ -1,0 +1,32 @@
+name: jdf-hooks refresh revs
+on:
+  schedule:
+  - cron: '0 6 1 * *'   # monthly, 1st at 06:00 UTC
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/jdf-hooks
+    steps:
+    - uses: actions/checkout@v6
+    - uses: astral-sh/setup-uv@v7
+    - run: uv tool install pre-commit
+    - name: Refresh pre-commit revs in the bundled fragments
+      run: uv run python scripts/refresh_revs.py
+    - name: Run unit tests against the refreshed fragments
+      run: uv run --extra dev pytest tests/test_generate.py -q
+    - uses: peter-evans/create-pull-request@v7
+      with:
+        commit-message: 'chore(hooks): refresh pre-commit revs'
+        title: 'chore(hooks): refresh pre-commit revs'
+        body: |
+          Monthly `pre-commit autoupdate` over the bundled fragments (`scripts/refresh_revs.py`).
+          Review the pins, then merge; jdf-hooks users pick them up via `jdf-hooks update`.
+        branch: jdf-hooks/refresh-revs
+        delete-branch: true
+        labels: dependencies

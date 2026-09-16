@@ -1,15 +1,15 @@
 """Interactive CLI for setting up JDF hooks."""
 
 import argparse
-import shutil
 import sys
 from pathlib import Path
 
-from . import __version__
+from . import __version__, pypi
 from .check import CheckReport, FileState, UnmanagedProjectError, check_project, diff_file, undetected_languages
 from .detect import LANGUAGE_DETECTORS, detect_languages, get_language_display
-from .generate import generate_configs, get_templates_dir
-from .lock import LOCK_FILENAME, LockError
+from .generate import GITHUB_WORKFLOW_FILENAME, generate_configs, get_templates_dir, validate_languages
+from .lock import LOCK_FILENAME, LockError, read_lock
+from .tools import MANAGER_TOOLS, required_tools
 from .update import apply_update, plan_update
 
 # ANSI color codes
@@ -157,54 +157,123 @@ def print_next_steps(hook_manager: str, languages: set[str]) -> None:
 
     if hook_manager in ("lefthook", "both"):
         print(f"  {BOLD}Lefthook:{RESET}")
-        if not shutil.which("lefthook"):
-            print("    1. Install: brew install lefthook")
-            print("              # or: npm install -g lefthook")
-            print("              # or: go install github.com/evilmartians/lefthook@latest")
+        if not MANAGER_TOOLS["lefthook"].is_installed():
+            print(f"    1. Install: {MANAGER_TOOLS['lefthook'].install}")
         print("    2. Run: lefthook install")
         print("    3. Test: lefthook run pre-commit --all-files")
         print()
 
     if hook_manager in ("pre-commit", "both"):
         print(f"  {BOLD}Pre-commit:{RESET}")
-        if not shutil.which("pre-commit"):
-            print("    1. Install: pip install pre-commit")
-            print("              # or: pipx install pre-commit")
-            print("              # or: uv tool install pre-commit")
+        if not MANAGER_TOOLS["pre-commit"].is_installed():
+            print(f"    1. Install: {MANAGER_TOOLS['pre-commit'].install}")
         print("    2. Run: pre-commit install")
         print("    3. Test: pre-commit run --all-files")
         print()
 
-    # Language-specific tool installation hints
-    tool_hints: dict[str, list[str]] = {
-        "python": ["pycln", "isort", "ruff", "ty"],
-        "javascript": ["prettier (npm install -g prettier)"],
-        "rust": ["rustfmt, clippy (rustup component add rustfmt clippy)"],
-        "java": ["pmd, checkstyle"],
-        "markdown": ["markdownlint (npm install -g markdownlint-cli)"],
-        "yaml": ["yamlfix (pip install yamlfix)"],
-        "toml": ["taplo (cargo install taplo-cli)"],
-        "sql": ["sqlfluff (pip install sqlfluff)"],
-        "shell": ["shfmt (brew install shfmt)"],
-    }
-
-    relevant_tools: list[str] = []
-    for lang in languages:
-        if lang in tool_hints:
-            relevant_tools.extend(tool_hints[lang])
-
-    if relevant_tools and hook_manager in ("lefthook", "both"):
-        print(f"  {BOLD}Required tools for lefthook:{RESET}")
-        for tool in relevant_tools[:5]:  # Show first 5
-            print(f"    - {tool}")
-        if len(relevant_tools) > 5:
-            print(f"    ... and {len(relevant_tools) - 5} more (see README)")
+    # Lefthook runs tools from PATH; pre-commit manages most of its own.
+    if hook_manager in ("lefthook", "both"):
+        missing = [t for t in required_tools(languages, "lefthook") if not t.is_installed() and t.name != "lefthook"]
+        if missing:
+            print(f"  {BOLD}Missing tools for lefthook:{RESET}")
+            for tool in missing:
+                print(f"    - {tool.name}: {tool.install}")
+            print("    (run `jdf-hooks doctor` to re-check)")
 
 
 def find_existing_outputs(target_dir: Path) -> list[str]:
     """List generated files/directories already present in target_dir."""
-    candidates = ["lefthook.yml", ".pre-commit-config.yaml", "configs/", LOCK_FILENAME]
+    candidates = ["lefthook.yml", ".pre-commit-config.yaml", "configs/", GITHUB_WORKFLOW_FILENAME, LOCK_FILENAME]
     return [name for name in candidates if (target_dir / name.rstrip("/")).exists()]
+
+
+def resolve_setup_options(args: argparse.Namespace, target_dir: Path) -> tuple[set[str], str]:
+    """Languages and manager for setup — from flags when --languages is given, else interactively.
+
+    Raises:
+        ValueError: unknown language name in --languages.
+    """
+    print(f"\n{BLUE}Scanning project for languages...{RESET}")
+    detected = detect_languages(target_dir)
+    if detected:
+        print_success(f"Found {len(detected)} language(s)")
+    else:
+        print_warning("No languages detected" + ("" if args.languages else ", showing all options"))
+
+    if args.languages is None:
+        return select_languages(detected), select_hook_manager()
+
+    if args.languages == "auto":
+        languages = set(detected) | {"general"}
+    else:
+        languages = {lang.strip() for lang in args.languages.split(",") if lang.strip()}
+        validate_languages(languages)
+    manager = args.manager or "both"
+    print_info(f"Languages: {', '.join(sorted(languages))}; manager: {manager}")
+    return languages, manager
+
+
+def confirm_overwrite(target_dir: Path, *, assume_yes: bool) -> bool:
+    """Warn about generated files already present; ask unless --yes. False means abort."""
+    existing_files = find_existing_outputs(target_dir)
+    if not existing_files:
+        return True
+
+    print(f"\n{YELLOW}The following files/directories already exist:{RESET}")
+    for f in existing_files:
+        print(f"  - {f}")
+    if assume_yes:
+        print_info("Overwriting (--yes)")
+        return True
+    if not sys.stdin.isatty():
+        print_error("Refusing to overwrite without a terminal; pass --yes.")
+        return False
+    try:
+        answer = input("Overwrite? [y/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("\nAborted.")
+        return False
+    if answer not in ("y", "yes"):
+        print("Aborted.")
+        return False
+    return True
+
+
+def doctor_command(args: argparse.Namespace) -> int:
+    """Report which tools the hook set needs and whether they are on PATH."""
+    target_dir = Path(args.directory).resolve()
+    if not target_dir.exists():
+        print_error(f"Directory does not exist: {target_dir}")
+        return 2
+
+    try:
+        lock = read_lock(target_dir)
+    except LockError as e:
+        print_error(str(e))
+        return 2
+
+    if lock is not None:
+        languages, manager = set(lock.languages), lock.manager
+        print_info(f"Hook set from {LOCK_FILENAME}: {', '.join(lock.languages)} ({manager})")
+    else:
+        languages, manager = set(detect_languages(target_dir)) | {"general"}, "both"
+        print_info(f"No {LOCK_FILENAME}; checking tools for detected languages: {', '.join(sorted(languages))}")
+
+    print()
+    missing = 0
+    for tool in required_tools(languages, manager):
+        if tool.is_installed():
+            print_success(tool.name)
+        else:
+            missing += 1
+            print_error(f"{tool.name}  →  {tool.install}")
+
+    print()
+    if missing:
+        print(f"{YELLOW}{missing} tool(s) missing.{RESET}")
+        return 1
+    print(f"{GREEN}All tools installed.{RESET}")
+    return 0
 
 
 def setup_command(args: argparse.Namespace) -> int:
@@ -225,39 +294,17 @@ def setup_command(args: argparse.Namespace) -> int:
     print_banner()
     print_info(f"Setting up hooks in: {target_dir}")
 
-    # Detect languages
-    print(f"\n{BLUE}Scanning project for languages...{RESET}")
-    detected = detect_languages(target_dir)
-
-    if detected:
-        print_success(f"Found {len(detected)} language(s)")
-    else:
-        print_warning("No languages detected, showing all options")
-
-    # Interactive language selection
-    languages = select_languages(detected)
-
+    try:
+        languages, hook_manager = resolve_setup_options(args, target_dir)
+    except ValueError as e:
+        print_error(str(e))
+        return 2
     if not languages:
         print_error("No languages selected. Aborting.")
         return 1
 
-    # Hook manager selection
-    hook_manager = select_hook_manager()
-
-    # Check for existing files that would be overwritten
-    existing_files = find_existing_outputs(target_dir)
-    if existing_files:
-        print(f"\n{YELLOW}The following files/directories already exist:{RESET}")
-        for f in existing_files:
-            print(f"  - {f}")
-        try:
-            answer = input("Overwrite? [y/N]: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            print("\nAborted.")
-            return 1
-        if answer not in ("y", "yes"):
-            print("Aborted.")
-            return 1
+    if not confirm_overwrite(target_dir, assume_yes=args.yes):
+        return 1
 
     # Generate configs
     print(f"\n{BLUE}Generating configuration files...{RESET}\n")
@@ -267,15 +314,11 @@ def setup_command(args: argparse.Namespace) -> int:
         print_error(f"Templates directory not found: {templates_dir}")
         return 1
 
-    result = generate_configs(target_dir, languages, hook_manager, templates_dir)
+    result = generate_configs(target_dir, languages, hook_manager, templates_dir, github_workflow=args.github_workflow)
 
     # Report created files
-    for path in result["hook_files"]:
-        print_success(f"Created {path.name}")
-
-    for path in result["configs"]:
-        rel_path = path.relative_to(target_dir)
-        print_success(f"Created {rel_path}")
+    for path in result["hook_files"] + result["configs"]:
+        print_success(f"Created {path.relative_to(target_dir)}")
 
     for path in result["lock"]:
         print_success(f"Created {path.name}")
@@ -335,6 +378,13 @@ def print_detection_hint(target_dir: Path, languages: list[str]) -> None:
         print_info(f"Detected {name} ({why}) — not in your hook set; `jdf-hooks update --add {lang}`")
 
 
+def print_newer_version_hint() -> None:
+    """Mention a newer jdf-hooks on PyPI, if reachable. Never affects exit codes."""
+    latest = pypi.latest_version()
+    if latest and pypi.is_newer(latest, __version__):
+        print_info(f"jdf-hooks {latest} is available (installed {__version__}): uvx --refresh jdf-hooks")
+
+
 def check_command(args: argparse.Namespace) -> int:
     """Run the check command: report drift between lock, disk, and bundled templates."""
     target_dir = Path(args.directory).resolve()
@@ -354,9 +404,11 @@ def check_command(args: argparse.Namespace) -> int:
 
     print_check_report(report)
     if report.has_drift:
-        print("  Run `jdf-hooks update` to regenerate ")
+        print("  Run `jdf-hooks update` to regenerate")
         print("  (local edits need --force; keep project-specific hooks in lefthook-local.yml)")
     print_detection_hint(target_dir, report.lock.languages)
+    if not args.offline and not pypi.offline_requested():
+        print_newer_version_hint()
 
     if args.diff:
         for f in report.files:
@@ -379,7 +431,7 @@ def update_command(args: argparse.Namespace) -> int:
         return UPDATE_UNMANAGED
 
     try:
-        plan = plan_update(target_dir, add=set(args.add), remove=set(args.remove))
+        plan = plan_update(target_dir, add=set(args.add), remove=set(args.remove), github_workflow=args.github_workflow)
     except (UnmanagedProjectError, LockError, ValueError) as e:
         print_error(str(e))
         return UPDATE_UNMANAGED
@@ -387,6 +439,8 @@ def update_command(args: argparse.Namespace) -> int:
     print_check_report(plan.report)
     if plan.languages_changed:
         print_info(f"Languages: {', '.join(plan.report.lock.languages)} → {', '.join(plan.languages)}")
+    if plan.options_changed:
+        print_info(f"GitHub drift-check workflow: {'on' if plan.github_workflow else 'off'}")
 
     if plan.blocked and not args.force:
         print(f"\n{RED}Refusing to overwrite locally modified files:{RESET}")
@@ -449,6 +503,34 @@ def create_parser() -> argparse.ArgumentParser:
         default=".",
         help="Target project directory (default: current directory)",
     )
+    setup_parser.add_argument(
+        "--languages",
+        metavar="LANGS",
+        help="Non-interactive: comma-separated languages, or 'auto' for detected + general",
+    )
+    setup_parser.add_argument(
+        "--manager",
+        choices=["lefthook", "pre-commit", "both"],
+        help="Hook manager (default: both when --languages is given)",
+    )
+    setup_parser.add_argument("--yes", "-y", action="store_true", help="Overwrite existing files without asking")
+    setup_parser.add_argument(
+        "--github-workflow",
+        action="store_true",
+        help="Also generate .github/workflows/jdf-hooks.yml running `jdf-hooks check` on PRs and weekly",
+    )
+
+    # doctor command
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="Check that the tools your hook set needs are installed; exit 1 if any are missing",
+    )
+    doctor_parser.add_argument(
+        "directory",
+        nargs="?",
+        default=".",
+        help="Project directory (default: current directory)",
+    )
 
     # check command
     check_parser = subparsers.add_parser(
@@ -466,6 +548,11 @@ def create_parser() -> argparse.ArgumentParser:
         "--diff",
         action="store_true",
         help="Show a unified diff from each drifted file to a fresh render",
+    )
+    check_parser.add_argument(
+        "--offline",
+        action="store_true",
+        help=f"Skip the PyPI newer-version lookup (also: {pypi.OFFLINE_ENV}=1)",
     )
 
     # update command
@@ -505,6 +592,12 @@ def create_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show what would change without writing anything",
     )
+    update_parser.add_argument(
+        "--github-workflow",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Add or remove the generated .github/workflows/jdf-hooks.yml (default: keep the lock's setting)",
+    )
 
     return parser
 
@@ -520,11 +613,11 @@ def main() -> int:
         return check_command(args)
     elif args.command == "update":
         return update_command(args)
+    elif args.command == "doctor":
+        return doctor_command(args)
     elif args.command is None:
         # Default to setup in current directory
-        args.command = "setup"
-        args.directory = "."
-        return setup_command(args)
+        return setup_command(parser.parse_args(["setup"]))
     else:
         parser.print_help()
         return 1
