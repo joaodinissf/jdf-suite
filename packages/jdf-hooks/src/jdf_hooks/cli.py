@@ -441,6 +441,8 @@ def update_command(args: argparse.Namespace) -> int:
         print_info(f"Languages: {', '.join(plan.report.lock.languages)} → {', '.join(plan.languages)}")
     if plan.options_changed:
         print_info(f"GitHub drift-check workflow: {'on' if plan.github_workflow else 'off'}")
+    if plan.report.version_changed:
+        print_info(f"Lock written by jdf-hooks {plan.report.lock.jdf_hooks}; re-stamping with {__version__}")
 
     if plan.blocked and not args.force:
         print(f"\n{RED}Refusing to overwrite locally modified files:{RESET}")

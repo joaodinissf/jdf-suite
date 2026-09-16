@@ -101,6 +101,9 @@ This repository supports **both** hook managers to get the best of both worlds:
 
 ### General File Checks
 
+Under lefthook these run the same `pre-commit-hooks` implementations pre-commit uses, via `uvx`
+(so [uv](https://docs.astral.sh/uv/) is required for the `general` set).
+
 - **keep-sorted** - Automatically maintain sorted blocks in files
 - YAML syntax validation
 - End-of-file fixer

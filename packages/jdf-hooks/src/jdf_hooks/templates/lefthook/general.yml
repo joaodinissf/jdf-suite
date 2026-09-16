@@ -6,47 +6,22 @@
       jobs:
       - name: keep-sorted
         run: keep-sorted {staged_files}
+      # The checks below are the same implementations pre-commit uses
+      # (pre-commit-hooks on PyPI), run through uvx so they behave identically
+      # on macOS and Linux. uvx caches the package after the first run.
       - name: check-yaml
-        run: python3 -c "import yaml, sys; [yaml.safe_load(open(f)) for f in sys.argv[1:]]" {staged_files}
+        run: uvx --from pre-commit-hooks check-yaml {staged_files}
         glob: '*.{yml,yaml}'
       - name: end-of-file-fixer
-        run: |
-          for file in {all_files}; do
-            if [ -f "$file" ] && [ -n "$(tail -c 1 "$file")" ]; then
-              echo >> "$file"
-            fi
-          done
+        run: uvx --from pre-commit-hooks end-of-file-fixer {staged_files}
       - name: trailing-whitespace
-        run: sed -i '' -e 's/[[:space:]]*$//' {staged_files}
-        glob: '*.{py,js,ts,tsx,jsx,java,rs,sql,toml,yml,yaml,json,sh}'
+        run: uvx --from pre-commit-hooks trailing-whitespace-fixer {staged_files}
         exclude: \.(md|markdown)$
       - name: mixed-line-ending
-        run: |
-          for file in {all_files}; do
-            if [ -f "$file" ]; then
-              sed -i '' -e 's/\r$//' "$file"
-            fi
-          done
+        run: uvx --from pre-commit-hooks mixed-line-ending --fix=lf {staged_files}
       - name: detect-private-key
-        run: |
-          if grep -l 'BEGIN.*PRIVATE KEY' {all_files} 2>/dev/null; then
-            echo "Error: Private key detected in files!"
-            exit 1
-          fi
+        run: uvx --from pre-commit-hooks detect-private-key {staged_files}
       - name: detect-aws-credentials
-        run: |
-          if grep -l -i 'AKIA[0-9A-Z]\{16\}' {all_files} 2>/dev/null; then
-            echo "Error: AWS credentials detected in files!"
-            exit 1
-          fi
+        run: uvx --from pre-commit-hooks detect-aws-credentials --allow-missing-credentials {staged_files}
       - name: check-large-files
-        run: |-
-          for file in {all_files}; do
-            if [ -f "$file" ]; then
-              size=$(wc -c < "$file" | tr -d ' ')
-              if [ "$size" -gt 1000000 ]; then
-                echo "Error: File $file is too large (> 1MB)"
-                exit 1
-              fi
-            fi
-          done
+        run: uvx --from pre-commit-hooks check-added-large-files --maxkb=1000 {staged_files}

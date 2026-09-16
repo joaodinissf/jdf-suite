@@ -52,6 +52,7 @@ class UpdatePlan:
             and not self.to_delete
             and not self.languages_changed
             and not self.options_changed
+            and not self.report.version_changed  # a newer jdf-hooks re-stamps the lock even if files match
         )
 
 
