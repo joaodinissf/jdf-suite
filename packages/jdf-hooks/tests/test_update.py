@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import jdf_hooks
 from jdf_hooks.check import FileState, UnmanagedProjectError, check_project
 from jdf_hooks.cli import UPDATE_OK, UPDATE_REFUSED, UPDATE_UNMANAGED, main
 from jdf_hooks.generate import generate_configs, get_templates_dir
@@ -128,6 +129,19 @@ class TestApply:
         assert "rust" in lock_of(project).languages
         assert "RUST" in (project / "lefthook.yml").read_text()
         assert not check_project(project).has_drift
+
+
+class TestVersionRestamp:
+    def test_newer_tool_restamps_lock(self, project: Path, monkeypatch, capsys):
+        lock_path = project / LOCK_FILENAME
+        lock_path.write_text(lock_path.read_text().replace(jdf_hooks.__version__, "0.9.0"))
+        plan = plan_update(project)
+        assert not plan.is_noop(force=False)
+        assert plan.to_write(force=False) == []
+        monkeypatch.setattr(sys, "argv", ["jdf-hooks", "update", str(project)])
+        assert main() == UPDATE_OK
+        assert "re-stamping" in capsys.readouterr().out
+        assert lock_of(project).jdf_hooks == jdf_hooks.__version__
 
 
 class TestObsoleteState:

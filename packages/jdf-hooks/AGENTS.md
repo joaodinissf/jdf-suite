@@ -657,8 +657,6 @@ line-length = 88
 
 ## Known Issues
 
-- lefthook `general.yml` uses `sed -i ''` (macOS syntax; GNU sed differs) and a `check-yaml` job that shells
-  out to the system `python3`, which may lack PyYAML. Fix before dogfooding `general` in this package.
 - `pycln` only reads configuration via `--config`, so it cannot be told to skip
   `tests/integration/example_files` from `pyproject.toml`; the example files are only affected if staged.
 
@@ -667,6 +665,12 @@ line-length = 88
 > **Note**: Version was reset to 1.0.0 for the first public PyPI release. Pre-release
 > versions (v1.x–v4.x below) were internal development milestones under the old
 > "sensible-hooks" name and are not published on PyPI.
+
+- **v1.4.1** (PyPI): portable general checks
+  - lefthook `general.yml` no longer reimplements pre-commit-hooks in shell (`sed -i ''` was macOS-only and a
+    silent no-op on GNU sed; `check-yaml` needed PyYAML on the system python). The jobs now run the real
+    `pre-commit-hooks` entry points via `uvx`, so lefthook and pre-commit behave identically on both platforms
+  - `update` re-stamps the lock when a newer jdf-hooks runs it, even if no file content changed
 
 - **v1.4.0** (PyPI): doctor, non-interactive setup, drift workflow, rev refresh, dogfooding
   - `setup --languages LANGS|auto --manager M --yes` runs without prompts; `setup/update --github-workflow`
