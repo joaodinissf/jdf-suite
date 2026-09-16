@@ -179,6 +179,8 @@ alongside the generated files. This is the `npx skills` model — the lock is th
   --manager lefthook`). Change templates, then `uv run jdf-hooks update`; CI runs `jdf-hooks check`
 - ✅ `tools.py` is the single table of external tools + install hints (used by `doctor`, post-setup hints, and
   the lefthook integration test)
+- ✅ Fragment section headers (line 2 of each fragment, e.g. `# PYTHON`) are load-bearing: `adopt` infers
+  languages from them. Keep them unique per language and don't rename casually
 - ❌ Never add in-file markers or merge logic — if a file needs preserving, it belongs outside the generated set
 - ❌ Never put timestamps in generated files or the lock (generation must stay deterministic)
 - ❌ `check`/`update` must never depend on the network; only the PyPI newer-version hint does, and it is
@@ -614,6 +616,7 @@ line-length = 88
 │   ├── lock.py                 # .jdf-hooks.lock model + read/write
 │   ├── check.py                # Drift detection for `jdf-hooks check`
 │   ├── update.py               # plan_update()/apply_update() for `jdf-hooks update`
+│   ├── adopt.py                # plan_adoption()/apply_adoption() for `jdf-hooks adopt`
 │   ├── tools.py                # External tool table + install hints (`doctor`)
 │   ├── pypi.py                 # Best-effort newer-version lookup
 │   └── templates/              # Bundled template library (shipped in wheel)
@@ -630,6 +633,7 @@ line-length = 88
 │   ├── test_lock.py            # Lock file round-trip / validation
 │   ├── test_check.py           # Drift detection + `check` CLI exit codes
 │   ├── test_update.py          # Update planning/apply + `update` CLI exit codes
+│   ├── test_adopt.py           # Adoption inference + adopt→check→update flow
 │   ├── test_tools.py           # Tool table + `doctor`
 │   ├── test_setup_cli.py       # Non-interactive setup + generated workflow
 │   ├── test_pypi.py            # Newer-version hint (network mocked in conftest.py)
@@ -671,6 +675,9 @@ line-length = 88
     silent no-op on GNU sed; `check-yaml` needed PyYAML on the system python). The jobs now run the real
     `pre-commit-hooks` entry points via `uvx`, so lefthook and pre-commit behave identically on both platforms
   - `update` re-stamps the lock when a newer jdf-hooks runs it, even if no file content changed
+  - New `jdf-hooks adopt [--manager] [--languages] [--dry-run]`: writes a lock for projects generated before
+    1.2.0 by inferring the manager from existing files and languages from the fragment section headers;
+    files are recorded as-is so old content surfaces as *update available*. `check`/`update` now point at it
 
 - **v1.4.0** (PyPI): doctor, non-interactive setup, drift workflow, rev refresh, dogfooding
   - `setup --languages LANGS|auto --manager M --yes` runs without prompts; `setup/update --github-workflow`

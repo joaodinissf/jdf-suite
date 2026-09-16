@@ -80,8 +80,8 @@ def plan_update(
     lock = read_lock(target_dir)
     if lock is None:
         raise UnmanagedProjectError(
-            f"No {LOCK_FILENAME} in {target_dir} — run `jdf-hooks setup` first; "
-            "`update` only works on managed projects."
+            f"No {LOCK_FILENAME} in {target_dir} — run `jdf-hooks adopt` (existing files) or "
+            "`jdf-hooks setup` (fresh) first; `update` only works on managed projects."
         )
 
     add = add or set()
