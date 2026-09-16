@@ -1,5 +1,5 @@
 {
-  "jdf_hooks": "1.4.0",
+  "jdf_hooks": "1.4.1",
   "manager": "lefthook",
   "languages": [
     "python"

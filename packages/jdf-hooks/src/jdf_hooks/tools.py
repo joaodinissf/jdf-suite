@@ -43,7 +43,10 @@ TOOLS_BY_LANGUAGE: dict[str, list[Tool]] = {
     "toml": [Tool("taplo", "cargo install taplo-cli")],
     "sql": [Tool("sqlfluff", "uv tool install sqlfluff")],
     "shell": [Tool("shfmt", "brew install shfmt")],
-    "general": [Tool("keep-sorted", "go install github.com/google/keep-sorted@latest")],
+    "general": [
+        Tool("keep-sorted", "go install github.com/google/keep-sorted@latest"),
+        Tool("uvx", "https://docs.astral.sh/uv/  # runs the pre-commit-hooks checks", binary="uvx"),
+    ],
 }
 
 MANAGER_TOOLS: dict[str, Tool] = {

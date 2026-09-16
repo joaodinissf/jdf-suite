@@ -52,6 +52,7 @@ class UpdatePlan:
             and not self.to_delete
             and not self.languages_changed
             and not self.options_changed
+            and not self.report.version_changed  # a newer jdf-hooks re-stamps the lock even if files match
         )
 
 
@@ -79,8 +80,8 @@ def plan_update(
     lock = read_lock(target_dir)
     if lock is None:
         raise UnmanagedProjectError(
-            f"No {LOCK_FILENAME} in {target_dir} — run `jdf-hooks setup` first; "
-            "`update` only works on managed projects."
+            f"No {LOCK_FILENAME} in {target_dir} — run `jdf-hooks adopt` (existing files) or "
+            "`jdf-hooks setup` (fresh) first; `update` only works on managed projects."
         )
 
     add = add or set()

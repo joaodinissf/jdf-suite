@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from . import __version__, pypi
+from .adopt import AlreadyManagedError, NothingToAdoptError, apply_adoption, plan_adoption
 from .check import CheckReport, FileState, UnmanagedProjectError, check_project, diff_file, undetected_languages
 from .detect import LANGUAGE_DETECTORS, detect_languages, get_language_display
 from .generate import GITHUB_WORKFLOW_FILENAME, generate_configs, get_templates_dir, validate_languages
@@ -276,6 +277,35 @@ def doctor_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def adopt_command(args: argparse.Namespace) -> int:
+    """Write a lock for hook files generated before jdf-hooks 1.2.0 (or by hand)."""
+    target_dir = Path(args.directory).resolve()
+    if not target_dir.exists():
+        print_error(f"Directory does not exist: {target_dir}")
+        return 2
+
+    languages = None
+    if args.languages:
+        languages = {lang.strip() for lang in args.languages.split(",") if lang.strip()}
+    try:
+        adoption = plan_adoption(target_dir, manager=args.manager, languages=languages)
+    except (AlreadyManagedError, NothingToAdoptError, LockError, ValueError) as e:
+        print_error(str(e))
+        return 2
+
+    print_info(f"Manager: {adoption.manager}; languages: {', '.join(adoption.languages)}")
+    for rel in adoption.files:
+        print_success(f"Recording {rel}")
+    if args.dry_run:
+        print(f"\n{BOLD}Dry run:{RESET} no {LOCK_FILENAME} written.")
+        return 0
+
+    apply_adoption(target_dir, adoption)
+    print_success(f"Created {LOCK_FILENAME}")
+    print("  Files are recorded as-is; run `jdf-hooks check` to see what the current templates would change.")
+    return 0
+
+
 def setup_command(args: argparse.Namespace) -> int:
     """Run the setup command.
 
@@ -441,6 +471,8 @@ def update_command(args: argparse.Namespace) -> int:
         print_info(f"Languages: {', '.join(plan.report.lock.languages)} → {', '.join(plan.languages)}")
     if plan.options_changed:
         print_info(f"GitHub drift-check workflow: {'on' if plan.github_workflow else 'off'}")
+    if plan.report.version_changed:
+        print_info(f"Lock written by jdf-hooks {plan.report.lock.jdf_hooks}; re-stamping with {__version__}")
 
     if plan.blocked and not args.force:
         print(f"\n{RED}Refusing to overwrite locally modified files:{RESET}")
@@ -519,6 +551,29 @@ def create_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Also generate .github/workflows/jdf-hooks.yml running `jdf-hooks check` on PRs and weekly",
     )
+
+    # adopt command
+    adopt_parser = subparsers.add_parser(
+        "adopt",
+        help=f"Write {LOCK_FILENAME} for existing generated hook files (projects set up before 1.2.0)",
+    )
+    adopt_parser.add_argument(
+        "directory",
+        nargs="?",
+        default=".",
+        help="Project directory (default: current directory)",
+    )
+    adopt_parser.add_argument(
+        "--manager",
+        choices=["lefthook", "pre-commit", "both"],
+        help="Hook manager (default: inferred from which config files exist)",
+    )
+    adopt_parser.add_argument(
+        "--languages",
+        metavar="LANGS",
+        help="Comma-separated languages (default: inferred from the section headers in the hook files)",
+    )
+    adopt_parser.add_argument("--dry-run", action="store_true", help="Show what would be recorded, write nothing")
 
     # doctor command
     doctor_parser = subparsers.add_parser(
@@ -602,25 +657,24 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
+COMMANDS = {
+    "setup": setup_command,
+    "check": check_command,
+    "update": update_command,
+    "doctor": doctor_command,
+    "adopt": adopt_command,
+}
+
+
 def main() -> int:
     """Main entry point."""
     parser = create_parser()
     args = parser.parse_args()
 
-    if args.command == "setup":
-        return setup_command(args)
-    elif args.command == "check":
-        return check_command(args)
-    elif args.command == "update":
-        return update_command(args)
-    elif args.command == "doctor":
-        return doctor_command(args)
-    elif args.command is None:
+    if args.command is None:
         # Default to setup in current directory
-        return setup_command(parser.parse_args(["setup"]))
-    else:
-        parser.print_help()
-        return 1
+        args = parser.parse_args(["setup"])
+    return COMMANDS[args.command](args)
 
 
 if __name__ == "__main__":
