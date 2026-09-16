@@ -6,3 +6,8 @@
 # version would block later patches without adding safety.
 overrides:
   flatted: '>=3.4.2'
+  # @humanfs/node < 0.16.8 recursive copy follows symlinks outside the source
+  # tree (GHSA-p498-v437-472g). Reached via eslint; its ^0.16.6 range already
+  # admits the fix, this just forces the lockfile past it. Capped below 0.17,
+  # which requires Node >= 24 (CI runs 22).
+  '@humanfs/node': '>=0.16.8 <0.17'
