@@ -8,7 +8,7 @@
         run: pycln --all {staged_files}
         glob: '*.py'
       - name: isort
-        run: isort {staged_files}
+        run: isort --filter-files {staged_files}
         glob: '*.py'
       - name: ruff-format
         run: ruff format --force-exclude {staged_files}

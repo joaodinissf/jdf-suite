@@ -7,6 +7,8 @@ from .lock import LockFile, hash_bytes, write_lock
 
 PRECOMMIT_FILENAME = ".pre-commit-config.yaml"
 LEFTHOOK_FILENAME = "lefthook.yml"
+GITHUB_WORKFLOW_FILENAME = ".github/workflows/jdf-hooks.yml"
+GITHUB_WORKFLOW_TEMPLATE = "github/jdf-hooks-check.yml"
 
 # Mapping from language names to fragment file basenames
 LANGUAGE_FRAGMENTS: dict[str, list[str]] = {
@@ -34,6 +36,13 @@ LANGUAGE_CONFIGS: dict[str, list[str]] = {
 def get_templates_dir() -> Path:
     """Return the path to the bundled templates directory."""
     return Path(__file__).parent / "templates"
+
+
+def validate_languages(languages: set[str]) -> None:
+    """Raise ValueError naming any language that has no fragments."""
+    unknown = sorted(languages - set(LANGUAGE_FRAGMENTS))
+    if unknown:
+        raise ValueError(f"Unknown language(s): {', '.join(unknown)}. Valid: {', '.join(LANGUAGE_FRAGMENTS)}")
 
 
 def load_fragments(
@@ -163,17 +172,24 @@ def render_all(
     languages: set[str],
     hook_manager: str,
     templates_dir: Path | None = None,
+    *,
+    github_workflow: bool = False,
 ) -> dict[str, bytes]:
     """Render every file jdf-hooks would generate, keyed by path relative to the project.
 
     This is the single source of truth shared by generation and drift checking.
     """
+    if templates_dir is None:
+        templates_dir = get_templates_dir()
+
     rendered: dict[str, bytes] = {}
     if hook_manager in ("lefthook", "both"):
         rendered[LEFTHOOK_FILENAME] = render_lefthook(languages, templates_dir).encode()
     if hook_manager in ("pre-commit", "both"):
         rendered[PRECOMMIT_FILENAME] = render_precommit(languages, templates_dir).encode()
     rendered.update(render_config_files(languages, templates_dir))
+    if github_workflow:
+        rendered[GITHUB_WORKFLOW_FILENAME] = (templates_dir / GITHUB_WORKFLOW_TEMPLATE).read_bytes()
     return rendered
 
 
@@ -206,6 +222,8 @@ def generate_configs(
     languages: set[str],
     hook_manager: str,
     templates_dir: Path | None = None,
+    *,
+    github_workflow: bool = False,
 ) -> dict[str, list[Path]]:
     """Generate all necessary config files for the target project.
 
@@ -214,13 +232,14 @@ def generate_configs(
         languages: Set of languages to include.
         hook_manager: One of "lefthook", "pre-commit", or "both".
         templates_dir: Optional templates directory (auto-detected if not provided).
+        github_workflow: Also write a GitHub Actions workflow that runs `jdf-hooks check`.
 
     Returns:
         Dictionary with "hook_files", "configs" and "lock" keys listing created files.
     """
     result: dict[str, list[Path]] = {"hook_files": [], "configs": [], "lock": []}
 
-    rendered = render_all(languages, hook_manager, templates_dir)
+    rendered = render_all(languages, hook_manager, templates_dir, github_workflow=github_workflow)
     for rel_path, content in rendered.items():
         target = target_dir / rel_path
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -233,6 +252,7 @@ def generate_configs(
         manager=hook_manager,
         languages=sorted(languages),
         files={rel_path: hash_bytes(content) for rel_path, content in rendered.items()},
+        options={"github_workflow": True} if github_workflow else {},
     )
     result["lock"].append(write_lock(target_dir, lock))
 

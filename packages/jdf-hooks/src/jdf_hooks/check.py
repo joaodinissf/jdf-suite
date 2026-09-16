@@ -51,6 +51,7 @@ def check_project(
     templates_dir: Path | None = None,
     *,
     languages: set[str] | None = None,
+    github_workflow: bool | None = None,
 ) -> CheckReport:
     """Compare every locked file against disk and against a fresh render.
 
@@ -58,6 +59,7 @@ def check_project(
         target_dir: Project directory containing the lock file.
         templates_dir: Optional templates directory (bundled templates if omitted).
         languages: Override the lock's language set (used by `update --add/--remove`).
+        github_workflow: Override the lock's github_workflow option.
 
     Raises:
         UnmanagedProjectError: if there is no lock file in target_dir.
@@ -70,7 +72,12 @@ def check_project(
             "Run `jdf-hooks setup` to adopt this project."
         )
 
-    fresh = render_all(languages if languages is not None else set(lock.languages), lock.manager, templates_dir)
+    fresh = render_all(
+        languages if languages is not None else set(lock.languages),
+        lock.manager,
+        templates_dir,
+        github_workflow=lock.options.get("github_workflow", False) if github_workflow is None else github_workflow,
+    )
     reports: list[FileReport] = []
 
     for rel_path in sorted(set(lock.files) | set(fresh)):
@@ -113,7 +120,12 @@ def diff_file(target_dir: Path, rel_path: str, templates_dir: Path | None = None
         if lock is None:
             raise UnmanagedProjectError(f"No {LOCK_FILENAME} in {target_dir}")
 
-    fresh_bytes = render_all(set(lock.languages), lock.manager, templates_dir).get(rel_path, b"")
+    fresh_bytes = render_all(
+        set(lock.languages),
+        lock.manager,
+        templates_dir,
+        github_workflow=lock.options.get("github_workflow", False),
+    ).get(rel_path, b"")
     on_disk = target_dir / rel_path
     disk_bytes = on_disk.read_bytes() if on_disk.is_file() else b""
     try:

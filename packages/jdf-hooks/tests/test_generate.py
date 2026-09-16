@@ -84,8 +84,8 @@ class TestAllLanguages:
         path = generate_lefthook_config(tmp_path, ALL_LANGUAGES, TEMPLATES_DIR)
         content = path.read_text()
         for lang in ALL_LANGUAGES:
-            # Each language fragment has a section header comment
-            assert f"# {'PYTHON TYPE CHECKING' if lang == 'python' else ''}" or lang.upper() in content
+            # Each language fragment starts with a "# <LANGUAGE>" section header comment
+            assert f"# {lang.upper()}" in content, f"Missing section header for {lang}"
 
     def test_precommit_all_sections(self, tmp_path: Path):
         path = generate_precommit_config(tmp_path, ALL_LANGUAGES, TEMPLATES_DIR)

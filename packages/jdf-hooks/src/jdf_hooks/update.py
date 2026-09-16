@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .check import CheckReport, FileState, UnmanagedProjectError, check_project
-from .generate import LANGUAGE_FRAGMENTS, generate_configs
+from .generate import generate_configs, validate_languages
 from .lock import LOCK_FILENAME, read_lock
 
 
@@ -21,6 +21,7 @@ class UpdatePlan:
     languages: list[str]
     manager: str
     report: CheckReport
+    github_workflow: bool = False
 
     @property
     def blocked(self) -> list[str]:
@@ -41,8 +42,17 @@ class UpdatePlan:
     def languages_changed(self) -> bool:
         return self.languages != self.report.lock.languages
 
+    @property
+    def options_changed(self) -> bool:
+        return self.github_workflow != self.report.lock.options.get("github_workflow", False)
+
     def is_noop(self, *, force: bool) -> bool:
-        return not self.to_write(force=force) and not self.to_delete and not self.languages_changed
+        return (
+            not self.to_write(force=force)
+            and not self.to_delete
+            and not self.languages_changed
+            and not self.options_changed
+        )
 
 
 @dataclass(frozen=True)
@@ -56,6 +66,7 @@ def plan_update(
     *,
     add: set[str] | None = None,
     remove: set[str] | None = None,
+    github_workflow: bool | None = None,
     templates_dir: Path | None = None,
 ) -> UpdatePlan:
     """Work out what `update` would change, without touching anything.
@@ -74,13 +85,12 @@ def plan_update(
 
     add = add or set()
     remove = remove or set()
-    unknown = sorted((add | remove) - set(LANGUAGE_FRAGMENTS))
-    if unknown:
-        raise ValueError(f"Unknown language(s): {', '.join(unknown)}. Valid: {', '.join(LANGUAGE_FRAGMENTS)}")
+    validate_languages(add | remove)
 
     languages = sorted((set(lock.languages) | add) - remove)
-    report = check_project(target_dir, templates_dir, languages=set(languages))
-    return UpdatePlan(languages=languages, manager=lock.manager, report=report)
+    workflow = lock.options.get("github_workflow", False) if github_workflow is None else github_workflow
+    report = check_project(target_dir, templates_dir, languages=set(languages), github_workflow=workflow)
+    return UpdatePlan(languages=languages, manager=lock.manager, report=report, github_workflow=workflow)
 
 
 def apply_update(
@@ -111,6 +121,6 @@ def apply_update(
             parent = parent.parent
 
     # Deterministic render: unchanged files are rewritten with identical bytes.
-    generate_configs(target_dir, set(plan.languages), plan.manager, templates_dir)
+    generate_configs(target_dir, set(plan.languages), plan.manager, templates_dir, github_workflow=plan.github_workflow)
 
     return UpdateResult(written=plan.to_write(force=force), deleted=deleted)
