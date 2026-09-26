@@ -263,40 +263,96 @@ describe('Popup Script', () => {
 
   describe('updateStatusBar', () => {
     test('singular counts: "1 tab" / "1 tab · 1 window" (no groups)', () => {
-      chrome.tabs.query.mockImplementation((query, callback) => {
-        callback([{ id: 1, windowId: 10 }]);
-      });
-      chrome.windows.getAll.mockImplementation((options, callback) => {
-        callback([{ id: 10, tabs: [{ id: 1 }] }]);
-      });
-      chrome.tabGroups.query.mockImplementation((query, callback) => {
-        callback([]);
-      });
+      const windows = [{ id: 10, tabs: [{ id: 1 }] }];
 
-      updateStatusBar();
+      updateStatusBar(windows[0], windows, []);
 
       expect(document.getElementById('statusThisWindow').textContent).toBe('1 tab');
       expect(document.getElementById('statusAllWindows').textContent).toBe('1 tab · 1 window');
     });
 
     test('plural counts with groups: "N tabs, M groups" style summaries', () => {
-      chrome.tabs.query.mockImplementation((query, callback) => {
-        callback([{ id: 1, windowId: 10 }, { id: 2, windowId: 10 }, { id: 3, windowId: 10 }]);
-      });
-      chrome.windows.getAll.mockImplementation((options, callback) => {
-        callback([
-          { id: 10, tabs: [{ id: 1 }, { id: 2 }, { id: 3 }] },
-          { id: 20, tabs: [{ id: 4 }, { id: 5 }] },
-        ]);
-      });
-      chrome.tabGroups.query.mockImplementation((query, callback) => {
-        callback([{ id: 100, windowId: 10 }, { id: 101, windowId: 10 }, { id: 102, windowId: 20 }]);
-      });
+      const windows = [
+        { id: 10, tabs: [{ id: 1 }, { id: 2 }, { id: 3 }] },
+        { id: 20, tabs: [{ id: 4 }, { id: 5 }] },
+      ];
+      const groups = [{ id: 100, windowId: 10 }, { id: 101, windowId: 10 }, { id: 102, windowId: 20 }];
 
-      updateStatusBar();
+      updateStatusBar(windows[0], windows, groups);
 
       expect(document.getElementById('statusThisWindow').textContent).toBe('3 tabs · 2 groups');
       expect(document.getElementById('statusAllWindows').textContent).toBe('5 tabs · 2 windows · 3 groups');
+    });
+  });
+
+  describe('loadBrowserSnapshot', () => {
+    beforeEach(() => {
+      document.body.insertAdjacentHTML('beforeend', `
+        <div class="multi-window-section" id="mwButtons"></div>
+        <button id="snoozeGroup">Group</button>
+      `);
+    });
+
+    function mockSnapshot({ popupWindowId, windows, groups = [] }) {
+      chrome.windows.getCurrent.mockResolvedValue({ id: popupWindowId });
+      chrome.windows.getAll.mockResolvedValue(windows);
+      chrome.tabGroups.query.mockResolvedValue(groups);
+    }
+
+    test('reads windows and groups once each, in one parallel batch, and no tabs.query', async () => {
+      mockSnapshot({ popupWindowId: 10, windows: [{ id: 10, tabs: [{ id: 1, active: true, groupId: -1 }] }] });
+
+      await loadBrowserSnapshot();
+
+      expect(chrome.windows.getCurrent).toHaveBeenCalledTimes(1);
+      expect(chrome.windows.getAll).toHaveBeenCalledTimes(1);
+      expect(chrome.windows.getAll).toHaveBeenCalledWith({ populate: true });
+      expect(chrome.tabGroups.query).toHaveBeenCalledTimes(1);
+      expect(chrome.tabs.query).not.toHaveBeenCalled();
+    });
+
+    test('uses the popup\'s own window (matched by id, not list order) for "this window" and the Group button', async () => {
+      mockSnapshot({
+        popupWindowId: 20,
+        windows: [
+          { id: 10, tabs: [{ id: 1, active: true, groupId: 7 }, { id: 2 }] },
+          { id: 20, tabs: [{ id: 3, active: true, groupId: -1 }] },
+        ],
+        groups: [{ id: 7, windowId: 10 }],
+      });
+
+      await loadBrowserSnapshot();
+
+      expect(document.getElementById('statusThisWindow').textContent).toBe('1 tab');
+      expect(document.getElementById('statusAllWindows').textContent).toBe('3 tabs · 2 windows · 1 group');
+      expect(document.getElementById('snoozeGroup').disabled).toBe(true);
+      expect(document.getElementById('mwButtons').style.display).toBe('');
+    });
+
+    test('a single window hides the multi-window sections; a grouped active tab enables the Group button', async () => {
+      mockSnapshot({
+        popupWindowId: 10,
+        windows: [{ id: 10, tabs: [{ id: 1, active: true, groupId: 7 }] }],
+        groups: [{ id: 7, windowId: 10 }],
+      });
+
+      await loadBrowserSnapshot();
+
+      expect(document.getElementById('mwButtons').style.display).toBe('none');
+      expect(document.getElementById('snoozeGroup').disabled).toBe(false);
+      expect(document.getElementById('statusThisWindow').textContent).toBe('1 tab · 1 group');
+    });
+
+    test('a failed read leaves the popup\'s defaults in place', async () => {
+      chrome.windows.getCurrent.mockResolvedValue({ id: 10 });
+      chrome.windows.getAll.mockRejectedValue(new Error('boom'));
+      chrome.tabGroups.query.mockResolvedValue([]);
+
+      await loadBrowserSnapshot();
+
+      expect(document.getElementById('mwButtons').style.display).toBe('');
+      expect(document.getElementById('snoozeGroup').disabled).toBe(false);
+      expect(document.getElementById('statusThisWindow').textContent).toBe('');
     });
   });
 

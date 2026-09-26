@@ -192,6 +192,7 @@ const popupWrapper = `
   if (typeof copyAllWindows !== 'undefined') global.copyAllWindows = copyAllWindows;
   if (typeof flattenWindow !== 'undefined') global.flattenWindow = flattenWindow;
   if (typeof updateStatusBar !== 'undefined') global.updateStatusBar = updateStatusBar;
+  if (typeof loadBrowserSnapshot !== 'undefined') global.loadBrowserSnapshot = loadBrowserSnapshot;
   if (typeof aiOrganize !== 'undefined') global.aiOrganize = aiOrganize;
   if (typeof openAiSettings !== 'undefined') global.openAiSettings = openAiSettings;
   if (typeof updateAiButtonState !== 'undefined') global.updateAiButtonState = updateAiButtonState;
