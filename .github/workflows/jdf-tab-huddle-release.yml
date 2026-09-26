@@ -1,0 +1,81 @@
+name: jdf-tab-huddle Release
+on:
+  push:
+    tags: ['jdf-tab-huddle-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build a Release for (backfill), e.g. jdf-tab-huddle-v0.4.1
+        required: true
+
+# The tooling (this workflow, scripts/release-notes.sh) comes from the commit
+# the workflow runs at; everything released (code, versions, README entry)
+# comes from the tag, checked out under tagged/. That keeps backfills of tags
+# older than this workflow working.
+defaults:
+  run:
+    working-directory: tagged/packages/jdf-tab-huddle
+
+jobs:
+  release:
+    name: Test, package and publish GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+    - name: Check out the release tooling
+      uses: actions/checkout@v6
+      with:
+        path: tools
+    - name: Check out the tag being released
+      uses: actions/checkout@v6
+      with:
+        ref: ${{ env.TAG }}
+        path: tagged
+        # Full history and tags: the notes list commits since the previous tag.
+        fetch-depth: 0
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 10
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+        cache: pnpm
+        cache-dependency-path: tagged/packages/jdf-tab-huddle/pnpm-lock.yaml
+    - name: Install dependencies
+      run: pnpm install --frozen-lockfile
+    - name: Lint
+      run: pnpm run lint
+    - name: Unit tests
+      run: pnpm test
+    - name: Check the tag matches the manifest and package versions
+      run: |
+        version="${TAG#jdf-tab-huddle-v}"
+        manifest="$(node -p "require('./src/manifest.json').version")"
+        pkg="$(node -p "require('./package.json').version")"
+        if [ "$version" != "$manifest" ] || [ "$version" != "$pkg" ]; then
+          echo "::error::tag $TAG does not match manifest.json ($manifest) / package.json ($pkg)"
+          exit 1
+        fi
+        echo "VERSION=$version" >> "$GITHUB_ENV"
+    - name: Package the extension
+      # Zipped from inside src/ so manifest.json is at the top of the zip, as
+      # the Chrome Web Store expects (older tags' package scripts did not).
+      run: cd src && zip -r "../jdf-tab-huddle-${VERSION}.zip" . -x 'icons/*.afphoto'
+    - name: Write release notes
+      run: bash "$GITHUB_WORKSPACE/tools/packages/jdf-tab-huddle/scripts/release-notes.sh" "$TAG" > release-notes.md
+    - name: Mark as latest only for the highest huddle version
+      run: |
+        highest="$(git tag --list 'jdf-tab-huddle-v*' --sort=-v:refname | head -1)"
+        if [ "$highest" = "$TAG" ]; then latest=true; else latest=false; fi
+        echo "LATEST=$latest" >> "$GITHUB_ENV"
+    - name: Create or update the GitHub Release
+      uses: softprops/action-gh-release@v2.5.0
+      with:
+        tag_name: ${{ env.TAG }}
+        name: ${{ env.TAG }}
+        body_path: tagged/packages/jdf-tab-huddle/release-notes.md
+        files: tagged/packages/jdf-tab-huddle/jdf-tab-huddle-${{ env.VERSION }}.zip
+        make_latest: ${{ env.LATEST }}

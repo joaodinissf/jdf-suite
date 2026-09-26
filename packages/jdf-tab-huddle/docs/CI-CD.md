@@ -1,124 +1,54 @@
-# CI/CD Setup for Chrome Extension
+# CI/CD
 
-## 🚀 GitHub Actions Workflows
+Both workflows live at the monorepo root under `.github/workflows/` and run with `packages/jdf-tab-huddle` as their working directory.
 
-### 1. Test Workflow (`.github/workflows/test.yml`)
-**Triggers:** Push to `main`/`develop` branches, Pull Requests
-**Runs on:** Ubuntu Latest with Node.js 18 & 20
+## CI: `jdf-tab-huddle-ci.yml`
 
-**Jobs:**
-- **Test**: Runs unit test suite with coverage
-- **E2E**: Runs 63 Playwright tests against real Chromium via `xvfb-run`
-- **Lint**: Runs ESLint with Chrome extension rules
-- **Build**: Validates manifest.json and extension structure
+Runs on every pull request to `main` and every push to `main` that touches `packages/jdf-tab-huddle/**` or the workflow itself.
 
-### 2. Release Workflow (`.github/workflows/release.yml`)
-**Triggers:** Git tags starting with `v*` (e.g., `v1.2.0`)
-**Runs on:** Ubuntu Latest
+| Job | What it runs |
+|---|---|
+| Lint + unit tests + manifest validate | `pnpm run lint`, `pnpm test` (Vitest), `pnpm run validate` |
+| E2E (Playwright, headless extension) | `pnpm run test:e2e` in headless Chromium; the test results are uploaded as an artifact on failure |
 
-**Jobs:**
-- **Test**: Ensures all tests pass before release
-- **Build & Release**: Creates extension package and GitHub release
+## Release: `jdf-tab-huddle-release.yml`
 
-## 📋 Setup Checklist
-
-### Required Configuration ✅
-- [x] GitHub Actions workflows created
-- [x] Package.json scripts configured
-- [x] Unit test suite ready (58 tests, 100% passing)
-- [x] E2E test suite ready (63 Playwright tests, 100% passing)
-- [x] Manifest.json validation
-- [x] ESLint configured with Chrome extension rules
-
-### Optional Enhancements
-- [ ] **TypeScript**: Convert to TypeScript for better type safety
-- [ ] **Codecov**: Code coverage reporting (token needed)
-- [ ] **Chrome Web Store Publishing**: Automated publishing
-- [ ] **Dependabot**: Automated dependency updates
-
-## 🔧 Commands Available
+Runs when a `jdf-tab-huddle-v*` tag is pushed, or by hand (`workflow_dispatch`) with an existing tag, to backfill a Release:
 
 ```bash
-# Development
-pnpm install          # Install dependencies
-pnpm test             # Run tests
-pnpm run test:watch   # Run tests in watch mode
-pnpm run test:coverage # Run tests with coverage
-pnpm run validate     # Validate manifest.json
-pnpm run package      # Create extension package
-pnpm run lint         # Run ESLint
-pnpm run lint:fix     # Fix ESLint issues
-
-# CI/CD will run automatically on:
-git push origin main  # Triggers test workflow
-git tag v1.2.0 && git push origin v1.2.0  # Triggers release workflow
+gh workflow run jdf-tab-huddle-release.yml -f tag=jdf-tab-huddle-v0.4.1
 ```
 
-## 🎯 Workflow Features
+It checks out two trees: the workflow's own commit, for the release tooling, and the tag, for everything that is released. Tags older than the workflow can therefore be backfilled too. It then:
 
-### Test Workflow Features:
-- ✅ **Multi-Node Testing**: Tests on Node.js 18 & 20
-- ✅ **Unit Testing**: Runs all 58 Jest tests
-- ✅ **E2E Testing**: Runs 63 Playwright tests against real Chromium
-- ✅ **Coverage Reporting**: Generates coverage reports
-- ✅ **Manifest Validation**: Validates Chrome extension manifest
-- ✅ **Structure Checking**: Verifies extension file structure
-- ✅ **Conditional Scripts**: Only runs linting/typecheck if configured
+1. Installs, lints and runs the unit tests on the tagged tree.
+2. Fails unless the tag's version equals the version in both of the tag's `src/manifest.json` and `package.json`.
+3. Zips the contents of the tag's `src/`, so `manifest.json` sits at the top of the zip, as the Chrome Web Store requires. The Affinity icon source is left out. `pnpm run package` builds the same zip locally.
+4. Writes the notes with the tooling's `scripts/release-notes.sh`, run in the tagged tree: that version's README Version History entry, then the package's commits since the previous `jdf-tab-huddle-v*` tag.
+5. Creates or updates the GitHub Release with the zip attached. The Release is marked "Latest" only when its tag is the highest huddle version, so a backfill never takes "Latest" from a newer release.
 
-### Release Workflow Features:
-- ✅ **Automated Testing**: Must pass tests before release
-- ✅ **Extension Packaging**: Creates zip file for Chrome Web Store
-- ✅ **GitHub Releases**: Automatically creates GitHub release
-- ✅ **Release Notes**: Generates release notes with installation instructions
+Publishing to the Chrome Web Store is not automated; it's deferred until v1.0.0 ([#7](https://github.com/joaodinissf/jdf-suite/issues/7)).
 
-## 🔒 Security & Best Practices
+## Cutting a release
 
-### Implemented:
-- ✅ **Frozen Lockfile**: Uses `--frozen-lockfile` for reproducible builds
-- ✅ **Latest Actions**: Uses latest versions of GitHub Actions
-- ✅ **Minimal Permissions**: Only uses necessary permissions
-- ✅ **Clean Packaging**: Excludes development files from release
+1. On a branch, bump `version` in `src/manifest.json` and `package.json`, and add a `- **vX.Y.Z**: …` entry at the top of the README's Version History.
+2. Open a PR, and merge it (rebase-merge) once CI is green.
+3. Tag the release commit and push the tag:
 
-### Recommendations:
-- 🔹 **Branch Protection**: Enable branch protection on `main`
-- 🔹 **Required Status Checks**: Require CI to pass before merging
-- 🔹 **Dependency Updates**: Set up Dependabot for security updates
-- 🔹 **Secrets Management**: Use GitHub Secrets for sensitive data
+   ```bash
+   git tag -a jdf-tab-huddle-vX.Y.Z -m "jdf-tab-huddle vX.Y.Z" <commit>
+   git push origin jdf-tab-huddle-vX.Y.Z
+   ```
 
-## 📊 Status Badges
+4. Check the Release that the workflow created.
 
-Add these to your README.md:
+To preview the notes or the package locally:
 
-```markdown
-[![Tests](https://github.com/yourusername/tab-organizer/workflows/Test%20Chrome%20Extension/badge.svg)](https://github.com/yourusername/tab-organizer/actions)
-[![Release](https://github.com/yourusername/tab-organizer/workflows/Release%20Chrome%20Extension/badge.svg)](https://github.com/yourusername/tab-organizer/actions)
-```
-
-## 🚀 Creating a Release
-
-1. **Ensure tests pass**: `pnpm test`
-2. **Update version**: Update `version` in `manifest.json` and `package.json`
-3. **Commit changes**: `git commit -am "Release v1.2.0"`
-4. **Create tag**: `git tag v1.2.0`
-5. **Push tag**: `git push origin v1.2.0`
-6. **GitHub will automatically**: Run tests → Create package → Create release
-
-## 🛠️ Troubleshooting
-
-### Common Issues:
-1. **Tests failing in CI**: Check Node.js version compatibility
-2. **Missing dependencies**: Ensure pnpm lockfile is committed
-3. **Manifest validation**: Run `pnpm run validate` locally first
-4. **Release not created**: Ensure tag starts with `v` (e.g., `v1.0.0`)
-
-### Debug Commands:
 ```bash
-# Test locally like CI does
-pnpm install --frozen-lockfile
-pnpm test
-pnpm run validate
-
-# Check workflow status
-gh workflow list
-gh run list
+bash scripts/release-notes.sh jdf-tab-huddle-vX.Y.Z
+pnpm run package && unzip -l jdf-tab-huddle-X.Y.Z.zip
 ```
+
+## Running E2E locally
+
+Branded Google Chrome ignores `--load-extension`, so the suite runs on Playwright's bundled Chromium. To use a different Chromium or a Chrome for Testing build, point `PW_EXECUTABLE` at it. Set `HEADED=1` to watch a run.
