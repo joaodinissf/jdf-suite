@@ -8,8 +8,9 @@ document.addEventListener('DOMContentLoaded', function () {
   // Setup event listeners for the action buttons
   setupEventListeners();
 
-  // Update UI based on number of windows
-  updateUIForWindowCount();
+  // One windows/tabs/groups snapshot drives the multi-window sections, the
+  // snooze Group button and the status bar
+  loadBrowserSnapshot();
 
   // Update AI button visibility (show cog if key is set)
   updateAiButtonState();
@@ -19,9 +20,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Wire up single-key keyboard shortcuts and render their hints
   initKeyboardShortcuts();
-
-  // Update status bar
-  updateStatusBar();
 
   // Wire up the Settings link to open the options page
   const settingsLink = document.getElementById('openOptions');
@@ -258,17 +256,34 @@ function copyAllWindows(respectGroups = true) {
   copyTabsToClipboard('all', respectGroups);
 }
 
-// Update UI based on number of windows
-function updateUIForWindowCount() {
-  chrome.windows.getAll({ populate: false }, function (windows) {
-    if (windows.length === 1) {
-      document.querySelectorAll('.multi-window-section').forEach(section => {
-        section.style.display = 'none';
-      });
-      // Multi-window buttons are now hidden — recompute hotkeys.
-      refreshHotkeys();
-    }
+// Read the popup's window, every window with its tabs, and every tab group in
+// one parallel batch, then apply that snapshot to each control that depends
+// on it. Returns the promise so callers (and tests) can wait for it.
+function loadBrowserSnapshot() {
+  return Promise.all([
+    chrome.windows.getCurrent(),
+    chrome.windows.getAll({ populate: true }),
+    chrome.tabGroups.query({}),
+  ]).then(([popupWindow, windows, groups]) => {
+    const currentWindow = windows.find(w => w.id === popupWindow.id);
+    updateUIForWindowCount(windows);
+    updateSnoozeButtonState(currentWindow && currentWindow.tabs.find(t => t.active));
+    updateStatusBar(currentWindow, windows, groups);
+    // Multi-window visibility and the Group button may both have changed —
+    // recompute hotkeys once for the whole snapshot.
+    refreshHotkeys();
+  }).catch(err => {
+    log('Could not read windows/tabs for the popup:', err && err.message);
   });
+}
+
+// Update UI based on number of windows
+function updateUIForWindowCount(windows) {
+  if (windows.length === 1) {
+    document.querySelectorAll('.multi-window-section').forEach(section => {
+      section.style.display = 'none';
+    });
+  }
 }
 
 // AI Organize
@@ -405,7 +420,6 @@ function initSnoozeUi() {
     });
   }
 
-  updateSnoozeButtonState();
   renderSnoozedList();
 }
 
@@ -417,20 +431,14 @@ function labelSnoozePresetButtons() {
 }
 
 // Disable the Group button when the active tab is not in a group.
-function updateSnoozeButtonState() {
+function updateSnoozeButtonState(activeTab) {
   const grpBtn = document.getElementById('snoozeGroup');
-  if (!grpBtn) return;
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (chrome.runtime.lastError || !tabs || tabs.length === 0) return;
-    const activeTab = tabs[0];
-    const inGroup = activeTab.groupId !== undefined && activeTab.groupId !== -1;
-    grpBtn.disabled = !inGroup;
-    grpBtn.title = inGroup
-      ? 'Snooze the active tab\'s group'
-      : 'Snooze the active tab\'s group (active tab is not in a group)';
-    // The Group button's enabled state changed — recompute hotkeys.
-    refreshHotkeys();
-  });
+  if (!grpBtn || !activeTab) return;
+  const inGroup = activeTab.groupId !== undefined && activeTab.groupId !== -1;
+  grpBtn.disabled = !inGroup;
+  grpBtn.title = inGroup
+    ? 'Snooze the active tab\'s group'
+    : 'Snooze the active tab\'s group (active tab is not in a group)';
 }
 
 function markSelectedUnitButton(unit) {
@@ -811,36 +819,32 @@ function initKeyboardShortcuts() {
   refreshHotkeys();
 }
 
-// Update status bar with tab/window/group counts
-function updateStatusBar() {
-  chrome.tabs.query({ currentWindow: true }, function (currentTabs) {
-    chrome.windows.getAll({ populate: true }, function (windows) {
-      chrome.tabGroups.query({}, function (allGroups) {
-        // This window
-        const currentWindowId = currentTabs[0]?.windowId;
-        const thisWindowTabs = currentTabs.length;
-        const thisWindowGroups = allGroups.filter(g => g.windowId === currentWindowId).length;
-        const thisParts = [thisWindowTabs + (thisWindowTabs === 1 ? ' tab' : ' tabs')];
-        if (thisWindowGroups > 0) {
-          thisParts.push(thisWindowGroups + (thisWindowGroups === 1 ? ' group' : ' groups'));
-        }
-        const thisEl = document.getElementById('statusThisWindow');
-        if (thisEl) thisEl.textContent = thisParts.join(' · ');
+// Update status bar with tab/window/group counts. currentWindow is the popup's
+// own window (populated), taken from the same snapshot as windows/allGroups.
+function updateStatusBar(currentWindow, windows, allGroups) {
+  // This window
+  if (currentWindow) {
+    const thisWindowTabs = currentWindow.tabs.length;
+    const thisWindowGroups = allGroups.filter(g => g.windowId === currentWindow.id).length;
+    const thisParts = [thisWindowTabs + (thisWindowTabs === 1 ? ' tab' : ' tabs')];
+    if (thisWindowGroups > 0) {
+      thisParts.push(thisWindowGroups + (thisWindowGroups === 1 ? ' group' : ' groups'));
+    }
+    const thisEl = document.getElementById('statusThisWindow');
+    if (thisEl) thisEl.textContent = thisParts.join(' · ');
+  }
 
-        // All windows
-        const totalTabs = windows.reduce((sum, w) => sum + w.tabs.length, 0);
-        const totalWindows = windows.length;
-        const totalGroups = allGroups.length;
-        const allParts = [
-          totalTabs + (totalTabs === 1 ? ' tab' : ' tabs'),
-          totalWindows + (totalWindows === 1 ? ' window' : ' windows')
-        ];
-        if (totalGroups > 0) {
-          allParts.push(totalGroups + (totalGroups === 1 ? ' group' : ' groups'));
-        }
-        const allEl = document.getElementById('statusAllWindows');
-        if (allEl) allEl.textContent = allParts.join(' · ');
-      });
-    });
-  });
+  // All windows
+  const totalTabs = windows.reduce((sum, w) => sum + w.tabs.length, 0);
+  const totalWindows = windows.length;
+  const totalGroups = allGroups.length;
+  const allParts = [
+    totalTabs + (totalTabs === 1 ? ' tab' : ' tabs'),
+    totalWindows + (totalWindows === 1 ? ' window' : ' windows')
+  ];
+  if (totalGroups > 0) {
+    allParts.push(totalGroups + (totalGroups === 1 ? ' group' : ' groups'));
+  }
+  const allEl = document.getElementById('statusAllWindows');
+  if (allEl) allEl.textContent = allParts.join(' · ');
 }

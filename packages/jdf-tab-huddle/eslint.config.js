@@ -114,6 +114,7 @@ export default [
         copyAllWindows: 'readonly',
         flattenWindow: 'readonly',
         updateStatusBar: 'readonly',
+        loadBrowserSnapshot: 'readonly',
         formatTabsAsText: 'readonly',
         handleCopyTabs: 'readonly',
         updateContent: 'readonly',
