@@ -9,7 +9,7 @@
     "lint": "eslint src/**/*.js tests/**/*.js",
     "lint:fix": "eslint src/**/*.js tests/**/*.js --fix",
     "validate": "node -e \"JSON.parse(require('fs').readFileSync('src/manifest.json', 'utf8')); console.log('✅ manifest.json is valid')\"",
-    "package": "npm run validate && zip -r jdf-tab-huddle-$(node -p \"require('./package.json').version\").zip src -x 'node_modules/*' 'tests/*' '*.md' 'package*.json' 'pnpm-lock.yaml' '.git/*' '.github/*'",
+    "package": "npm run validate && v=$(node -p \"require('./package.json').version\") && cd src && zip -qr \"../jdf-tab-huddle-$v.zip\" . -x 'icons/*.afphoto' '*.DS_Store'",
     "dev": "echo '🚀 Load the src/ folder in Chrome Developer Mode'",
     "test:e2e": "npx playwright test --config=e2e/playwright.config.js",
     "ci": "npm run lint && npm run test && npm run validate",

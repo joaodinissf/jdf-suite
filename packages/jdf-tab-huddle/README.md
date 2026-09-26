@@ -147,10 +147,10 @@ pnpm test:e2e            # Run E2E tests (headless; HEADED=1 to watch)
 ## CI/CD
 
 CI lives at the monorepo root: [`.github/workflows/jdf-tab-huddle-ci.yml`](../../.github/workflows/jdf-tab-huddle-ci.yml) — two jobs on every PR touching this package: lint + Vitest unit tests + manifest validation, and the Playwright E2E suite in headless Chromium.
+- **GitHub Release**: pushing a `jdf-tab-huddle-v*` tag runs [`.github/workflows/jdf-tab-huddle-release.yml`](../../.github/workflows/jdf-tab-huddle-release.yml), which tests, packages the extension zip and publishes the Release with this README's Version History entry as its notes.
 - **Release (CWS upload)**: deferred until v1.0.0 — tracked in [jdf-suite#7](https://github.com/joaodinissf/jdf-suite/issues/7)
-- **Tag pattern for future releases**: `jdf-tab-huddle-v*`
 
-The in-package [`docs/CI-CD.md`](docs/CI-CD.md) describes the pre-migration standalone setup and is stale — treat as historical context only.
+[`docs/CI-CD.md`](docs/CI-CD.md) describes both workflows and the release steps.
 
 ## Permissions
 
