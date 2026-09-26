@@ -95,6 +95,10 @@ export default [
         sortWindowTabs: 'readonly',
         sortTabsAsUnits: 'readonly',
         tabSplitViewId: 'readonly',
+        splitWriteSupported: 'readonly',
+        planCompactPairs: 'readonly',
+        handleCompactWindow: 'readonly',
+        handleExpandWindow: 'readonly',
         analyzeDomainDistribution: 'readonly',
         getRespectGroups: 'readonly',
         setRespectGroups: 'readonly',
@@ -113,6 +117,8 @@ export default [
         copyThisWindow: 'readonly',
         copyAllWindows: 'readonly',
         flattenWindow: 'readonly',
+        compactWindow: 'readonly',
+        expandWindow: 'readonly',
         updateStatusBar: 'readonly',
         loadBrowserSnapshot: 'readonly',
         formatTabsAsText: 'readonly',
@@ -170,6 +176,7 @@ export default [
         formatWakeTime: 'readonly',
         renderSnoozedList: 'readonly',
         updateSnoozeButtonState: 'readonly',
+        updateSplitViewButtons: 'readonly',
 
         // Keyboard shortcut functions (loaded by setup.js)
         buildHotkeyMap: 'readonly',

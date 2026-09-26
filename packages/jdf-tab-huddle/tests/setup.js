@@ -104,6 +104,10 @@ const backgroundWrapper = `
   if (typeof sortWindowTabs !== 'undefined') global.sortWindowTabs = sortWindowTabs;
   if (typeof sortTabsAsUnits !== 'undefined') global.sortTabsAsUnits = sortTabsAsUnits;
   if (typeof tabSplitViewId !== 'undefined') global.tabSplitViewId = tabSplitViewId;
+  if (typeof splitWriteSupported !== 'undefined') global.splitWriteSupported = splitWriteSupported;
+  if (typeof planCompactPairs !== 'undefined') global.planCompactPairs = planCompactPairs;
+  if (typeof handleCompactWindow !== 'undefined') global.handleCompactWindow = handleCompactWindow;
+  if (typeof handleExpandWindow !== 'undefined') global.handleExpandWindow = handleExpandWindow;
   if (typeof handleSortAllWindows !== 'undefined') global.handleSortAllWindows = handleSortAllWindows;
   if (typeof handleSortCurrentWindow !== 'undefined') global.handleSortCurrentWindow = handleSortCurrentWindow;
   if (typeof handleRemoveDuplicatesWindow !== 'undefined') global.handleRemoveDuplicatesWindow = handleRemoveDuplicatesWindow;
@@ -191,6 +195,9 @@ const popupWrapper = `
   if (typeof copyThisWindow !== 'undefined') global.copyThisWindow = copyThisWindow;
   if (typeof copyAllWindows !== 'undefined') global.copyAllWindows = copyAllWindows;
   if (typeof flattenWindow !== 'undefined') global.flattenWindow = flattenWindow;
+  if (typeof compactWindow !== 'undefined') global.compactWindow = compactWindow;
+  if (typeof expandWindow !== 'undefined') global.expandWindow = expandWindow;
+  if (typeof updateSplitViewButtons !== 'undefined') global.updateSplitViewButtons = updateSplitViewButtons;
   if (typeof updateStatusBar !== 'undefined') global.updateStatusBar = updateStatusBar;
   if (typeof loadBrowserSnapshot !== 'undefined') global.loadBrowserSnapshot = loadBrowserSnapshot;
   if (typeof aiOrganize !== 'undefined') global.aiOrganize = aiOrganize;

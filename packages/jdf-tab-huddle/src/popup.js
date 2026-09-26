@@ -111,6 +111,8 @@ function setupEventListeners() {
   document.getElementById('copyThisWindow').addEventListener('click', () => copyThisWindow(getRespectGroups()));
   document.getElementById('copyAllWindows').addEventListener('click', () => copyAllWindows(getRespectGroups()));
   document.getElementById('flattenWindow').addEventListener('click', () => flattenWindow());
+  document.getElementById('compactWindow').addEventListener('click', () => compactWindow());
+  document.getElementById('expandWindow').addEventListener('click', () => expandWindow());
 
   // AI listeners
   document.getElementById('aiOrganize').addEventListener('click', () => aiOrganize(getRespectGroups()));
@@ -197,6 +199,15 @@ function flattenWindow() {
   sendAction('flattenWindow');
 }
 
+// Pair adjacent tabs into Split Views / separate every Split View (Chrome 155+).
+function compactWindow() {
+  sendAction('compactWindow');
+}
+
+function expandWindow() {
+  sendAction('expandWindow');
+}
+
 // Move all tabs to a single window
 function moveAllToSingleWindow(respectGroups = true) {
   chrome.tabs.query({ active: true, currentWindow: true }, function (activeTabs) {
@@ -268,6 +279,7 @@ function loadBrowserSnapshot() {
     const currentWindow = windows.find(w => w.id === popupWindow.id);
     updateUIForWindowCount(windows);
     updateSnoozeButtonState(currentWindow && currentWindow.tabs.find(t => t.active));
+    updateSplitViewButtons(currentWindow ? currentWindow.tabs : []);
     updateStatusBar(currentWindow, windows, groups);
     // Multi-window visibility and the Group button may both have changed —
     // recompute hotkeys once for the whole snapshot.
@@ -428,6 +440,21 @@ function labelSnoozePresetButtons() {
     const btn = document.getElementById('snoozePreset-' + p.key);
     if (btn) btn.textContent = `${p.label} · ${formatSnoozeClock(p.wakeAt)}`;
   }
+}
+
+// Show Compact/Expand only where Chrome can create Split Views, and disable
+// whichever has nothing to do in this window. Compact's check is a cheap
+// lower bound; the background decides which neighbours can actually pair.
+function updateSplitViewButtons(tabs) {
+  const row = document.getElementById('splitViewRow');
+  if (!row) return;
+  const supported = typeof chrome.tabs.createSplit === 'function' &&
+    typeof chrome.tabs.unsplit === 'function';
+  row.hidden = !supported;
+  if (!supported) return;
+  const isSplit = t => t.splitViewId != null && t.splitViewId !== -1;
+  document.getElementById('compactWindow').disabled = tabs.filter(t => !isSplit(t)).length < 2;
+  document.getElementById('expandWindow').disabled = !tabs.some(isSplit);
 }
 
 // Disable the Group button when the active tab is not in a group.
@@ -626,6 +653,8 @@ const HOTKEY_PREFERENCES = {
   sortCurrentWindow: ['s'],           // Sort
   removeDuplicatesWindow: ['d'],      // Deduplicate
   flattenWindow: ['u'],               // Ungroup
+  compactWindow: ['v'],               // split View
+  expandWindow: ['j'],                // Expand (e and x are taken)
   aiOrganize: ['o'],                  // Organize with AI
   aiSettings: ['k'],                  // settings cog (shown only with a key)
   // All windows
