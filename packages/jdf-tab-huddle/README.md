@@ -24,8 +24,11 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 - **Remove Duplicates (All Windows Per Window)**: Remove duplicates within each window separately
 - **Remove Duplicates (Globally)**: Remove duplicates across all windows
 
-### Split View awareness
-- Sorting keeps a Split View pair together, positioned by its left tab; deduplication keeps the Split View copy of a duplicated URL rather than closing a page that is on screen — a page split with itself is still deduplicated. Chrome's API is read-only here — a dissolved split cannot be recreated — so preservation is best-effort. On Chrome versions without Split View, behavior is unchanged.
+### Split View
+- **Compact** (Chrome 155+): pairs neighbouring tabs in the current window into Split Views — (1,2), (3,4), … — without moving any tab. Chrome only splits two adjacent tabs with the same pinned state and tab group, so pairing restarts at every pinned or group boundary and at every tab already in a split; an odd tab left at the end of a run stays as it is.
+- **Expand** (Chrome 155+): separates every Split View in the current window, including ones you made yourself.
+- Compact and Expand appear only where Chrome can create Split Views (`chrome.tabs.createSplit` / `unsplit`); elsewhere the popup is unchanged.
+- Sorting keeps a Split View pair together, positioned by its left tab; deduplication keeps the Split View copy of a duplicated URL rather than closing a page that is on screen — a page split with itself is still deduplicated. Preservation is best-effort: if Chrome dissolves a split while moving tabs, sort and dedup do not re-pair it yet. On Chrome versions without Split View, behavior is unchanged.
 
 ### Smart Features
 - Respects pinned tabs (never moves or removes them)
@@ -58,8 +61,8 @@ The link-clumping feature is inspired by [linkclump](https://github.com/benblack
 ### For Developers
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (350 tests)
-pnpm test:e2e          # Run E2E tests (89 tests, requires Chromium)
+pnpm test              # Run unit tests (374 tests)
+pnpm test:e2e          # Run E2E tests (91 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
 pnpm run package       # Create extension zip
@@ -89,14 +92,14 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Confirmation dialog for large operations
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (350 tests)
+├── tests/                         # Vitest unit tests (374 tests)
 │   ├── setup.js                   # Test setup with jest-chrome mocks
 │   ├── background.test.js         # Background script logic tests
 │   ├── popup.test.js              # Popup UI tests
 │   ├── focused.test.js            # Core functionality tests
 │   ├── confirmation-dialog.test.js
 │   └── simple.test.js             # Framework verification
-├── e2e/                           # Playwright E2E tests (89 tests)
+├── e2e/                           # Playwright E2E tests (91 tests)
 │   ├── playwright.config.js       # Playwright configuration
 │   ├── fixtures/extension.js      # Custom fixture loading extension into Chromium
 │   ├── helpers/                   # Tab management, popup interaction, assertions
@@ -117,7 +120,7 @@ pnpm run test:coverage   # With coverage report
 ```
 
 ### E2E Tests (Playwright + real Chromium)
-89 tests across 14 spec files that load the extension into a real browser:
+91 tests across 15 spec files that load the extension into a real browser:
 
 | Spec File | Tests | Coverage |
 |---|---|---|
@@ -133,6 +136,7 @@ pnpm run test:coverage   # With coverage report
 | popup-ui | 6 | Mode switching, button visibility |
 | confirmation-dialog | 4 | Confirm/cancel flow |
 | flatten-window | 3 | Ungrouping, pinned immunity |
+| split-view-compact | 2 | Compact then Expand; pinned/group runs, existing splits, no tab moves (skips below Chrome 155) |
 | keyboard | 3 | Popup hotkey dispatch |
 | snooze | 11 | Tab/window/group snooze, wake, alarms, edge cases |
 
@@ -157,12 +161,13 @@ The in-package [`docs/CI-CD.md`](docs/CI-CD.md) describes the pre-migration stan
 
 ## Browser Compatibility
 
-- **Chrome**: Manifest V3 (Chrome 88+)
+- **Chrome**: Manifest V3 (Chrome 88+); Split View Compact/Expand need Chrome 155+ and are hidden on older versions
 - **Edge**: Chromium-based Edge
 - **Firefox**: Not supported (uses Chrome-specific APIs)
 
 ## Version History
 
+- **v0.5.0**: **Split View Compact and Expand** — Compact pairs neighbouring tabs in the current window into Split Views without moving any tab, restarting at pinned and group boundaries and skipping tabs already split; Expand separates every Split View in the window. Both use Chrome's Split View write API (`tabs.createSplit` / `tabs.unsplit`, Chrome 155) and appear only where it exists. Hotkeys V and J. 374 unit tests.
 - **v0.4.1**: **Leaner popup startup** — the popup reads windows, tabs and groups once, in one parallel batch, instead of five partly chained queries, and refreshes its hotkeys once for the result. Internal cleanups with no behavior change: the copy message action is renamed `copyTabs`, the current window is resolved without a discarded full tab query, and an unused group-map field is removed. Headless e2e suite with a CI job; dependency advisories resolved. 354 unit tests.
 - **v0.4.0**: **Split View awareness** — sorting keeps a Split View pair together as one unit, positioned by its left tab; deduplication keeps the Split View copy of a duplicated URL instead of closing a page that is on screen (pinned still beats everything). Preservation is best-effort: Chrome's extension API is read-only for splits, so a dissolved split cannot be recreated. Feature-detected — Chrome versions without Split View behave exactly as before. All other operations deliberately treat split tabs as plain tabs. 349 unit tests.
 - **v0.3.0**: **Copy scope** — the single "Copy all tabs" control becomes two explicit actions, Copy this window and Copy all windows, with the tab count and scope reported back ("Copied 12 tabs (this window)"). **AI model picker** — the three hard-coded models are replaced by the live OpenRouter catalog, cached for 24h, with a filterable list, a custom model id field, a Refresh action, and a Current configuration card; the popup shows the active model. Fetch failures degrade to stale cache and then to the curated defaults, always naming the reason. When the catalog reports a model supports structured outputs, organize requests a strict JSON schema, falling back to JSON object mode only when an endpoint refuses the payload — never on auth, credit or rate-limit errors, and never once the response has started streaming. Editing the model no longer restarts the API key's expiry countdown. 332 unit tests.

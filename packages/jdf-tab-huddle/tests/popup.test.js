@@ -16,6 +16,10 @@ describe('Popup Script', () => {
       <button id="copyThisWindow">Copy this window</button>
       <button id="copyAllWindows">Copy all windows</button>
       <button id="flattenWindow">Ungroup</button>
+      <div id="splitViewRow" hidden>
+        <button id="compactWindow">Compact</button>
+        <button id="expandWindow">Expand</button>
+      </div>
       <div id="copyFeedback" class="copy-feedback">Copied!</div>
       <button id="aiOrganize">Organize with AI</button>
       <button id="aiSettings" style="display: none;">⚙️</button>
@@ -190,6 +194,13 @@ describe('Popup Script', () => {
         expect.any(Function)
       );
     });
+
+    test('compactWindow and expandWindow send their actions', () => {
+      compactWindow();
+      expandWindow();
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'compactWindow' }, expect.any(Function));
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'expandWindow' }, expect.any(Function));
+    });
   });
 
   describe('Copy tabs (this window / all windows)', () => {
@@ -353,6 +364,52 @@ describe('Popup Script', () => {
       expect(document.getElementById('mwButtons').style.display).toBe('');
       expect(document.getElementById('snoozeGroup').disabled).toBe(false);
       expect(document.getElementById('statusThisWindow').textContent).toBe('');
+    });
+  });
+
+  describe('updateSplitViewButtons', () => {
+    const tab = (id, splitViewId = -1) => ({ id, splitViewId });
+
+    afterEach(() => {
+      delete chrome.tabs.createSplit;
+      delete chrome.tabs.unsplit;
+    });
+
+    function withSplitApi() {
+      chrome.tabs.createSplit = vi.fn();
+      chrome.tabs.unsplit = vi.fn();
+    }
+
+    test('stays hidden where Chrome cannot create Split Views', () => {
+      updateSplitViewButtons([tab(1), tab(2)]);
+      expect(document.getElementById('splitViewRow').hidden).toBe(true);
+    });
+
+    test('shows the row when the API exists; Expand disabled without splits', () => {
+      withSplitApi();
+      updateSplitViewButtons([tab(1), tab(2)]);
+      expect(document.getElementById('splitViewRow').hidden).toBe(false);
+      expect(document.getElementById('compactWindow').disabled).toBe(false);
+      expect(document.getElementById('expandWindow').disabled).toBe(true);
+    });
+
+    test('a window already fully split disables Compact and enables Expand', () => {
+      withSplitApi();
+      updateSplitViewButtons([tab(1, 5), tab(2, 5), tab(3)]);
+      expect(document.getElementById('compactWindow').disabled).toBe(true);
+      expect(document.getElementById('expandWindow').disabled).toBe(false);
+    });
+
+    test('loadBrowserSnapshot applies it to the popup\'s window', async () => {
+      withSplitApi();
+      chrome.windows.getCurrent.mockResolvedValue({ id: 10 });
+      chrome.windows.getAll.mockResolvedValue([{ id: 10, tabs: [tab(1, 4), tab(2, 4)] }]);
+      chrome.tabGroups.query.mockResolvedValue([]);
+
+      await loadBrowserSnapshot();
+
+      expect(document.getElementById('splitViewRow').hidden).toBe(false);
+      expect(document.getElementById('expandWindow').disabled).toBe(false);
     });
   });
 
