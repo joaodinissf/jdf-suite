@@ -97,6 +97,7 @@ export async function getWindowTabs(sw, windowId) {
       pinned: t.pinned,
       groupId: t.groupId,
       windowId: t.windowId,
+      splitViewId: t.splitViewId ?? -1,
     }));
   }, windowId);
 }

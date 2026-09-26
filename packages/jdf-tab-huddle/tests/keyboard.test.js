@@ -9,7 +9,7 @@
 // Groups/Flat segmented toggle only flips a boolean. `singleWindow` hides the
 // multi-window section (as updateUIForWindowCount does); `groupDisabled`
 // disables the snooze Group unit.
-function buildPopupDom({ respectGroups = true, singleWindow = false, groupDisabled = false } = {}) {
+function buildPopupDom({ respectGroups = true, singleWindow = false, groupDisabled = false, splitView = false } = {}) {
   const mw = singleWindow ? ' style="display: none;"' : '';
   return `
     <div class="p-pad">
@@ -28,6 +28,10 @@ function buildPopupDom({ respectGroups = true, singleWindow = false, groupDisabl
           <button id="sortCurrentWindow" class="btn" data-action="sortCurrentWindow">Sort</button>
           <button id="removeDuplicatesWindow" class="btn" data-action="removeDuplicatesWindow">Deduplicate</button>
           <button id="flattenWindow" class="btn" data-action="flattenWindow">Ungroup</button>
+        </div>
+        <div id="splitViewRow" class="grid2"${splitView ? '' : ' hidden'}>
+          <button id="compactWindow" class="btn" data-action="compactWindow">Compact</button>
+          <button id="expandWindow" class="btn" data-action="expandWindow">Expand</button>
         </div>
         <div class="ai-row">
           <button id="aiOrganize" class="btn primary" data-action="aiGroupTabs">Organize with AI</button>
@@ -193,6 +197,16 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
       expect(boundIds).not.toContain('removeDuplicatesGlobally');
       // Non-multi-window buttons stay bound.
       expect(boundIds).toContain('sortCurrentWindow');
+    });
+
+    test('Compact/Expand bind to v/j only when the Split View row is shown', () => {
+      expect([...buildHotkeyMap().values()].map((el) => el.id)).not.toContain('compactWindow');
+
+      document.body.innerHTML = buildPopupDom({ splitView: true });
+      const map = buildHotkeyMap();
+      expect(map.get('v')?.id).toBe('compactWindow');
+      expect(map.get('j')?.id).toBe('expandWindow');
+      assertNoDuplicateKeys(map);
     });
 
     test('binds the AI cog when it is shown', () => {

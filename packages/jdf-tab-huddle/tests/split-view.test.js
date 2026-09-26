@@ -1,7 +1,7 @@
-// Split View awareness: sort keeps pairs together, dedup keeps the split copy.
-// Chrome exposes splitViewId read-only (there is no API to create or restore a
-// split), so everything here is preservation-only and must degrade to today's
-// behavior when the property is absent.
+// Split View: sort keeps pairs together and dedup keeps the split copy, which
+// only needs the read-only splitViewId and must degrade to the old behavior
+// when the property is absent. Compact/Expand create and remove splits and
+// exist only where chrome.tabs.createSplit/unsplit do (Chrome 155+).
 
 const t = (id, url, extra = {}) => ({ id, url, pinned: false, ...extra });
 
@@ -191,5 +191,123 @@ describe('findDuplicateTabs prefers keeping the Split View copy', () => {
     ];
     const { tabsToRemove } = findDuplicateTabs([tabs], true);
     expect(tabsToRemove).toEqual([1]);
+  });
+});
+
+describe('planCompactPairs', () => {
+  // Tabs as chrome.tabs.query returns them: index, pinned, groupId always set.
+  const tab = (id, extra = {}) => ({ id, index: id, pinned: false, groupId: -1, splitViewId: -1, ...extra });
+
+  test('pairs neighbours left to right', () => {
+    expect(planCompactPairs([tab(0), tab(1), tab(2), tab(3)])).toEqual([[0, 1], [2, 3]]);
+  });
+
+  test('an odd last tab stays unpaired', () => {
+    expect(planCompactPairs([tab(0), tab(1), tab(2)])).toEqual([[0, 1]]);
+  });
+
+  test('empty and single-tab windows produce no pairs', () => {
+    expect(planCompactPairs([])).toEqual([]);
+    expect(planCompactPairs([tab(0)])).toEqual([]);
+  });
+
+  test('never pairs across the pinned boundary', () => {
+    const tabs = [tab(0, { pinned: true }), tab(1), tab(2)];
+    expect(planCompactPairs(tabs)).toEqual([[1, 2]]);
+  });
+
+  test('never pairs across group boundaries, including loose-to-group', () => {
+    const tabs = [
+      tab(0), tab(1, { groupId: 7 }), tab(2, { groupId: 7 }),
+      tab(3, { groupId: 8 }), tab(4, { groupId: 9 }), tab(5),
+    ];
+    expect(planCompactPairs(tabs)).toEqual([[1, 2]]);
+  });
+
+  test('an existing split breaks the run and is left alone', () => {
+    const tabs = [
+      tab(0), tab(1, { splitViewId: 5 }), tab(2, { splitViewId: 5 }), tab(3), tab(4),
+    ];
+    expect(planCompactPairs(tabs)).toEqual([[3, 4]]);
+  });
+
+  test('tabs without the splitViewId property count as unsplit', () => {
+    const tabs = [{ id: 0, index: 0, pinned: false, groupId: -1 }, { id: 1, index: 1, pinned: false, groupId: -1 }];
+    expect(planCompactPairs(tabs)).toEqual([[0, 1]]);
+  });
+
+  test('follows index order, not array order', () => {
+    const tabs = [tab(9, { index: 2 }), tab(4, { index: 0 }), tab(6, { index: 1 })];
+    expect(planCompactPairs(tabs)).toEqual([[4, 6]]);
+  });
+});
+
+describe('Compact / Expand handlers', () => {
+  const tab = (id, extra = {}) => ({ id, index: id, pinned: false, groupId: -1, splitViewId: -1, ...extra });
+
+  afterEach(() => {
+    delete chrome.tabs.createSplit;
+    delete chrome.tabs.unsplit;
+  });
+
+  function withSplitApi() {
+    chrome.tabs.createSplit = vi.fn().mockResolvedValue(1);
+    chrome.tabs.unsplit = vi.fn().mockResolvedValue(undefined);
+  }
+
+  test('splitWriteSupported follows the presence of both methods', () => {
+    expect(splitWriteSupported()).toBe(false);
+    chrome.tabs.createSplit = vi.fn();
+    expect(splitWriteSupported()).toBe(false);
+    chrome.tabs.unsplit = vi.fn();
+    expect(splitWriteSupported()).toBe(true);
+  });
+
+  test('Compact reports unsupported without touching tabs on older Chrome', async () => {
+    chrome.tabs.query.mockResolvedValue([tab(0), tab(1)]);
+    const sendResponse = vi.fn();
+    await handleCompactWindow(sendResponse);
+    expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'unsupported' });
+  });
+
+  test('Compact splits each planned pair in order', async () => {
+    withSplitApi();
+    chrome.tabs.query.mockResolvedValue([tab(0), tab(1), tab(2), tab(3), tab(4)]);
+    const sendResponse = vi.fn();
+    await handleCompactWindow(sendResponse);
+    expect(chrome.tabs.query).toHaveBeenCalledWith({ currentWindow: true });
+    expect(chrome.tabs.createSplit.mock.calls).toEqual([[[0, 1]], [[2, 3]]]);
+    expect(sendResponse).toHaveBeenCalledWith({ success: true, paired: 2, failed: 0 });
+  });
+
+  test('a rejected pair is counted and the rest still split', async () => {
+    withSplitApi();
+    chrome.tabs.createSplit
+      .mockRejectedValueOnce(new Error('tab closed'))
+      .mockResolvedValueOnce(2);
+    chrome.tabs.query.mockResolvedValue([tab(0), tab(1), tab(2), tab(3)]);
+    const sendResponse = vi.fn();
+    await handleCompactWindow(sendResponse);
+    expect(chrome.tabs.createSplit).toHaveBeenCalledTimes(2);
+    expect(sendResponse).toHaveBeenCalledWith({ success: true, paired: 1, failed: 1 });
+  });
+
+  test('Expand unsplits each split once', async () => {
+    withSplitApi();
+    chrome.tabs.query.mockResolvedValue([
+      tab(0, { splitViewId: 5 }), tab(1, { splitViewId: 5 }),
+      tab(2),
+      tab(3, { splitViewId: 8 }), tab(4, { splitViewId: 8 }),
+    ]);
+    const sendResponse = vi.fn();
+    await handleExpandWindow(sendResponse);
+    expect(chrome.tabs.unsplit.mock.calls).toEqual([[5], [8]]);
+    expect(sendResponse).toHaveBeenCalledWith({ success: true, unsplit: 2, failed: 0 });
+  });
+
+  test('Expand reports unsupported on older Chrome', async () => {
+    const sendResponse = vi.fn();
+    await handleExpandWindow(sendResponse);
+    expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'unsupported' });
   });
 });

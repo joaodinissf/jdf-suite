@@ -24,8 +24,11 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 - **Remove Duplicates (All Windows Per Window)**: Remove duplicates within each window separately
 - **Remove Duplicates (Globally)**: Remove duplicates across all windows
 
-### Split View awareness
-- Sorting keeps a Split View pair together, positioned by its left tab; deduplication keeps the Split View copy of a duplicated URL rather than closing a page that is on screen — a page split with itself is still deduplicated. Chrome's API is read-only here — a dissolved split cannot be recreated — so preservation is best-effort. On Chrome versions without Split View, behavior is unchanged.
+### Split View
+- **Compact** (Chrome 155+): pairs neighbouring tabs in the current window into Split Views — (1,2), (3,4), … — without moving any tab. Chrome only splits two adjacent tabs with the same pinned state and tab group, so pairing restarts at every pinned or group boundary and at every tab already in a split; an odd tab left at the end of a run stays as it is.
+- **Expand** (Chrome 155+): separates every Split View in the current window, including ones you made yourself.
+- Compact and Expand appear only where Chrome can create Split Views (`chrome.tabs.createSplit` / `unsplit`); elsewhere the popup is unchanged.
+- Sorting keeps a Split View pair together, positioned by its left tab; deduplication keeps the Split View copy of a duplicated URL rather than closing a page that is on screen — a page split with itself is still deduplicated. Preservation is best-effort: if Chrome dissolves a split while moving tabs, sort and dedup do not re-pair it yet. On Chrome versions without Split View, behavior is unchanged.
 
 ### Smart Features
 - Respects pinned tabs (never moves or removes them)
@@ -117,7 +120,7 @@ pnpm run test:coverage   # With coverage report
 ```
 
 ### E2E Tests (Playwright + real Chromium)
-89 tests across 14 spec files that load the extension into a real browser:
+90 tests across 15 spec files that load the extension into a real browser:
 
 | Spec File | Tests | Coverage |
 |---|---|---|
@@ -133,6 +136,7 @@ pnpm run test:coverage   # With coverage report
 | popup-ui | 6 | Mode switching, button visibility |
 | confirmation-dialog | 4 | Confirm/cancel flow |
 | flatten-window | 3 | Ungrouping, pinned immunity |
+| split-view-compact | 1 | Compact then Expand (skips below Chrome 155) |
 | keyboard | 3 | Popup hotkey dispatch |
 | snooze | 11 | Tab/window/group snooze, wake, alarms, edge cases |
 
@@ -157,12 +161,13 @@ The in-package [`docs/CI-CD.md`](docs/CI-CD.md) describes the pre-migration stan
 
 ## Browser Compatibility
 
-- **Chrome**: Manifest V3 (Chrome 88+)
+- **Chrome**: Manifest V3 (Chrome 88+); Split View Compact/Expand need Chrome 155+ and are hidden on older versions
 - **Edge**: Chromium-based Edge
 - **Firefox**: Not supported (uses Chrome-specific APIs)
 
 ## Version History
 
+- **v0.5.0**: **Split View Compact and Expand** — Compact pairs neighbouring tabs in the current window into Split Views without moving any tab, restarting at pinned and group boundaries and skipping tabs already split; Expand separates every Split View in the window. Both use Chrome's Split View write API (`tabs.createSplit` / `tabs.unsplit`, Chrome 155) and appear only where it exists. Hotkeys V and J. 374 unit tests.
 - **v0.4.0**: **Split View awareness** — sorting keeps a Split View pair together as one unit, positioned by its left tab; deduplication keeps the Split View copy of a duplicated URL instead of closing a page that is on screen (pinned still beats everything). Preservation is best-effort: Chrome's extension API is read-only for splits, so a dissolved split cannot be recreated. Feature-detected — Chrome versions without Split View behave exactly as before. All other operations deliberately treat split tabs as plain tabs. 349 unit tests.
 - **v0.3.0**: **Copy scope** — the single "Copy all tabs" control becomes two explicit actions, Copy this window and Copy all windows, with the tab count and scope reported back ("Copied 12 tabs (this window)"). **AI model picker** — the three hard-coded models are replaced by the live OpenRouter catalog, cached for 24h, with a filterable list, a custom model id field, a Refresh action, and a Current configuration card; the popup shows the active model. Fetch failures degrade to stale cache and then to the curated defaults, always naming the reason. When the catalog reports a model supports structured outputs, organize requests a strict JSON schema, falling back to JSON object mode only when an endpoint refuses the payload — never on auth, credit or rate-limit errors, and never once the response has started streaming. Editing the model no longer restarts the API key's expiry countdown. 332 unit tests.
 - **v0.2.2**: **Groups-mode dedup fix** — in Groups mode, deduplication is now per-group: the same URL in two different tab groups is kept (duplicates inside the same group are still removed); Flat mode unchanged. Snooze perf/polish: batched startup reconcile (one storage write for all past-due records), cheaper last-window guard, shared restore-target window for concurrent wakes, per-tab restore-failure logging, single sleeping-list render. Test-suite hardening from the audit: new `ai-setup` coverage, real status-bar/AI-wiring assertions, de-tautologized sort fixtures, honest e2e test names, singular/plural fix in the confirmation dialog.

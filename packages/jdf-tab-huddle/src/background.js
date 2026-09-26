@@ -883,6 +883,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   } else if (message.action === 'flattenWindow') {
     handleFlattenWindow(sendResponse);
     return true; // Keep message channel open for async response
+  } else if (message.action === 'compactWindow') {
+    handleCompactWindow(sendResponse);
+    return true;
+  } else if (message.action === 'expandWindow') {
+    handleExpandWindow(sendResponse);
+    return true;
   } else if (message.action === 'aiGroupTabs') {
     handleAiGroupTabs(message, sendResponse);
     return true;
@@ -1680,6 +1686,100 @@ async function handleFlattenWindow(sendResponse) {
     sendResponse({ success: true });
   } catch (error) {
     console.error('[Tab Organizer] Error in flattenWindow:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// Chrome 155+ can create and remove Split Views; older versions only expose
+// the read-only splitViewId, and Compact/Expand stay unavailable there.
+function splitWriteSupported() {
+  return typeof chrome.tabs.createSplit === 'function' &&
+    typeof chrome.tabs.unsplit === 'function';
+}
+
+// Pair neighbouring tabs for Compact without moving anything. Chrome only
+// splits two adjacent tabs that share pinned state and group, so the strip is
+// cut into runs at every pinned/group change and at every tab already in a
+// split; each run pairs (0,1), (2,3), … and an odd last tab stays unpaired.
+function planCompactPairs(tabs) {
+  const ordered = [...tabs].sort((a, b) => a.index - b.index);
+  const pairs = [];
+  let pending = null;
+
+  for (const tab of ordered) {
+    if (tabSplitViewId(tab) !== null) {
+      pending = null;
+      continue;
+    }
+    if (pending && pending.pinned === tab.pinned && pending.groupId === tab.groupId) {
+      pairs.push([pending.id, tab.id]);
+      pending = null;
+    } else {
+      pending = tab;
+    }
+  }
+
+  return pairs;
+}
+
+async function handleCompactWindow(sendResponse) {
+  try {
+    if (!splitWriteSupported()) {
+      sendResponse({ success: false, error: 'unsupported' });
+      return;
+    }
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    const pairs = planCompactPairs(tabs);
+
+    console.log('[Tab Organizer] Compacting current window into', pairs.length, 'split views');
+
+    // One pair at a time: a rejected pair (e.g. a tab closed meanwhile) must
+    // not stop the rest.
+    let paired = 0;
+    let failed = 0;
+    for (const pair of pairs) {
+      try {
+        await chrome.tabs.createSplit(pair);
+        paired++;
+      } catch (error) {
+        failed++;
+        console.error('[Tab Organizer] Could not split tabs', pair, error);
+      }
+    }
+
+    sendResponse({ success: true, paired, failed });
+  } catch (error) {
+    console.error('[Tab Organizer] Error in compactWindow:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+async function handleExpandWindow(sendResponse) {
+  try {
+    if (!splitWriteSupported()) {
+      sendResponse({ success: false, error: 'unsupported' });
+      return;
+    }
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    const splitIds = [...new Set(tabs.map(tabSplitViewId).filter(id => id !== null))];
+
+    console.log('[Tab Organizer] Expanding', splitIds.length, 'split views in current window');
+
+    let unsplit = 0;
+    let failed = 0;
+    for (const splitId of splitIds) {
+      try {
+        await chrome.tabs.unsplit(splitId);
+        unsplit++;
+      } catch (error) {
+        failed++;
+        console.error('[Tab Organizer] Could not unsplit', splitId, error);
+      }
+    }
+
+    sendResponse({ success: true, unsplit, failed });
+  } catch (error) {
+    console.error('[Tab Organizer] Error in expandWindow:', error);
     sendResponse({ success: false, error: error.message });
   }
 }

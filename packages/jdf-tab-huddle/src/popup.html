@@ -604,6 +604,13 @@
         <button id="flattenWindow" class="btn" data-action="flattenWindow"
           title="Ungroup all tabs in this window">Ungroup</button>
       </div>
+      <!-- Shown only where Chrome can create Split Views (Chrome 155+). -->
+      <div id="splitViewRow" class="grid2" style="margin-bottom: 6px" hidden>
+        <button id="compactWindow" class="btn" data-action="compactWindow"
+          title="Pair adjacent tabs into Split Views">Compact</button>
+        <button id="expandWindow" class="btn" data-action="expandWindow"
+          title="Separate every Split View in this window">Expand</button>
+      </div>
       <div class="ai-row">
         <button id="aiOrganize" class="btn primary" data-action="aiGroupTabs"
           title="Use AI to organize tabs into groups">Organize with AI</button>
