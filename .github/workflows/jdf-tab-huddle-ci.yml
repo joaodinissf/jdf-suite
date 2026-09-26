@@ -40,6 +40,7 @@ jobs:
 
   e2e:
     name: E2E (Playwright, headless extension)
+    needs: lint-and-test
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
@@ -53,8 +54,24 @@ jobs:
         cache-dependency-path: packages/jdf-tab-huddle/pnpm-lock.yaml
     - name: Install dependencies
       run: pnpm install --frozen-lockfile
+    - name: Read the Playwright version
+      id: playwright
+      run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+    # The browser build is pinned by the Playwright version, so that version
+    # is the whole cache key.
+    - name: Cache Playwright browsers
+      id: playwright-cache
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
     - name: Install Playwright Chromium
+      if: steps.playwright-cache.outputs.cache-hit != 'true'
       run: npx playwright install --with-deps chromium
+    # A cache hit restores the browser but not its system libraries.
+    - name: Install Playwright system dependencies
+      if: steps.playwright-cache.outputs.cache-hit == 'true'
+      run: npx playwright install-deps chromium
     - name: Run e2e tests
       run: pnpm run test:e2e
     - name: Upload test results on failure
