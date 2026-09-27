@@ -150,12 +150,20 @@ function log(message, ...args) {
   chrome.runtime.sendMessage({ type: 'log', data: { message, args } }).catch(() => { });
 }
 
+// Actions sent and not yet answered. A double click (or a held hotkey) would
+// otherwise start the same action again while the first run is still moving or
+// closing tabs, and the runs trip over each other.
+const pendingActions = new Set();
+
 // Generic function to send actions to the background script. The background
 // replies once the work is done; the popup then says what happened and
 // refreshes its window/tab counts.
 function sendAction(action, data = {}) {
+  if (pendingActions.has(action)) return;
+  pendingActions.add(action);
   const message = { action, ...data };
   chrome.runtime.sendMessage(message, function (response) {
+    pendingActions.delete(action);
     if (chrome.runtime.lastError) {
       log(`Error from background for action "${action}":`, chrome.runtime.lastError.message);
       showActionResult(`Couldn't ${ACTION_VERBS[action] || 'do that'}: ${chrome.runtime.lastError.message}`, 'error');
@@ -170,7 +178,7 @@ function sendAction(action, data = {}) {
       log(`Action "${action}" was cancelled by the user.`);
     }
     const summary = describeActionResult(action, response || {});
-    if (summary) showActionResult(summary);
+    if (summary) showActionResult(summary, actionResultKind(response || {}));
     loadBrowserSnapshot();
   });
 }
@@ -197,9 +205,18 @@ const ACTION_VERBS = {
   openAiSettings: 'open AI settings',
 };
 
+// Appended when an action did its main work but the re-sort after it failed.
+const SORT_FAILED_NOTE = '; couldn\'t sort, try Sort';
+
+// Appended when some of the tabs an action meant to move stayed put.
+function notMovedNote(r) {
+  return r.notMoved ? `; ${r.notMoved} couldn't be moved` : '';
+}
+
 // One line saying what an action did, from the counts the background returns.
 // Returns '' for actions that report elsewhere (AI opens its own tab).
 function describeActionResult(action, r) {
+  const sortNote = r.sortFailed ? SORT_FAILED_NOTE : '';
   switch (action) {
     case 'sortCurrentWindow':
       return `Sorted ${plural(r.tabs || 0, 'tab')}`;
@@ -208,26 +225,53 @@ function describeActionResult(action, r) {
     case 'removeDuplicatesWindow':
     case 'removeDuplicatesAllWindows':
     case 'removeDuplicatesGlobally':
-      // Deduplicating also re-sorts, so say so.
+      // Deduplicating also re-sorts, so say so (or say that it couldn't).
+      if (r.sortFailed) {
+        return (r.removed ? `Closed ${plural(r.removed, 'duplicate')}` : 'No duplicates found') + sortNote;
+      }
       return r.removed ? `Closed ${plural(r.removed, 'duplicate')} and sorted` : 'No duplicates found';
     case 'flattenWindow':
       return r.ungrouped ? `Ungrouped ${plural(r.ungrouped, 'tab')}` : 'No groups to ungroup';
     case 'extractDomain':
-      return `Moved ${plural(r.moved || 0, 'tab')}${r.domain ? ` from ${r.domain}` : ''} to a new window`;
+      return `Moved ${plural(r.moved || 0, 'tab')}${r.domain ? ` from ${r.domain}` : ''} to a new window`
+        + notMovedNote(r) + sortNote;
     case 'extractAllDomains':
-      return r.cancelled ? 'Split cancelled' : `Split into ${plural(r.windows || 0, 'window')}`;
+      if (r.cancelled) return 'Split cancelled';
+      return `Split into ${plural(r.windows || 0, 'window')}`
+        + (r.notMoved ? `; ${plural(r.notMoved, 'tab')} couldn't be moved` : '') + sortNote;
     case 'moveAllToSingleWindow':
-      return r.moved ? `Merged ${plural(r.moved, 'tab')} into this window` : 'Nothing to merge';
+      if (!r.moved && r.notMoved) return `Couldn't move any of ${plural(r.notMoved, 'tab')}`;
+      return r.moved
+        ? `Merged ${plural(r.moved, 'tab')} into this window` + notMovedNote(r) + sortNote
+        : 'Nothing to merge';
     case 'compactWindow':
+      if (r.failed) {
+        return r.paired
+          ? `Paired ${plural(r.paired, 'Split View')}; ${r.failed} couldn't be paired`
+          : 'Couldn\'t pair any tabs';
+      }
       return r.paired ? `Paired ${plural(r.paired, 'Split View')}` : 'No neighbouring tabs to pair';
     case 'expandWindow':
+      if (r.failed) {
+        return r.unsplit
+          ? `Separated ${plural(r.unsplit, 'Split View')}; ${r.failed} couldn't be separated`
+          : 'Couldn\'t separate any Split Views';
+      }
       return r.unsplit ? `Separated ${plural(r.unsplit, 'Split View')}` : 'No Split Views to separate';
     default:
       return '';
   }
 }
 
+// A reply that says part of the work failed is shown as an error, so it reads
+// differently from a clean success and stays up longer.
+function actionResultKind(r) {
+  return r.failed > 0 || r.notMoved > 0 || r.sortFailed ? 'error' : 'ok';
+}
+
 const ACTION_RESULT_MS = 8000;
+// Errors are longer and carry what to do next, so they stay up longer.
+const ACTION_ERROR_MS = 15000;
 let actionResultTimer = null;
 
 function showActionResult(text, kind = 'ok') {
@@ -237,7 +281,25 @@ function showActionResult(text, kind = 'ok') {
   el.classList.toggle('error', kind === 'error');
   el.hidden = false;
   if (actionResultTimer) clearTimeout(actionResultTimer);
-  actionResultTimer = setTimeout(() => { el.hidden = true; }, ACTION_RESULT_MS);
+  actionResultTimer = setTimeout(() => {
+    el.hidden = true;
+    updateToastSpace();
+  }, kind === 'error' ? ACTION_ERROR_MS : ACTION_RESULT_MS);
+  updateToastSpace();
+}
+
+// The toasts float over the bottom of the popup. While any is showing, pad the
+// page by the stack's height so the footer (or the picker's last row) sits
+// above it instead of under it, where clicks would land on the toast.
+function updateToastSpace() {
+  const stack = document.querySelector('.toasts');
+  if (!stack) return;
+  const showing = [...stack.children].some((el) => !el.hidden &&
+    (!el.classList.contains('copy-feedback') || el.classList.contains('visible')));
+  document.body.classList.toggle('has-toast', showing);
+  const height = showing ? stack.getBoundingClientRect().height : 0;
+  if (height > 0) document.body.style.setProperty('--toast-space', `${Math.ceil(height)}px`);
+  else document.body.style.removeProperty('--toast-space');
 }
 
 // Sort tabs by URL across all windows
@@ -327,26 +389,53 @@ function copyFeedbackMessage(tabCount, scope) {
     : `Copied ${tabs} (all windows)`;
 }
 
+const COPY_FEEDBACK_MS = 1500;
+let copyFeedbackTimer = null;
+
+function showCopyFeedback(text) {
+  const feedback = document.getElementById('copyFeedback');
+  if (!feedback) return;
+  feedback.textContent = text;
+  feedback.classList.add('visible');
+  // A second copy restarts the clock instead of being hidden by the first's.
+  if (copyFeedbackTimer) clearTimeout(copyFeedbackTimer);
+  copyFeedbackTimer = setTimeout(() => {
+    feedback.classList.remove('visible');
+    updateToastSpace();
+  }, COPY_FEEDBACK_MS);
+  updateToastSpace();
+}
+
+// A failed copy must say so: otherwise the user pastes whatever was on the
+// clipboard before, believing it is their tabs.
+function showCopyFailure(message) {
+  if (copyFeedbackTimer) clearTimeout(copyFeedbackTimer);
+  copyFeedbackTimer = null;
+  const feedback = document.getElementById('copyFeedback');
+  if (feedback) feedback.classList.remove('visible');
+  showActionResult(`Couldn't copy: ${message || 'unknown error'}`, 'error');
+}
+
 // Copy tab URLs to the clipboard.
 // scope: 'window' (current window only) | 'all' (every open window).
 function copyTabsToClipboard(scope = 'all', respectGroups = true) {
   chrome.runtime.sendMessage({ action: 'copyTabs', respectGroups, scope }, function (response) {
     if (chrome.runtime.lastError) {
       log('Error copying tabs:', chrome.runtime.lastError.message);
+      showCopyFailure(chrome.runtime.lastError.message);
       return;
     }
-    if (response && response.success && response.text !== undefined) {
-      navigator.clipboard.writeText(response.text).then(() => {
-        const feedback = document.getElementById('copyFeedback');
-        if (feedback) {
-          feedback.textContent = copyFeedbackMessage(response.tabCount, scope);
-          feedback.classList.add('visible');
-          setTimeout(() => feedback.classList.remove('visible'), 1500);
-        }
-      }).catch(err => {
-        log('Clipboard write failed:', err);
-      });
+    if (!response || !response.success || response.text === undefined) {
+      log('Background failed to copy tabs:', response && response.error);
+      showCopyFailure(response && response.error);
+      return;
     }
+    navigator.clipboard.writeText(response.text).then(() => {
+      showCopyFeedback(copyFeedbackMessage(response.tabCount, scope));
+    }).catch(err => {
+      log('Clipboard write failed:', err);
+      showCopyFailure((err && err.message) || 'the clipboard refused the write');
+    });
   });
 }
 
@@ -433,6 +522,10 @@ function updateAiButtonState() {
 
 // Pending unit while the picker is open: 'tab' | 'selected' | 'window' | 'group'
 let pendingSnoozeUnit = null;
+// True from sending a snooze until its reply: a double click or a held preset
+// key would otherwise snooze the tab twice, or snooze the tab that became
+// active after the first one closed.
+let snoozeInFlight = false;
 // Preset metadata from the background: [{ key, label, wakeAt }]
 let snoozePresetData = [];
 
@@ -617,9 +710,11 @@ function clearSnoozeFeedback() {
 // Send the snooze message for the pending unit and surface the result.
 function submitSnooze(wakeAt, preset) {
   const unit = pendingSnoozeUnit;
-  if (!unit) return;
+  if (!unit || snoozeInFlight) return;
   const action = SNOOZE_UNIT_TO_ACTION[unit];
+  snoozeInFlight = true;
   chrome.runtime.sendMessage({ action, wakeAt, preset }, (response) => {
+    snoozeInFlight = false;
     if (chrome.runtime.lastError) {
       showSnoozeFeedback('Could not snooze');
       return;
@@ -735,6 +830,7 @@ function showDiscardNotice(record) {
   pendingDiscard = { record, timer: setTimeout(hideDiscardNotice, DISCARD_UNDO_MS) };
   text.textContent = `Discarded ${record.summary}.`;
   notice.hidden = false;
+  updateToastSpace();
   refreshHotkeys();
 }
 
@@ -743,6 +839,7 @@ function hideDiscardNotice() {
   pendingDiscard = null;
   const notice = document.getElementById('discardNotice');
   if (notice) notice.hidden = true;
+  updateToastSpace();
   refreshHotkeys();
 }
 
@@ -1000,6 +1097,9 @@ function handleHotkeyKeydown(event) {
 
   // Never hijack keys while the user is typing.
   if (isTextInputTarget(event.target)) return;
+
+  // A held key auto-repeats; one press is one action.
+  if (event.repeat) return;
 
   const key = event.key && event.key.length === 1 ? event.key.toLowerCase() : '';
   if (!key) return;

@@ -52,7 +52,7 @@ The mark is three tabs huddled into one group, on Chrome blue, over a group line
 - **Width** is fixed at 380px, and the popup must stay under Chrome's **600px** cap in its heaviest normal state (the Split View row, several sleeping items, AI configured). Measured: 598px on Chrome 155.
 - **Buttons** are neutral surfaces (`--comp`) with a `--bd-control` edge. The Groups/Flat toggle's active side is a solid blue fill. "Organize with AI" is a soft blue action, deliberately not a solid hero: AI is a guest.
 - **Hotkey badges** use `--kbd-bg`/`--kbd-tx` and show the bare key (`D`, or a row digit).
-- **Feedback** (the result line, Undo, "Copied!") floats as toasts over the bottom edge, so it never adds height.
+- **Feedback** (the result line, Undo, "Copied!") floats as toasts over the bottom edge. While one shows, the page reserves its height at the bottom, so a toast never covers the footer or the picker's last row. Errors keep an opaque surface and wrap instead of truncating.
 - **The snooze picker is modal:** the rest of the popup steps aside while it's open.
 - **Icons** are drawn SVG at a 1.5px stroke in `currentColor`: settings sliders, a key for AI settings, "open" arrow, and a close mark for discarding a sleeping item (a dismissal in the nap voice, not a trash can). No emoji or Unicode glyphs stand in for icons. `⇧` and `⌘` appear only as key notation.
 

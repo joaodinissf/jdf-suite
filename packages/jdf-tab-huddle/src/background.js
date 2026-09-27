@@ -852,20 +852,18 @@ async function getTabGroupsInfo(windowId = null) {
   }
 }
 
+// A failed tab query throws rather than reading as "no tabs": callers would
+// otherwise report an empty window (e.g. "Split into 0 windows") as success.
+// Missing group details only cost the group info (getTabGroupsInfo copes).
 async function getTabsWithGroupInfo(windowId = null) {
-  try {
-    const query = windowId ? { windowId } : {};
-    const tabs = await chrome.tabs.query(query);
-    const groupsMap = await getTabGroupsInfo(windowId);
-    
-    return tabs.map(tab => ({
-      ...tab,
-      groupInfo: tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE ? groupsMap.get(tab.groupId) : null
-    }));
-  } catch (error) {
-    console.error('[Tab Organizer] Error getting tabs with group info:', error);
-    return [];
-  }
+  const query = windowId ? { windowId } : {};
+  const tabs = await chrome.tabs.query(query);
+  const groupsMap = await getTabGroupsInfo(windowId);
+
+  return tabs.map(tab => ({
+    ...tab,
+    groupInfo: tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE ? groupsMap.get(tab.groupId) : null
+  }));
 }
 
 // Helper function to recreate tab groups when moving tabs between windows
@@ -897,46 +895,42 @@ async function recreateTabGroup(groupInfo, tabIds, targetWindowId) {
   }
 }
 
-// Helper function to move tabs while preserving group structure
+// Helper function to move tabs while preserving group structure. Returns how
+// many tabs actually moved: a batch Chrome rejects (a tab closed mid-run, a
+// tab that can't be moved right now) is logged and skipped so the rest still
+// move, and the caller reports the real count instead of the planned one.
 async function moveTabsWithGroups(tabsToMove, targetWindowId) {
-  try {
-    // Group tabs by their original group
-    const tabsByGroup = new Map();
-    
-    for (const tab of tabsToMove) {
-      const groupKey = tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE ? tab.groupId : 'ungrouped';
-      if (!tabsByGroup.has(groupKey)) {
-        tabsByGroup.set(groupKey, []);
-      }
-      tabsByGroup.get(groupKey).push(tab);
+  // Group tabs by their original group; ungrouped tabs move first.
+  const tabsByGroup = new Map([['ungrouped', []]]);
+
+  for (const tab of tabsToMove) {
+    const groupKey = tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE ? tab.groupId : 'ungrouped';
+    if (!tabsByGroup.has(groupKey)) {
+      tabsByGroup.set(groupKey, []);
     }
-    
-    // Move ungrouped tabs first
-    if (tabsByGroup.has('ungrouped')) {
-      const ungroupedTabs = tabsByGroup.get('ungrouped');
-      await chrome.tabs.move(
-        ungroupedTabs.map(tab => tab.id),
-        { windowId: targetWindowId, index: -1 }
-      );
-      tabsByGroup.delete('ungrouped');
-    }
-    
-    // Move and recreate grouped tabs
-    for (const [_originalGroupId, groupTabs] of tabsByGroup.entries()) {
-      const tabIds = groupTabs.map(tab => tab.id);
-      
-      // Move tabs to target window first (they lose their group membership)
-      await chrome.tabs.move(tabIds, { windowId: targetWindowId, index: -1 });
-      
-      // Recreate the group if we have group info
-      if (groupTabs[0].groupInfo) {
-        await recreateTabGroup(groupTabs[0].groupInfo, tabIds, targetWindowId);
-      }
-    }
-    
-  } catch (error) {
-    console.error('[Tab Organizer] Error moving tabs with groups:', error);
+    tabsByGroup.get(groupKey).push(tab);
   }
+
+  let moved = 0;
+  for (const [groupKey, groupTabs] of tabsByGroup.entries()) {
+    if (groupTabs.length === 0) continue;
+    const tabIds = groupTabs.map(tab => tab.id);
+
+    // Move tabs to target window first (grouped ones lose their group membership)
+    try {
+      await chrome.tabs.move(tabIds, { windowId: targetWindowId, index: -1 });
+    } catch (error) {
+      console.error('[Tab Organizer] Error moving tabs with groups:', error);
+      continue;
+    }
+    moved += tabIds.length;
+
+    // Recreate the group if we have group info
+    if (groupKey !== 'ungrouped' && groupTabs[0].groupInfo) {
+      await recreateTabGroup(groupTabs[0].groupInfo, tabIds, targetWindowId);
+    }
+  }
+  return moved;
 }
 
 async function handleClumpOpenUrls(message, sender, sendResponse) {
@@ -1261,21 +1255,23 @@ async function handleExtractDomain(message, sendResponse) {
     }
 
     // Move matching tabs to the new window
+    let moved = 0;
     if (tabsToMove.length > 0) {
       if (respectGroups) {
-        await moveTabsWithGroups(tabsToMove, newWindow.id);
+        moved = await moveTabsWithGroups(tabsToMove, newWindow.id);
       } else {
         // Simple move for individual mode
         const tabIds = tabsToMove.map(tab => tab.id);
         await chrome.tabs.move(tabIds, { windowId: newWindow.id, index: -1 });
+        moved = tabIds.length;
       }
-      console.log('[Tab Organizer] Moved', tabsToMove.length, 'tabs to new window');
+      console.log('[Tab Organizer] Moved', moved, 'of', tabsToMove.length, 'tabs to new window');
     }
     await restoreSplitPairs(splitPairs);
 
     // Wait a moment for tabs to settle, then sort
     await settle();
-    await sortWindowTabs(newWindow.id, respectGroups);
+    const sorted = await sortWindowTabs(newWindow.id, respectGroups);
 
     // Activate the original active tab
     await chrome.tabs.update(message.tabId, { active: true });
@@ -1283,7 +1279,13 @@ async function handleExtractDomain(message, sendResponse) {
     console.log('[Tab Organizer] Completed extractDomain');
 
     // The active tab went into the new window too.
-    sendResponse({ success: true, moved: tabsToMove.length + 1, domain: targetDomain });
+    sendResponse({
+      success: true,
+      moved: moved + 1,
+      notMoved: tabsToMove.length - moved,
+      domain: targetDomain,
+      sortFailed: !sorted,
+    });
 
   } catch (error) {
     console.error('[Tab Organizer] Error in extractDomain:', error);
@@ -1306,10 +1308,10 @@ async function handleRemoveDuplicatesWindow(respectGroups = true, sendResponse) 
 
     // Sort remaining tabs in the current window
     await settle();
-    await sortWindowTabs(tabs[0].windowId, respectGroups);
+    const sorted = await sortWindowTabs(tabs[0].windowId, respectGroups);
     console.log('[Tab Organizer] Completed removeDuplicatesWindow');
 
-    sendResponse({ success: true, removed: tabsToRemove.length });
+    sendResponse({ success: true, removed: tabsToRemove.length, sortFailed: !sorted });
 
   } catch (error) {
     console.error('[Tab Organizer] Error in removeDuplicatesWindow:', error);
@@ -1333,12 +1335,13 @@ async function handleRemoveDuplicatesAllWindows(respectGroups = true, sendRespon
 
     // Sort all windows
     await settle();
+    let unsorted = 0;
     for (const window of windows) {
-      await sortWindowTabs(window.id, respectGroups);
+      if (!(await sortWindowTabs(window.id, respectGroups))) unsorted++;
     }
     console.log('[Tab Organizer] Completed removeDuplicatesAllWindows');
 
-    sendResponse({ success: true, removed: tabsToRemove.length });
+    sendResponse({ success: true, removed: tabsToRemove.length, sortFailed: unsorted > 0 });
 
   } catch (error) {
     console.error('[Tab Organizer] Error in removeDuplicatesAllWindows:', error);
@@ -1363,12 +1366,13 @@ async function handleRemoveDuplicatesGlobally(respectGroups = true, sendResponse
 
     // Sort all windows
     await settle();
+    let unsorted = 0;
     for (const window of windows) {
-      await sortWindowTabs(window.id, respectGroups);
+      if (!(await sortWindowTabs(window.id, respectGroups))) unsorted++;
     }
     console.log('[Tab Organizer] Completed removeDuplicatesGlobally');
 
-    sendResponse({ success: true, removed: tabsToRemove.length });
+    sendResponse({ success: true, removed: tabsToRemove.length, sortFailed: unsorted > 0 });
 
   } catch (error) {
     console.error('[Tab Organizer] Error in removeDuplicatesGlobally:', error);
@@ -1450,7 +1454,8 @@ function findDuplicateTabs(tabArrays, respectGroups = true) {
   return { tabsToRemove };
 }
 
-// Analyze all domains and their tab counts
+// Analyze all domains and their tab counts. A failed tab query throws: an
+// empty analysis would report "Split into 0 windows" as success.
 async function analyzeDomainDistribution() {
   try {
     const allTabsWithGroups = await getTabsWithGroupInfo();
@@ -1490,12 +1495,7 @@ async function analyzeDomainDistribution() {
     };
   } catch (error) {
     console.error('[Tab Organizer] Error analyzing domain distribution:', error);
-    return {
-      extractableDomains: [],
-      singleTabDomains: [],
-      domainTabCounts: new Map(),
-      domainTabs: new Map()
-    };
+    throw error;
   }
 }
 
@@ -1556,17 +1556,18 @@ async function handleExtractAllDomains(respectGroups = true, sendResponse) {
     }
 
     // Proceed with extraction
-    await performExtractAllDomains(domainAnalysis, respectGroups);
+    const { windows: created, notMoved } = await performExtractAllDomains(domainAnalysis, respectGroups);
 
     // Sort all windows after operations
     await settle();
     const windows = await chrome.windows.getAll({ populate: true });
+    let unsorted = 0;
     for (const window of windows) {
-      await sortWindowTabs(window.id, respectGroups);
+      if (!(await sortWindowTabs(window.id, respectGroups))) unsorted++;
     }
     console.log('[Tab Organizer] Completed Extract All Domains');
 
-    sendResponse({ success: true, windows: totalWindowsToCreate });
+    sendResponse({ success: true, windows: created, notMoved, sortFailed: unsorted > 0 });
 
   } catch (error) {
     console.error('[Tab Organizer] Error in Extract All Domains:', error);
@@ -1574,8 +1575,20 @@ async function handleExtractAllDomains(respectGroups = true, sendResponse) {
   }
 }
 
-// Perform the actual extraction logic
+// Perform the actual extraction logic. Returns { windows, notMoved }: the
+// windows it created and the tabs that should have joined one but stayed put.
 async function performExtractAllDomains(domainAnalysis, respectGroups = true) {
+  let windows = 0;
+  let notMoved = 0;
+  // Move tabs into a new window, counting the ones that didn't go.
+  const moveInto = async (tabs, windowId) => {
+    if (tabs.length === 0) return;
+    if (respectGroups) {
+      notMoved += tabs.length - await moveTabsWithGroups(tabs, windowId);
+    } else {
+      await chrome.tabs.move(tabs.map(tab => tab.id), { windowId, index: -1 });
+    }
+  };
   try {
     console.log('[Tab Organizer] Performing extraction for', domainAnalysis.extractableDomains.length, 'domains', respectGroups ? '(preserving groups)' : '(individual tabs)');
 
@@ -1596,17 +1609,10 @@ async function performExtractAllDomains(domainAnalysis, respectGroups = true) {
         tabId: anchorTab.id,
         focused: false // Don't focus individual domain windows
       });
+      windows++;
 
       // Move other tabs from this domain to the new window
-      const tabsToMove = domainTabs.slice(1);
-      if (tabsToMove.length > 0) {
-        if (respectGroups) {
-          await moveTabsWithGroups(tabsToMove, newWindow.id);
-        } else {
-          const tabIds = tabsToMove.map(tab => tab.id);
-          await chrome.tabs.move(tabIds, { windowId: newWindow.id, index: -1 });
-        }
-      }
+      await moveInto(domainTabs.slice(1), newWindow.id);
 
       console.log('[Tab Organizer] Created window for domain:', domain, 'with', domainTabs.length, 'tabs');
     }
@@ -1623,6 +1629,7 @@ async function performExtractAllDomains(domainAnalysis, respectGroups = true) {
         tabId: firstTab.id,
         focused: false
       });
+      windows++;
 
       // Move all other single tabs to the miscellaneous window
       const singleTabsToMove = [];
@@ -1632,14 +1639,7 @@ async function performExtractAllDomains(domainAnalysis, respectGroups = true) {
         singleTabsToMove.push(tab);
       }
 
-      if (singleTabsToMove.length > 0) {
-        if (respectGroups) {
-          await moveTabsWithGroups(singleTabsToMove, miscWindow.id);
-        } else {
-          const tabIds = singleTabsToMove.map(tab => tab.id);
-          await chrome.tabs.move(tabIds, { windowId: miscWindow.id, index: -1 });
-        }
-      }
+      await moveInto(singleTabsToMove, miscWindow.id);
 
       console.log('[Tab Organizer] Created miscellaneous window with', domainAnalysis.singleTabDomains.length, 'single-tab domains');
     }
@@ -1647,6 +1647,7 @@ async function performExtractAllDomains(domainAnalysis, respectGroups = true) {
     await restoreSplitPairs(splitPairs);
 
     console.log('[Tab Organizer] Extract All Domains extraction phase completed');
+    return { windows, notMoved };
 
   } catch (error) {
     console.error('[Tab Organizer] Error in performExtractAllDomains:', error);
@@ -2090,19 +2091,21 @@ async function handleMoveAllToSingleWindow(message, sendResponse) {
 
     // Move tabs based on mode
     const respectGroups = message.respectGroups !== undefined ? message.respectGroups : true;
+    let moved;
     if (respectGroups) {
-      await moveTabsWithGroups(tabsToMove, targetWindow.id);
+      moved = await moveTabsWithGroups(tabsToMove, targetWindow.id);
     } else {
       const tabIds = tabsToMove.map(tab => tab.id);
       await chrome.tabs.move(tabIds, { windowId: targetWindow.id, index: -1 });
+      moved = tabIds.length;
     }
     await restoreSplitPairs(splitPairs);
 
-    console.log('[Tab Organizer] Moved', tabsToMove.length, 'unpinned tabs to single window');
+    console.log('[Tab Organizer] Moved', moved, 'of', tabsToMove.length, 'unpinned tabs to single window');
 
     // Wait a moment for tabs to settle, then sort tabs in the target window
     await settle();
-    await sortWindowTabs(targetWindow.id, respectGroups);
+    const sorted = await sortWindowTabs(targetWindow.id, respectGroups);
 
     console.log('[Tab Organizer] Completed moveAllToSingleWindow');
 
@@ -2114,7 +2117,7 @@ async function handleMoveAllToSingleWindow(message, sendResponse) {
       await chrome.tabs.update(message.activeTabId, { active: true });
     }
 
-    sendResponse({ success: true, moved: tabsToMove.length });
+    sendResponse({ success: true, moved, notMoved: tabsToMove.length - moved, sortFailed: !sorted });
 
   } catch (error) {
     console.error('[Tab Organizer] Error in moveAllToSingleWindow:', error);
@@ -2467,8 +2470,42 @@ async function snoozeTabs(type, tabs, extras, wakeAt, preset) {
   // normal window.
   await guardLastWindowBeforeClose(snoozeable);
 
-  // 7. Close the tabs (closing all of a window's tabs closes the window).
-  await chrome.tabs.remove(snoozeable.map((t) => t.id));
+  // 7. Close the tabs (closing all of a window's tabs closes the window). If
+  // Chrome refuses, it stops at the first tab it can't close, so the tabs
+  // before it may already be gone. Check which are still open: the record
+  // keeps only the tabs that really closed, and when none did, the record and
+  // its alarm are dropped so "could not snooze" leaves nothing to reopen.
+  try {
+    await chrome.tabs.remove(snoozeable.map((t) => t.id));
+  } catch (error) {
+    const stillOpen = await Promise.all(
+      snoozeable.map((t) => chrome.tabs.get(t.id).then(() => true, () => false))
+    );
+    // record.tabs is in the same index order as snoozeable.
+    const closedTabs = record.tabs.filter((_t, i) => !stillOpen[i]);
+    if (closedTabs.length === record.tabs.length) {
+      return { success: true, record };
+    }
+    if (closedTabs.length > 0) {
+      record.tabs = closedTabs;
+      record.summary = buildSnoozeSummary(record.type, closedTabs, record.group);
+    }
+    await withSnoozeLock(async () => {
+      const items = await loadSnoozedItems();
+      await saveSnoozedItems(
+        closedTabs.length > 0
+          ? items.map((item) => (item.id === record.id ? record : item))
+          : items.filter((item) => item.id !== record.id)
+      );
+    });
+    if (closedTabs.length === 0) {
+      await chrome.alarms.clear(SNOOZE_ALARM_PREFIX + record.id);
+      throw error;
+    }
+    throw new Error(`Snoozed ${closedTabs.length} of ${snoozeable.length} tabs; ${error.message}`, {
+      cause: error,
+    });
+  }
 
   // 8. Done.
   return { success: true, record };

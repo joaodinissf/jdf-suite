@@ -219,6 +219,58 @@ describe('Tab Snoozing', () => {
       expect(chrome.tabs.remove).toHaveBeenCalledWith([10]);
     });
 
+    test('a close Chrome refuses leaves no sleeping record or alarm behind', async () => {
+      const store = useMemoryStore();
+      chrome.tabs.query.mockResolvedValue([
+        { id: 10, url: 'https://example.com/a', title: 'A', pinned: false, index: 0, windowId: 1 },
+      ]);
+      chrome.windows.getAll.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+      chrome.tabs.remove.mockRejectedValue(new Error('Tabs cannot be edited right now'));
+      // The tab is still open after the refused close.
+      chrome.tabs.get.mockImplementation((id) => Promise.resolve({ id }));
+
+      const sendResponse = vi.fn();
+      await handleSnoozeTab({ wakeAt: Date.now() + 3600000, preset: 'tomorrow' }, sendResponse);
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'Tabs cannot be edited right now' });
+      expect(store.snoozedItems).toEqual([]);
+      const alarmName = chrome.alarms.create.mock.calls[0][0];
+      expect(chrome.alarms.clear).toHaveBeenCalledWith(alarmName);
+      chrome.tabs.remove.mockReset();
+      chrome.tabs.get.mockReset();
+    });
+
+    test('a close that fails partway keeps the tabs that did close asleep', async () => {
+      const store = useMemoryStore();
+      const tabs = [10, 11, 12, 13, 14].map((id, index) => ({
+        id, url: `https://example.com/${id}`, title: `T${id}`, pinned: false, index, windowId: 1,
+      }));
+      chrome.tabs.query.mockResolvedValue(tabs);
+      chrome.windows.getAll.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+      // Chrome closed 10 and 11, then stopped at 12 (gone before the remove).
+      chrome.tabs.remove.mockRejectedValue(new Error('No tab with id: 12.'));
+      const closed = new Set([10, 11, 12]);
+      chrome.tabs.get.mockImplementation((id) =>
+        closed.has(id) ? Promise.reject(new Error(`No tab with id: ${id}.`)) : Promise.resolve({ id })
+      );
+
+      const sendResponse = vi.fn();
+      await handleSnoozeSelected({ wakeAt: Date.now() + 3600000, preset: 'tomorrow' }, sendResponse);
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: false,
+        error: 'Snoozed 3 of 5 tabs; No tab with id: 12.',
+      });
+      expect(store.snoozedItems).toHaveLength(1);
+      expect(store.snoozedItems[0].tabs.map((t) => t.url)).toEqual([
+        'https://example.com/10', 'https://example.com/11', 'https://example.com/12',
+      ]);
+      expect(store.snoozedItems[0].summary).toBe('3 selected tabs');
+      expect(chrome.alarms.clear).not.toHaveBeenCalled();
+      chrome.tabs.remove.mockReset();
+      chrome.tabs.get.mockReset();
+    });
+
     test('non-snoozeable active tab → error and nothing removed', async () => {
       useMemoryStore();
       chrome.tabs.query.mockResolvedValue([
