@@ -1074,6 +1074,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   } else if (message.action === 'cancelSnoozed') {
     handleCancelSnooze(message, sendResponse);
     return true;
+  } else if (message.action === 'restoreSnoozed') {
+    handleRestoreSnoozed(message, sendResponse);
+    return true;
   }
 });
 
@@ -2774,24 +2777,51 @@ async function handleWakeNow(message, sendResponse) {
   }
 }
 
+// Discard a snooze: drop the record and its alarm without reopening the tabs.
+// The tabs were closed when they were snoozed, so this is the destructive
+// action; the removed record is returned so the UI can offer an Undo.
 async function handleCancelSnooze(message, sendResponse) {
   try {
     const removed = await withSnoozeLock(async () => {
       const items = await loadSnoozedItems();
       const idx = items.findIndex((r) => r.id === message.id);
-      if (idx === -1) return false;
-      items.splice(idx, 1);
+      if (idx === -1) return null;
+      const [record] = items.splice(idx, 1);
       await saveSnoozedItems(items);
-      return true;
+      return record;
     });
     try {
       await chrome.alarms.clear(SNOOZE_ALARM_PREFIX + message.id);
     } catch (_e) {
       // harmless if already cleared
     }
-    sendResponse({ success: removed });
+    sendResponse({ success: removed !== null, record: removed || undefined });
   } catch (error) {
     console.error('[Tab Organizer] Error in cancelSnoozed:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// Undo a discard: put the record back and re-arm its alarm. A wake time that
+// passed during the undo window fires straight away, as a missed alarm would.
+async function handleRestoreSnoozed(message, sendResponse) {
+  try {
+    const record = message.record;
+    if (!record || typeof record.id !== 'string' || typeof record.wakeAt !== 'number' || !Array.isArray(record.tabs)) {
+      sendResponse({ success: false, error: 'Invalid snooze record' });
+      return;
+    }
+    const restored = await withSnoozeLock(async () => {
+      const items = await loadSnoozedItems();
+      if (items.some((r) => r.id === record.id)) return false;
+      items.push(record);
+      await saveSnoozedItems(items);
+      return true;
+    });
+    if (restored) await scheduleSnoozeAlarm(record);
+    sendResponse({ success: restored });
+  } catch (error) {
+    console.error('[Tab Organizer] Error in restoreSnoozed:', error);
     sendResponse({ success: false, error: error.message });
   }
 }

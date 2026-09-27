@@ -21,6 +21,7 @@
       --ac-txt: #7cc0ff;
       --sleep: #e0b64b;
       --sleep-soft: rgba(224, 182, 75, .15);
+      --danger: #ff8585;
       --ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
       --mono: ui-monospace, 'Cascadia Code', 'Segoe UI Mono', 'SFMono-Regular', Consolas, monospace;
     }
@@ -122,9 +123,37 @@
       background: var(--ac-soft);
     }
 
-    .textbtn.cancel:hover:not(:disabled) {
-      color: #ff8585;
-      border-color: #ff858555;
+    /* Discard drops the tabs for good: set apart from Wake now, red only
+       when you reach for it. */
+    .textbtn.discard {
+      border-color: transparent;
+    }
+
+    .textbtn.discard:hover:not(:disabled),
+    .textbtn.discard:focus-visible {
+      color: var(--danger);
+      border-color: var(--danger);
+    }
+
+    .undo-notice {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 16px;
+      padding: 9px 12px;
+      border: 1px solid var(--bd);
+      border-radius: 9px;
+      background: var(--panel);
+      font-size: 13px;
+    }
+
+    .undo-notice[hidden] {
+      display: none;
+    }
+
+    .undo-notice span {
+      flex: 1;
+      min-width: 0;
     }
 
     .day {
@@ -265,6 +294,11 @@
           <button id="wakeAll" class="textbtn wake">Wake all</button>
           <button id="openSettings" class="textbtn">Settings</button>
         </div>
+      </div>
+
+      <div id="discardNotice" class="undo-notice" role="status" aria-live="polite" hidden>
+        <span id="discardNoticeText"></span>
+        <button id="discardUndo" class="textbtn wake">Undo</button>
       </div>
 
       <div id="napDays"></div>
