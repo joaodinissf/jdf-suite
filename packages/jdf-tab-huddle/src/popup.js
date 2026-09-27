@@ -136,18 +136,92 @@ function log(message, ...args) {
   chrome.runtime.sendMessage({ type: 'log', data: { message, args } }).catch(() => { });
 }
 
-// Generic function to send actions to the background script
+// Generic function to send actions to the background script. The background
+// replies once the work is done; the popup then says what happened and
+// refreshes its window/tab counts.
 function sendAction(action, data = {}) {
   const message = { action, ...data };
   chrome.runtime.sendMessage(message, function (response) {
     if (chrome.runtime.lastError) {
       log(`Error from background for action "${action}":`, chrome.runtime.lastError.message);
-    } else if (response && !response.success) {
+      showActionResult(`Couldn't ${ACTION_VERBS[action] || 'do that'}: ${chrome.runtime.lastError.message}`, 'error');
+      return;
+    }
+    if (response && !response.success) {
       log(`Background failed for action "${action}":`, response.error);
-    } else if (response && response.cancelled) {
+      showActionResult(`Couldn't ${ACTION_VERBS[action] || 'do that'}: ${response.error || 'unknown error'}`, 'error');
+      return;
+    }
+    if (response && response.cancelled) {
       log(`Action "${action}" was cancelled by the user.`);
     }
+    const summary = describeActionResult(action, response || {});
+    if (summary) showActionResult(summary);
+    loadBrowserSnapshot();
   });
+}
+
+// "1 tab" / "3 tabs".
+function plural(n, noun) {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+}
+
+// For error messages: "Couldn't sort: …".
+const ACTION_VERBS = {
+  sortCurrentWindow: 'sort',
+  sortAllWindows: 'sort',
+  removeDuplicatesWindow: 'deduplicate',
+  removeDuplicatesAllWindows: 'deduplicate',
+  removeDuplicatesGlobally: 'deduplicate',
+  flattenWindow: 'ungroup',
+  extractDomain: 'extract the domain',
+  extractAllDomains: 'split domains',
+  moveAllToSingleWindow: 'merge windows',
+  compactWindow: 'compact',
+  expandWindow: 'expand',
+};
+
+// One line saying what an action did, from the counts the background returns.
+// Returns '' for actions that report elsewhere (AI opens its own tab).
+function describeActionResult(action, r) {
+  switch (action) {
+    case 'sortCurrentWindow':
+      return `Sorted ${plural(r.tabs || 0, 'tab')}`;
+    case 'sortAllWindows':
+      return `Sorted ${plural(r.tabs || 0, 'tab')} in ${plural(r.windows || 0, 'window')}`;
+    case 'removeDuplicatesWindow':
+    case 'removeDuplicatesAllWindows':
+    case 'removeDuplicatesGlobally':
+      // Deduplicating also re-sorts, so say so.
+      return r.removed ? `Closed ${plural(r.removed, 'duplicate')} and sorted` : 'No duplicates found';
+    case 'flattenWindow':
+      return r.ungrouped ? `Ungrouped ${plural(r.ungrouped, 'tab')}` : 'No groups to ungroup';
+    case 'extractDomain':
+      return `Moved ${plural(r.moved || 0, 'tab')}${r.domain ? ` from ${r.domain}` : ''} to a new window`;
+    case 'extractAllDomains':
+      return r.cancelled ? 'Split cancelled' : `Split into ${plural(r.windows || 0, 'window')}`;
+    case 'moveAllToSingleWindow':
+      return r.moved ? `Merged ${plural(r.moved, 'tab')} into this window` : 'Nothing to merge';
+    case 'compactWindow':
+      return r.paired ? `Paired ${plural(r.paired, 'Split View')}` : 'No neighbouring tabs to pair';
+    case 'expandWindow':
+      return r.unsplit ? `Separated ${plural(r.unsplit, 'Split View')}` : 'No Split Views to separate';
+    default:
+      return '';
+  }
+}
+
+const ACTION_RESULT_MS = 8000;
+let actionResultTimer = null;
+
+function showActionResult(text, kind = 'ok') {
+  const el = document.getElementById('actionResult');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('error', kind === 'error');
+  el.hidden = false;
+  if (actionResultTimer) clearTimeout(actionResultTimer);
+  actionResultTimer = setTimeout(() => { el.hidden = true; }, ACTION_RESULT_MS);
 }
 
 // Sort tabs by URL across all windows
@@ -531,8 +605,10 @@ function submitSnooze(wakeAt, preset) {
       return;
     }
     if (response && response.success) {
-      showSnoozeFeedback('Snoozed until ' + formatWakeTime(response.record.wakeAt));
+      // The picker closes, so the confirmation goes to the popup's result line
+      // (#snoozeFeedback lives inside the picker and would vanish with it).
       closeSnoozePicker();
+      showActionResult('Snoozed until ' + formatWakeTime(response.record.wakeAt));
       // No explicit re-render: the background's storage write fires the
       // chrome.storage.onChanged listener, which re-renders the list once.
     } else {

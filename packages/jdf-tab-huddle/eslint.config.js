@@ -122,6 +122,8 @@ export default [
         expandWindow: 'readonly',
         updateStatusBar: 'readonly',
         loadBrowserSnapshot: 'readonly',
+        describeActionResult: 'readonly',
+        showActionResult: 'readonly',
         formatTabsAsText: 'readonly',
         handleCopyTabs: 'readonly',
         updateContent: 'readonly',

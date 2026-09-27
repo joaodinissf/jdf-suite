@@ -1,6 +1,6 @@
 import { test } from '../fixtures/extension.js';
 import { expect } from '@playwright/test';
-import { resetBrowserState, createWindow, sleep } from '../helpers/tabs.js';
+import { resetBrowserState, createWindow, createTabs, sleep } from '../helpers/tabs.js';
 import { openPopup, switchMode } from '../helpers/popup.js';
 import { URLS } from '../helpers/constants.js';
 
@@ -136,6 +136,24 @@ test('59: All buttons have correct IDs (single action set)', async ({ sw, contex
     const button = popup.locator(`#${id}`);
     await expect(button).toHaveCount(1);
   }
+
+  await popup.close();
+});
+
+test('59b: The popup says what an action did (closed duplicates) and refreshes its counts', async ({ sw, context, extensionId }) => {
+  // One page open three times: deduplicating closes two copies.
+  await createTabs(sw, [URLS.EXAMPLE_A, URLS.EXAMPLE_A, URLS.EXAMPLE_A, URLS.TEST_A]);
+  await sleep(300);
+
+  const popup = await openPopup(context, extensionId);
+  const before = await popup.locator('#statusThisWindow').textContent();
+  await popup.click('#removeDuplicatesWindow');
+
+  // The line appears only once the background has finished (dedupe + sort).
+  await expect(popup.locator('#actionResult')).toHaveText('Closed 2 duplicates and sorted');
+  await expect(popup.locator('#actionResult')).toHaveAttribute('role', 'status');
+  // The footer counts refresh instead of staying stale.
+  await expect(popup.locator('#statusThisWindow')).not.toHaveText(before);
 
   await popup.close();
 });
