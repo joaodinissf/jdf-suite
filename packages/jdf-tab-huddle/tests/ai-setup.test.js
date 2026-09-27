@@ -106,6 +106,8 @@ describe('ai-setup.js', () => {
     // own explicit mod.init()/mod.setupEventListeners() calls (below,
     // against a DOM we build *after* loading) drive the module.
     document.body.innerHTML = '';
+    // The key check on save goes to OpenRouter; tests decide what it answers.
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
   });
 
   describe('formatTimeRemaining', () => {
@@ -190,6 +192,56 @@ describe('ai-setup.js', () => {
         })
       );
       expect(window.close).toHaveBeenCalled();
+      // Keeping the stored key does not re-check it with OpenRouter.
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    test('an expired stored key shows the expired notice and cannot be kept by leaving the field blank', async () => {
+      setLocationSearch('?mode=edit');
+      mockBackground({
+        models: MODELS,
+        expiryPresets: EXPIRY_PRESETS,
+        modelsMeta: MODELS_META,
+        config: {
+          key: btoa('sk-or-old'),
+          model: 'm1',
+          expiryDuration: 86400000,
+          expiresAt: Date.now() - 1000,
+        },
+      });
+      window.close = vi.fn();
+
+      const mod = loadAiSetup();
+      buildAiSetupDom();
+      await mod.init();
+      mod.setupEventListeners();
+
+      expect(document.getElementById('expiredNotice').style.display).toBe('block');
+      expect(document.getElementById('keyHelp').hidden).toBe(true);
+      expect(document.getElementById('apiKeyInput').placeholder).not.toMatch(/leave blank/i);
+
+      document.getElementById('apiKeyInput').value = '';
+      document.getElementById('saveButton').click();
+      await flushPromises();
+
+      expect(document.getElementById('errorMsg').textContent)
+        .toBe('Your key has expired — enter it again to renew.');
+      expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'saveAiConfig' })
+      );
+      expect(window.close).not.toHaveBeenCalled();
+
+      // Re-entering a key is accepted.
+      document.getElementById('apiKeyInput').value = 'sk-or-renewed';
+      document.getElementById('saveButton').click();
+      await flushPromises();
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'saveAiConfig',
+          config: expect.objectContaining({ key: 'sk-or-renewed' }),
+        })
+      );
     });
 
     test('malformed base64 in the stored key shows an error instead of throwing', async () => {
@@ -248,7 +300,7 @@ describe('ai-setup.js', () => {
       await mod.init();
       mod.setupEventListeners();
 
-      document.getElementById('apiKeyInput').value = 'sk-new-key';
+      document.getElementById('apiKeyInput').value = 'sk-or-new-key';
       document.getElementById('saveButton').click();
       await flushPromises();
 
@@ -281,7 +333,7 @@ describe('ai-setup.js', () => {
       await mod.init();
       mod.setupEventListeners();
 
-      document.getElementById('apiKeyInput').value = 'sk-new-key';
+      document.getElementById('apiKeyInput').value = 'sk-or-new-key';
       document.getElementById('saveButton').click();
       await flushPromises();
 
@@ -309,7 +361,7 @@ describe('ai-setup.js', () => {
       await mod.init();
       mod.setupEventListeners();
 
-      document.getElementById('apiKeyInput').value = 'sk-bad-key';
+      document.getElementById('apiKeyInput').value = 'sk-or-bad-key';
       document.getElementById('saveButton').click();
       await flushPromises();
 
@@ -338,7 +390,7 @@ describe('ai-setup.js', () => {
       await mod.init();
       mod.setupEventListeners();
 
-      document.getElementById('apiKeyInput').value = 'sk-bad-key';
+      document.getElementById('apiKeyInput').value = 'sk-or-bad-key';
       document.getElementById('saveButton').click();
       await flushPromises();
 
@@ -513,6 +565,225 @@ describe('ai-setup.js', () => {
           }),
         })
       );
+    });
+  });
+
+  describe('key validation and check on save', () => {
+    function mockBackground() {
+      chrome.runtime.sendMessage.mockImplementation(async (message) => {
+        if (message.action === 'loadAiConfig') {
+          return { models: MODELS, expiryPresets: EXPIRY_PRESETS, modelsMeta: MODELS_META, config: null };
+        }
+        if (message.action === 'saveAiConfig') return { success: true };
+        return {};
+      });
+    }
+
+    async function loadSetupPage() {
+      setLocationSearch('');
+      mockBackground();
+      window.close = vi.fn();
+      const mod = loadAiSetup();
+      buildAiSetupDom();
+      await mod.init();
+      mod.setupEventListeners();
+      return mod;
+    }
+
+    async function saveWithKey(value) {
+      document.getElementById('apiKeyInput').value = value;
+      document.getElementById('saveButton').click();
+      await flushPromises();
+    }
+
+    const saveCalls = () => chrome.runtime.sendMessage.mock.calls
+      .filter(([m]) => m.action === 'saveAiConfig');
+
+    test('a pasted "Bearer " prefix is stripped before checking and saving', async () => {
+      await loadSetupPage();
+      await saveWithKey('  Bearer sk-or-v1-abc  ');
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://openrouter.ai/api/v1/key',
+        expect.objectContaining({
+          method: 'GET',
+          headers: expect.objectContaining({ Authorization: 'Bearer sk-or-v1-abc' }),
+        })
+      );
+      expect(saveCalls()).toHaveLength(1);
+      expect(saveCalls()[0][0].config.key).toBe('sk-or-v1-abc');
+    });
+
+    test('a key that is not an OpenRouter key is refused without a network call', async () => {
+      await loadSetupPage();
+      await saveWithKey('sk-proj-openai-key');
+
+      expect(document.getElementById('errorMsg').textContent).toMatch(/start with "sk-or-"/);
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(saveCalls()).toHaveLength(0);
+    });
+
+    test.each([
+      ['a space', 'sk-or-v1 abc'],
+      ['a non-breaking space', 'sk-or-v1\u00a0abc'],
+      ['a tab', 'sk-or-v1\tabc'],
+    ])('a key containing %s is refused', async (_label, key) => {
+      await loadSetupPage();
+      await saveWithKey(key);
+
+      expect(document.getElementById('errorMsg').textContent).toMatch(/spaces or line breaks/);
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(saveCalls()).toHaveLength(0);
+    });
+
+    test.each([401, 403])('OpenRouter answering %s means the key is not saved', async (status) => {
+      await loadSetupPage();
+      global.fetch.mockResolvedValue({ ok: false, status });
+      await saveWithKey('sk-or-v1-revoked');
+
+      expect(document.getElementById('errorMsg').textContent).toBe('OpenRouter rejected this key.');
+      expect(saveCalls()).toHaveLength(0);
+      expect(window.close).not.toHaveBeenCalled();
+      expect(document.getElementById('saveButton').disabled).toBe(false);
+    });
+
+    test('a network failure during the check means the key is not saved', async () => {
+      await loadSetupPage();
+      global.fetch.mockRejectedValue(new TypeError('Failed to fetch'));
+      await saveWithKey('sk-or-v1-abc');
+
+      expect(document.getElementById('errorMsg').textContent).toMatch(/could not reach openrouter/i);
+      expect(saveCalls()).toHaveLength(0);
+    });
+
+    test('a key OpenRouter accepts is saved', async () => {
+      await loadSetupPage();
+      await saveWithKey('sk-or-v1-good');
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(saveCalls()).toHaveLength(1);
+      expect(window.close).toHaveBeenCalled();
+    });
+  });
+
+  describe('page readiness', () => {
+    test('Save stays disabled until init has filled the selects', async () => {
+      setLocationSearch('');
+      let answerLoad;
+      chrome.runtime.sendMessage.mockImplementation((message) => {
+        if (message.action === 'loadAiConfig') {
+          return new Promise((resolve) => { answerLoad = resolve; });
+        }
+        return Promise.resolve({ success: true });
+      });
+
+      const mod = loadAiSetup();
+      buildAiSetupDom();
+      const pending = mod.init();
+      mod.setupEventListeners();
+
+      expect(document.getElementById('saveButton').disabled).toBe(true);
+
+      answerLoad({ models: MODELS, expiryPresets: EXPIRY_PRESETS, modelsMeta: MODELS_META, config: null });
+      await pending;
+
+      expect(document.getElementById('expirySelect').options.length).toBeGreaterThan(0);
+      expect(document.getElementById('saveButton').disabled).toBe(false);
+    });
+
+    test('Save with no expiry chosen is refused instead of sending an unparsable duration', async () => {
+      setLocationSearch('');
+      chrome.runtime.sendMessage.mockResolvedValue({ success: true });
+      const mod = loadAiSetup();
+      buildAiSetupDom(); // expirySelect has no options
+      mod.setupEventListeners();
+
+      document.getElementById('apiKeyInput').value = 'sk-or-v1-abc';
+      document.getElementById('customModelId').value = 'acme/model';
+      document.getElementById('saveButton').click();
+      await flushPromises();
+
+      expect(document.getElementById('errorMsg').textContent).toBe('Please choose when the key should expire.');
+      expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'saveAiConfig' })
+      );
+    });
+  });
+
+  describe('formatModelsStatus', () => {
+    test('a stale cache with a fetch error names the error once', () => {
+      const mod = loadAiSetup();
+      const text = mod.formatModelsStatus(
+        { fromCache: true, stale: true, fetchedAt: Date.now() - 30 * 3600000, error: 'Failed to fetch' },
+        312
+      );
+      expect(text).toBe('312 models · stale cache (30h ago) · Failed to fetch');
+    });
+  });
+
+  describe('custom model id and the list', () => {
+    function mockBackground() {
+      chrome.runtime.sendMessage.mockImplementation(async (message) => {
+        if (message.action === 'loadAiConfig') {
+          return {
+            models: MODELS,
+            expiryPresets: EXPIRY_PRESETS,
+            modelsMeta: MODELS_META,
+            config: { key: btoa('sk-or-existing'), model: 'm1', expiryDuration: 86400000, expiresAt: null },
+          };
+        }
+        if (message.action === 'saveAiConfig') return { success: true };
+        return {};
+      });
+    }
+
+    test('filtering while a custom id is typed does not add it to the list', async () => {
+      setLocationSearch('?mode=edit');
+      mockBackground();
+      window.close = vi.fn();
+      const mod = loadAiSetup();
+      buildAiSetupDom();
+      await mod.init();
+      mod.setupEventListeners();
+
+      document.getElementById('modelSelect').value = 'm2';
+      document.getElementById('modelSelect').dispatchEvent(new window.Event('change'));
+      document.getElementById('customModelId').value = 'foo/bar';
+      document.getElementById('customModelId').dispatchEvent(new window.Event('input'));
+      document.getElementById('modelFilter').value = 'model';
+      document.getElementById('modelFilter').dispatchEvent(new window.Event('input'));
+
+      const values = Array.from(document.getElementById('modelSelect').options).map((o) => o.value);
+      expect(values).not.toContain('foo/bar');
+      expect(document.getElementById('modelSelect').value).toBe('m2');
+
+      // Clearing the custom field falls back to the list choice.
+      document.getElementById('customModelId').value = '';
+      document.getElementById('customModelId').dispatchEvent(new window.Event('input'));
+      document.getElementById('saveButton').click();
+      await flushPromises();
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'saveAiConfig',
+          config: expect.objectContaining({ model: 'm2' }),
+        })
+      );
+    });
+
+    test('a custom id not in the list shows a JSON-output warning', async () => {
+      setLocationSearch('?mode=edit');
+      mockBackground();
+      const mod = loadAiSetup();
+      buildAiSetupDom();
+      await mod.init();
+      mod.setupEventListeners();
+
+      document.getElementById('customModelId').value = 'foo/bar';
+      document.getElementById('customModelId').dispatchEvent(new window.Event('input'));
+
+      expect(document.getElementById('modelSchemaHint').textContent)
+        .toMatch(/may not support JSON output/);
     });
   });
 });

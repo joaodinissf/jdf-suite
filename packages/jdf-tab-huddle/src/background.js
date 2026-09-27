@@ -40,8 +40,30 @@ function formatModelCost(pricing) {
   return `$${perMillion.toFixed(2)}/M in`;
 }
 
+// Batch-only variants cannot answer a chat request, so the picker hides them.
+function isBatchOnlyModelId(id) {
+  return typeof id === 'string' && id.endsWith(':batch');
+}
+
+// Huddle needs a text reply in JSON, so a model must emit text and accept
+// response_format. Models the catalog says cannot do both are left out.
+function canHuddleUseModel(raw) {
+  if (isBatchOnlyModelId(raw.id)) return false;
+  const params = raw.supported_parameters || [];
+  if (!params.includes('response_format')) return false;
+  const arch = raw.architecture || {};
+  if (Array.isArray(arch.output_modalities)) return arch.output_modalities.includes('text');
+  // Older catalog shape: "text+image->text".
+  if (typeof arch.modality === 'string') {
+    const output = arch.modality.split('->')[1] || '';
+    return output.split('+').includes('text');
+  }
+  return false;
+}
+
 function normalizeOpenRouterModel(raw) {
   if (!raw || !raw.id) return null;
+  if (!canHuddleUseModel(raw)) return null;
   const params = raw.supported_parameters || [];
   return {
     id: raw.id,
@@ -90,7 +112,7 @@ function mergeModelsForPicker(remoteModels) {
   });
   const curatedIds = new Set(curated.map((m) => m.id));
   const rest = remote
-    .filter((m) => m && m.id && !curatedIds.has(m.id))
+    .filter((m) => m && m.id && !curatedIds.has(m.id) && !isBatchOnlyModelId(m.id))
     .slice()
     .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
   return curated.concat(rest);
@@ -280,25 +302,31 @@ function isKeyExpired(aiConfig) {
 async function saveAiConfig(config) {
   const key = encodeKey(config.key);
   const previous = await loadAiConfig();
+  // A missing or unparsable duration must not become a key that never expires.
+  const expiryDuration = config.expiryDuration === null
+    ? null
+    : (Number.isFinite(config.expiryDuration) && config.expiryDuration > 0
+      ? config.expiryDuration
+      : DEFAULT_EXPIRY);
 
   // Editing the model must not restart the key's countdown. Only a new key, a
   // changed expiry policy, or re-entering a key that has already expired resets
   // it; re-saving the same live key keeps its deadline.
   const keptKey = !!previous
     && previous.key === key
-    && previous.expiryDuration === config.expiryDuration
+    && previous.expiryDuration === expiryDuration
     && previous.expiresAt !== undefined
     && !isKeyExpired(previous);
 
   const expiresAt = keptKey
     ? previous.expiresAt
-    : (config.expiryDuration !== null ? Date.now() + config.expiryDuration : null);
+    : (expiryDuration !== null ? Date.now() + expiryDuration : null);
 
   const aiConfig = {
     key,
     model: config.model || DEFAULT_MODEL,
     expiresAt,
-    expiryDuration: config.expiryDuration,
+    expiryDuration,
     setupComplete: true,
   };
 
