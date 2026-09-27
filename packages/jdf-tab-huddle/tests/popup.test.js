@@ -538,3 +538,20 @@ describe('Action results (UI review F2)', () => {
     expect(el.classList.contains('error')).toBe(true);
   });
 });
+
+describe('Snooze picker is modal (UI review F4)', () => {
+  test('opening it marks the popup as picking, closing it clears the mark', () => {
+    document.body.innerHTML = `
+      <div class="grp" id="snoozeSection">
+        <button id="snoozeTab" class="chip">Tab</button>
+        <div id="snoozePickerPanel" hidden></div>
+        <div id="snoozeFeedback"></div>
+      </div>`;
+    openSnoozePicker('tab');
+    expect(document.getElementById('snoozePickerPanel').hidden).toBe(false);
+    expect(document.body.classList.contains('picking')).toBe(true);
+    closeSnoozePicker();
+    expect(document.getElementById('snoozePickerPanel').hidden).toBe(true);
+    expect(document.body.classList.contains('picking')).toBe(false);
+  });
+});
