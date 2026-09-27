@@ -281,12 +281,14 @@ async function saveAiConfig(config) {
   const key = encodeKey(config.key);
   const previous = await loadAiConfig();
 
-  // Editing the model must not restart the key's countdown. Only a new key or a
-  // changed expiry policy resets it; re-saving the same key keeps its deadline.
+  // Editing the model must not restart the key's countdown. Only a new key, a
+  // changed expiry policy, or re-entering a key that has already expired resets
+  // it; re-saving the same live key keeps its deadline.
   const keptKey = !!previous
     && previous.key === key
     && previous.expiryDuration === config.expiryDuration
-    && previous.expiresAt !== undefined;
+    && previous.expiresAt !== undefined
+    && !isKeyExpired(previous);
 
   const expiresAt = keptKey
     ? previous.expiresAt
