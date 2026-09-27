@@ -580,6 +580,24 @@
       cursor: pointer;
     }
 
+    /* What the last action did. One line, announced politely. */
+    .action-result {
+      font-size: 11px;
+      color: var(--ac-txt);
+      background: var(--ac-soft);
+      border-radius: 7px;
+      padding: 6px 10px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .action-result.error {
+      color: var(--danger);
+      background: transparent;
+      border: 1px solid var(--danger);
+    }
+
     /* footer */
     .foot {
       display: flex;
@@ -647,6 +665,8 @@
         <button id="modeFlat" data-action="setRespectGroups" data-value="false" aria-pressed="false">Flat</button>
       </div>
     </div>
+
+    <div id="actionResult" class="action-result" role="status" aria-live="polite" hidden></div>
 
     <div class="grp">
       <div class="eyebrow">This window<span class="rule"></span></div>
