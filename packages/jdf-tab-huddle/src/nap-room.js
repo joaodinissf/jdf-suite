@@ -127,8 +127,13 @@ function napBuildRow(record) {
   const badge = napGroupBadge(record);
   if (badge) {
     const badgeEl = document.createElement('span');
-    badgeEl.className = 'group-badge';
+    badgeEl.className = 'group-badge group-chip';
+    // A snoozed group keeps its Chrome colour; a window's groups show grey.
+    if (record.type === 'group' && record.group && record.group.color) {
+      badgeEl.setAttribute('data-group', record.group.color);
+    }
     badgeEl.textContent = badge;
+    badgeEl.title = badge;
     row.appendChild(badgeEl);
   }
 
@@ -146,6 +151,7 @@ function napBuildRow(record) {
   wakeBtn.className = 'textbtn wake';
   wakeBtn.setAttribute('data-action', 'wake');
   wakeBtn.textContent = 'Wake now';
+  wakeBtn.setAttribute('aria-label', `Wake ${record.summary} now`);
   const discardBtn = document.createElement('button');
   discardBtn.className = 'textbtn discard';
   discardBtn.setAttribute('data-action', 'discard');
@@ -163,15 +169,17 @@ function napBuildDaySection(section) {
   const day = document.createElement('div');
   day.className = 'day';
 
-  const header = document.createElement('div');
+  const header = document.createElement('h2');
   header.className = 'day-h';
-  const label = document.createElement('b');
+  header.setAttribute('data-group', 'yellow');
+  const label = document.createElement('span');
+  label.className = 'group-chip';
   label.textContent = section.label;
   const sub = document.createElement('span');
   sub.className = 'sub';
   sub.textContent = section.subtitle;
   const rule = document.createElement('span');
-  rule.className = 'rule';
+  rule.className = 'group-line';
   header.appendChild(label);
   header.appendChild(sub);
   header.appendChild(rule);

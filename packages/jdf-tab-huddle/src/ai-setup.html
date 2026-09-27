@@ -1,108 +1,185 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="UTF-8">
-  <title>Tab Organizer - AI Setup</title>
+  <title>Huddle — AI setup</title>
+  <link rel="stylesheet" href="huddle-theme.css">
   <style>
+    /* Tokens, fonts, light/dark and the tab-group chips live in
+       huddle-theme.css; this sheet is the AI setup page's layout only. */
+    * {
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      max-width: 600px;
-      margin: 50px auto;
-      padding: 30px;
-      background: #667eea;
-      color: white;
-      border-radius: 12px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.5;
     }
 
-    h2 {
-      margin-top: 0;
-      margin-bottom: 20px;
-      text-align: center;
-      font-size: 24px;
+    .page {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 40px 24px 64px;
     }
 
-    .warning {
-      background: rgba(255, 255, 255, 0.15);
-      padding: 18px;
-      border-radius: 8px;
-      margin: 20px 0;
-      border-left: 4px solid #ffc107;
-      line-height: 1.6;
+    .page-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
     }
 
-    .warning strong {
+    .logo {
+      width: 36px;
+      height: 36px;
+      flex: 0 0 auto;
       display: block;
-      margin-bottom: 10px;
-      font-size: 16px;
     }
 
-    .warning ul {
-      margin: 10px 0 0 0;
-      padding-left: 20px;
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -.015em;
+      line-height: 1.25;
     }
 
-    .warning li {
-      margin-bottom: 6px;
+    /* Callouts: a panel with a coloured edge (decoration); the text stays in
+       the ink colours. */
+    .warning,
+    .expired-notice {
+      background: var(--warn-soft);
+      border: 1px solid var(--warn-edge);
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin: 0 0 24px;
     }
 
     .expired-notice {
-      background: rgba(255, 193, 7, 0.25);
-      padding: 14px 18px;
-      border-radius: 8px;
-      margin: 20px 0;
-      border-left: 4px solid #ffc107;
+      background: var(--danger-soft);
+      border-color: var(--danger);
       font-weight: 600;
     }
 
-    .form-section {
-      background: rgba(255, 255, 255, 0.15);
-      padding: 18px;
-      border-radius: 8px;
-      margin: 20px 0;
+    /* Only the callout's title is a block; the "not encrypted" emphasis in
+       the body stays inline in its sentence. */
+    .warning > strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 15px;
+    }
+
+    .warning p {
+      margin: 0 0 8px;
+      color: var(--tx-dim);
+    }
+
+    .warning p strong {
+      color: var(--tx);
+    }
+
+    .warning ul {
+      margin: 0 0 8px;
+      padding-left: 20px;
+      color: var(--tx-dim);
+    }
+
+    .warning li {
+      margin-bottom: 4px;
+    }
+
+    .warning-body > :last-child {
+      margin-bottom: 0;
+    }
+
+    /* Sections are tab groups: a Chrome-style group chip and its group line
+       (see huddle-theme.css). */
+    .section-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 12px;
+      font-size: 12px;
+    }
+
+    .section-head .group-chip {
+      font-size: 12px;
+      padding: 2px 8px;
+    }
+
+    .current-config {
+      background: var(--panel);
+      border: 1px solid var(--bd);
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 28px;
+      font-size: 13.5px;
+    }
+
+    .current-config dl {
+      margin: 0;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 6px 16px;
+    }
+
+    .current-config dt {
+      color: var(--tx-dim);
+    }
+
+    .current-config dd {
+      margin: 0;
+      word-break: break-word;
+    }
+
+    .mono {
+      font-family: var(--mono);
+      font-size: 13px;
     }
 
     .form-group {
-      margin-bottom: 16px;
-    }
-
-    .form-group:last-child {
-      margin-bottom: 0;
+      margin-bottom: 28px;
     }
 
     .form-group label {
       display: block;
       font-weight: 600;
+      font-size: 13.5px;
       margin-bottom: 6px;
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      opacity: 0.9;
+    }
+
+    .form-group .label-gap {
+      margin-top: 14px;
     }
 
     .form-group input,
     .form-group select {
       width: 100%;
-      padding: 10px 12px;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      border-radius: 6px;
-      background: rgba(255, 255, 255, 0.1);
-      color: white;
-      font-size: 14px;
-      box-sizing: border-box;
-      transition: border-color 0.2s ease;
+      font: 14px/1.4 var(--ui);
+      color: var(--tx);
+      background: var(--comp);
+      border: 1px solid var(--bd-control);
+      border-radius: 7px;
+      padding: 9px 12px;
+      transition: border-color .12s;
     }
 
-    .form-group input:focus,
-    .form-group select:focus {
-      outline: none;
-      border-color: rgba(255, 255, 255, 0.6);
+    .form-group input:hover,
+    .form-group select:hover {
+      border-color: var(--bd-control-hi);
     }
 
-    .form-group select option {
-      background: #667eea;
-      color: white;
+    .form-group input::placeholder {
+      color: var(--tx-dim);
+      opacity: 1;
+    }
+
+    #apiKeyInput,
+    #customModelId {
+      font-family: var(--mono);
     }
 
     .key-input-wrapper {
@@ -115,113 +192,74 @@
 
     .key-toggle {
       position: absolute;
-      right: 8px;
+      right: 6px;
       top: 50%;
       transform: translateY(-50%);
-      background: none;
-      border: none;
-      color: white;
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      background: transparent;
+      border: 0;
+      border-radius: 6px;
+      color: var(--tx-dim);
       cursor: pointer;
-      font-size: 18px;
-      padding: 4px;
-      opacity: 0.7;
-      min-width: auto;
     }
 
-    .key-toggle:hover {
-      opacity: 1;
+    .key-toggle:hover,
+    .key-toggle[aria-pressed="true"] {
+      color: var(--tx);
+      background: var(--comp-hi);
     }
 
-    .key-status {
-      margin-top: 6px;
-      font-size: 12px;
-      opacity: 0.8;
+    .key-toggle svg {
+      width: 16px;
+      height: 16px;
     }
 
+    .key-status,
     .model-cost,
     .model-schema-hint,
     .models-status,
     .field-help {
-      font-size: 11px;
-      opacity: 0.7;
-      margin-top: 4px;
-    }
-
-    .field-help {
-      line-height: 1.4;
-    }
-
-    .current-config {
-      background: rgba(0, 0, 0, 0.28);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 10px;
-      padding: 14px 16px;
-      margin-bottom: 18px;
-      font-size: 13px;
-      line-height: 1.45;
-    }
-
-    .current-config[hidden] {
-      display: none !important;
-    }
-
-    .current-config h3 {
-      margin: 0 0 10px;
-      font-size: 12px;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      opacity: 0.75;
-      font-weight: 600;
-    }
-
-    .current-config dl {
-      margin: 0;
-      display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 6px 14px;
-    }
-
-    .current-config dt {
-      opacity: 0.65;
-      font-weight: 500;
-    }
-
-    .current-config dd {
-      margin: 0;
-      word-break: break-word;
-    }
-
-    .current-config .mono {
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 12px;
+      font-size: 12.5px;
+      color: var(--tx-dim);
+      margin-top: 6px;
     }
 
     .model-filter {
-      width: 100%;
-      padding: 8px 10px;
-      border-radius: 6px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      background: rgba(0, 0, 0, 0.25);
-      color: inherit;
-      font-size: 13px;
       margin-bottom: 8px;
-      box-sizing: border-box;
     }
 
-    .model-filter::placeholder {
-      opacity: 0.5;
-    }
-
+    /* The native listbox, themed: 8 whole rows (no half-cut last row), the
+       selected row in the action tint, and quiet group headers. */
     #modelSelect {
-      width: 100%;
-      min-height: 140px;
-      padding: 6px;
-      border-radius: 6px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      background: rgba(0, 0, 0, 0.25);
-      color: inherit;
-      font-size: 13px;
-      box-sizing: border-box;
+      height: calc(8 * 1.85em + 8px);
+      padding: 4px;
+      font-size: 13.5px;
+    }
+
+    /* Options set their own font: Chrome applies an optgroup's font to its
+       options, which would shrink the rows and break the 8-row height. */
+    #modelSelect option {
+      font: 400 13.5px/1.25 var(--ui);
+      padding: .3em .5em;
+      border-radius: 5px;
+      color: var(--tx);
+    }
+
+    /* A gradient is the one background Chrome lets a selected option keep. */
+    #modelSelect option:checked {
+      background: linear-gradient(var(--ac-soft), var(--ac-soft));
+      color: var(--tx);
+      font-weight: 600;
+    }
+
+    #modelSelect optgroup {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--tx-dim);
     }
 
     .model-actions {
@@ -232,180 +270,168 @@
       flex-wrap: wrap;
     }
 
-    .model-actions .secondary {
-      min-width: auto;
-      padding: 8px 14px;
-      font-size: 13px;
-      background: rgba(255, 255, 255, 0.12);
-      color: white;
-      box-shadow: none;
-    }
-
-    .model-actions .secondary:hover {
-      background: rgba(255, 255, 255, 0.2);
-      transform: none;
-    }
-
-    .model-actions .secondary:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-
-    #customModelId {
-      width: 100%;
-      padding: 8px 10px;
-      border-radius: 6px;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      background: rgba(0, 0, 0, 0.25);
-      color: inherit;
-      font-size: 13px;
-      box-sizing: border-box;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    .model-actions .models-status {
+      margin-top: 0;
     }
 
     .actions {
-      text-align: center;
-      margin-top: 30px;
+      margin-top: 32px;
       display: flex;
-      gap: 15px;
-      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
     }
 
-    button {
-      padding: 14px 28px;
-      border: none;
+    .btn {
+      font: 600 14px/1.2 var(--ui);
+      color: var(--tx);
+      background: var(--comp);
+      border: 1px solid var(--bd-control);
       border-radius: 8px;
+      padding: 10px 18px;
       cursor: pointer;
-      font-size: 16px;
-      font-weight: 600;
-      min-width: 150px;
-      transition: all 0.2s ease;
+      transition: background .12s, border-color .12s;
     }
 
-    .confirm {
-      background: #28a745;
-      color: white;
-      box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+    .btn:hover {
+      background: var(--comp-hi);
+      border-color: var(--bd-control-hi);
     }
 
-    .cancel {
-      background: #6c757d;
-      color: white;
-      box-shadow: 0 2px 8px rgba(108, 117, 125, 0.3);
+    .btn:disabled {
+      opacity: .5;
+      cursor: default;
     }
 
-    .danger {
-      background: #dc3545;
-      color: white;
-      box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+    .btn.small {
+      font-size: 13px;
+      padding: 6px 12px;
     }
 
-    .confirm:hover {
-      background: #218838;
-      transform: translateY(-2px);
-      box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4);
+    .btn.primary {
+      background: var(--ac);
+      border-color: var(--ac);
+      color: var(--on-ac);
     }
 
-    .cancel:hover {
-      background: #5a6268;
-      transform: translateY(-2px);
-      box-shadow: 0 4px 15px rgba(108, 117, 125, 0.4);
+    .btn.primary:hover {
+      background: var(--ac-hi);
+      border-color: var(--ac-hi);
     }
 
-    .danger:hover {
-      background: #c82333;
-      transform: translateY(-2px);
-      box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4);
+    /* Delete key drops the saved key: red, and set apart from Save. */
+    .btn.danger {
+      margin-left: auto;
+      color: var(--danger);
+      border-color: var(--danger);
+    }
+
+    .btn.danger:hover {
+      border-color: var(--danger);
     }
 
     .error-msg {
-      background: rgba(220, 53, 69, 0.3);
-      padding: 10px 14px;
-      border-radius: 6px;
-      margin-top: 15px;
-      font-size: 13px;
       display: none;
+      margin-top: 16px;
+      padding: 10px 14px;
+      background: var(--danger-soft);
+      border: 1px solid var(--danger);
+      border-radius: 8px;
+      color: var(--danger);
+      font-size: 13.5px;
+      font-weight: 600;
     }
   </style>
 </head>
 
 <body>
-  <h2 id="pageTitle">✨ AI Tab Grouping Setup</h2>
-
-  <div id="expiredNotice" class="expired-notice" style="display: none;">
-    ⚠️ Your API key has expired. Please re-enter it below.
-  </div>
-
-  <div id="warningSection" class="warning">
-    <strong>⚠️ Important: You are responsible for your API key</strong>
-    <div class="warning-body">
-      <p>This extension stores your OpenRouter API key locally in your browser using basic encoding. It is <strong>not encrypted</strong>. Anyone with access to your computer could potentially retrieve it.</p>
-      <ul>
-        <li>Only use API keys with spending limits set on OpenRouter</li>
-        <li>Set a short expiry time (default: 24 hours) so the key auto-expires</li>
-        <li>Never share your browser profile with untrusted users</li>
-      </ul>
-      <p>By proceeding, you accept full responsibility for the security of your API key.</p>
-    </div>
-  </div>
-
-  <div id="currentConfigCard" class="current-config" hidden>
-    <h3>Current configuration</h3>
-    <dl>
-      <dt>Model</dt>
-      <dd id="cfgModel">—</dd>
-      <dt>Model id</dt>
-      <dd id="cfgModelId" class="mono">—</dd>
-      <dt>Structured outputs</dt>
-      <dd id="cfgSchema">—</dd>
-      <dt>Key</dt>
-      <dd id="cfgKey">—</dd>
-      <dt>Expiry policy</dt>
-      <dd id="cfgExpiry">—</dd>
-    </dl>
-  </div>
-
-  <div class="form-section">
-    <div class="form-group">
-      <label for="apiKeyInput">OpenRouter API Key</label>
-      <div class="key-input-wrapper">
-        <input type="password" id="apiKeyInput" placeholder="sk-or-..." autocomplete="off">
-        <button class="key-toggle" id="keyToggle" title="Show/hide key">👁</button>
+  <main class="page">
+    <header class="page-head">
+      <img class="logo" src="icons/huddle-mark.svg" alt="Huddle">
+      <div>
+        <h1 id="pageTitle">AI tab grouping setup</h1>
       </div>
-      <div id="keyStatus" class="key-status"></div>
-      <div id="keyHelp" class="field-help" hidden>
-        Leave blank to keep your current key. Only fill this field to rotate the key.
-        You can change the model or expiry without re-entering the key.
+    </header>
+
+    <div id="expiredNotice" class="expired-notice" style="display: none;">
+      Your API key has expired. Please re-enter it below.
+    </div>
+
+    <div id="warningSection" class="warning">
+      <strong>You are responsible for your API key</strong>
+      <div class="warning-body">
+        <p>This extension stores your OpenRouter API key locally in your browser using basic encoding. It is <strong>not encrypted</strong>. Anyone with access to your computer could potentially retrieve it.</p>
+        <ul>
+          <li>Only use API keys with spending limits set on OpenRouter</li>
+          <li>Set a short expiry time (default: 24 hours) so the key auto-expires</li>
+          <li>Never share your browser profile with untrusted users</li>
+        </ul>
+        <p>By proceeding, you accept full responsibility for the security of your API key.</p>
       </div>
     </div>
 
-    <div class="form-group">
-      <label for="modelFilter">Model</label>
-      <input type="search" id="modelFilter" class="model-filter" placeholder="Filter models…" autocomplete="off">
-      <select id="modelSelect" size="8"></select>
-      <div class="model-actions">
-        <button type="button" class="secondary" id="refreshModels">Refresh catalog</button>
-        <span id="modelsStatus" class="models-status"></span>
-      </div>
-      <label for="customModelId" style="margin-top: 12px;">Or custom model id</label>
-      <input type="text" id="customModelId" placeholder="provider/model-name" autocomplete="off" spellcheck="false">
-      <div id="modelCost" class="model-cost"></div>
-      <div id="modelSchemaHint" class="model-schema-hint"></div>
+    <section id="currentConfigCard" class="current-config" data-group="grey" hidden>
+      <h2 class="section-head"><span class="group-chip">Current configuration</span><span class="group-line"></span></h2>
+      <dl>
+        <dt>Model</dt>
+        <dd id="cfgModel">—</dd>
+        <dt>Model id</dt>
+        <dd id="cfgModelId" class="mono">—</dd>
+        <dt>Structured outputs</dt>
+        <dd id="cfgSchema">—</dd>
+        <dt>Key</dt>
+        <dd id="cfgKey">—</dd>
+        <dt>Expiry policy</dt>
+        <dd id="cfgExpiry">—</dd>
+      </dl>
+    </section>
+
+    <div class="form-section">
+      <section class="form-group" data-group="cyan">
+        <h2 class="section-head"><span class="group-chip">Key</span><span class="group-line"></span></h2>
+        <label for="apiKeyInput">OpenRouter API key</label>
+        <div class="key-input-wrapper">
+          <input type="password" id="apiKeyInput" placeholder="sk-or-..." autocomplete="off">
+          <button type="button" class="key-toggle" id="keyToggle" aria-label="Show key" aria-pressed="false" title="Show or hide the key">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M1.5 8S3.9 3.5 8 3.5 14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+          </button>
+        </div>
+        <div id="keyStatus" class="key-status"></div>
+        <div id="keyHelp" class="field-help" hidden>
+          Leave blank to keep your current key. Only fill this field to rotate the key.
+          You can change the model or expiry without re-entering the key.
+        </div>
+      </section>
+
+      <section class="form-group" data-group="purple">
+        <h2 class="section-head"><span class="group-chip">Model</span><span class="group-line"></span></h2>
+        <label for="modelFilter">Filter models</label>
+        <input type="search" id="modelFilter" class="model-filter" placeholder="Name or id…" autocomplete="off">
+        <select id="modelSelect" size="8" aria-label="Model"></select>
+        <div class="model-actions">
+          <button type="button" class="btn small secondary" id="refreshModels">Refresh catalog</button>
+          <span id="modelsStatus" class="models-status"></span>
+        </div>
+        <label for="customModelId" class="label-gap">Or custom model id</label>
+        <input type="text" id="customModelId" placeholder="provider/model-name" autocomplete="off" spellcheck="false">
+        <div id="modelCost" class="model-cost"></div>
+        <div id="modelSchemaHint" class="model-schema-hint"></div>
+      </section>
+
+      <section class="form-group" data-group="cyan">
+        <h2 class="section-head"><span class="group-chip">Expiry</span><span class="group-line"></span></h2>
+        <label for="expirySelect">Key expires after</label>
+        <select id="expirySelect"></select>
+      </section>
     </div>
 
-    <div class="form-group">
-      <label for="expirySelect">Key Expires After</label>
-      <select id="expirySelect"></select>
+    <div id="errorMsg" class="error-msg" role="alert"></div>
+
+    <div class="actions">
+      <button class="btn primary confirm" id="saveButton">Save &amp; organize</button>
+      <button class="btn cancel" id="cancelButton">Cancel</button>
+      <button class="btn danger" id="deleteButton" style="display: none;">Delete key</button>
     </div>
-  </div>
-
-  <div id="errorMsg" class="error-msg"></div>
-
-  <div class="actions">
-    <button class="confirm" id="saveButton">Save & Organize</button>
-    <button class="cancel" id="cancelButton">Cancel</button>
-    <button class="danger" id="deleteButton" style="display: none;">Delete Key</button>
-  </div>
+  </main>
 
   <script src="ai-setup.js"></script>
 </body>

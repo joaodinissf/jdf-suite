@@ -244,7 +244,7 @@ document.body.innerHTML = `
     <button class="cancel" id="cancelButton">Cancel</button>
   </div>
   <div id="content"><div class="loading">Loading proposal...</div></div>
-  <button class="debug-toggle" id="debugToggle">Show raw model I/O</button>
+  <button class="debug-toggle" id="debugToggle">Show the model's raw output</button>
   <div class="debug-section" id="debugSection"></div>
 `;
 const aiProposalJs = readFileSync(resolve(__dirname, '../src/ai-proposal.js'), 'utf8');

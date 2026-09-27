@@ -92,7 +92,7 @@ describe('Confirmation Dialog', () => {
 
       // extractable=2, single=3 -> totalWindows = 2 + 1 = 3
       expect(windowCountEl.textContent).toBe('This will create 3 new browser windows.');
-      expect(confirmButtonEl.textContent).toBe('🚀 Create 3 Windows');
+      expect(confirmButtonEl.textContent).toBe('Create 3 windows');
     });
 
     test('operationList includes both extractable and miscellaneous list items', () => {
@@ -127,7 +127,7 @@ describe('Confirmation Dialog', () => {
       expect(document.getElementById('windowCount').textContent).toBe(
         'This will create 1 new browser window.'
       );
-      expect(document.getElementById('confirmButton').textContent).toBe('🚀 Create 1 Window');
+      expect(document.getElementById('confirmButton').textContent).toBe('Create 1 window');
     });
 
     test('totalWindows > 1 uses the plural "windows" label (button and window-count text)', () => {
@@ -139,7 +139,7 @@ describe('Confirmation Dialog', () => {
       expect(document.getElementById('windowCount').textContent).toBe(
         'This will create 2 new browser windows.'
       );
-      expect(document.getElementById('confirmButton').textContent).toBe('🚀 Create 2 Windows');
+      expect(document.getElementById('confirmButton').textContent).toBe('Create 2 windows');
     });
 
     test('extractableCount === 0 omits the extractable-domains list item', () => {
@@ -152,7 +152,7 @@ describe('Confirmation Dialog', () => {
       expect(html).not.toContain('windows</strong> will be created, one for each domain');
       expect(html).toContain('<strong>1 miscellaneous window</strong> will be created for 3 single-tab domains');
       // totalWindows = 0 + 1 = 1
-      expect(document.getElementById('confirmButton').textContent).toBe('🚀 Create 1 Window');
+      expect(document.getElementById('confirmButton').textContent).toBe('Create 1 window');
     });
 
     test('singleTabCount === 0 omits the miscellaneous-window list item', () => {
@@ -168,7 +168,7 @@ describe('Confirmation Dialog', () => {
       expect(document.getElementById('windowCount').textContent).toBe(
         'This will create 2 new browser windows.'
       );
-      expect(document.getElementById('confirmButton').textContent).toBe('🚀 Create 2 Windows');
+      expect(document.getElementById('confirmButton').textContent).toBe('Create 2 windows');
     });
   });
 

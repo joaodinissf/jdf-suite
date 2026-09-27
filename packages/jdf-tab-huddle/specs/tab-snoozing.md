@@ -61,11 +61,11 @@ All presets are computed by `computePresetWakeTime(preset, now = Date.now())` in
 
 | Preset key | Label | Rule |
 |---|---|---|
-| `laterToday` | Later Today | `now + 3h`, exactly. |
+| `laterToday` | Later today | `now + 3h`, exactly. |
 | `tonight` | Tonight | Today at **18:00**. If `now >= 18:00` already, `now + 1h` instead. |
 | `tomorrow` | Tomorrow | Calendar tomorrow at **09:00** (always future, even at 23:59). |
-| `weekend` | This Weekend | The next Saturday at **09:00** that is strictly after `now`. Wednesday → this Saturday; Saturday 08:00 → today 09:00; Saturday 10:00 or Sunday → next week's Saturday. |
-| `nextWeek` | Next Week | The next Monday at **09:00** strictly after *today* (never today — Monday 08:00 still yields next week's Monday, 7 days out; Sunday yields tomorrow, which is next ISO week). |
+| `weekend` | This weekend | The next Saturday at **09:00** that is strictly after `now`. Wednesday → this Saturday; Saturday 08:00 → today 09:00; Saturday 10:00 or Sunday → next week's Saturday. |
+| `nextWeek` | Next week | The next Monday at **09:00** strictly after *today* (never today — Monday 08:00 still yields next week's Monday, 7 days out; Sunday yields tomorrow, which is next ISO week). |
 
 **Past-time guard:** the presets cannot produce past times, but as a safety net for clock skew, popup-open drift, and custom input races, every handler passes the incoming `wakeAt` through `clampWakeAt(wakeAt, now)` = `Math.max(wakeAt, now + 60_000)`. A **custom** time that is already in the past (or unparseable) is instead **rejected**: the popup validates first (`snoozeCustomTime` value must be ≥ now + 1 min, else show "Pick a time in the future" in `#snoozeFeedback` and send nothing), and the background double-checks custom submissions (`preset === 'custom' && wakeAt < now + 60_000` → `{ success: false, error: 'Wake time is in the past' }`). Presets are clamped, never rejected.
 

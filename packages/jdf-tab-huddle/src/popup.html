@@ -4,36 +4,10 @@
 <head>
   <meta charset="UTF-8">
   <title>Huddle</title>
+  <link rel="stylesheet" href="huddle-theme.css">
   <style>
-    :root {
-      color-scheme: dark;
-      --bg: #0a0a0c;
-      --panel: #111114;
-      --comp: #17171b;
-      --comp-hi: #202026;
-      --bd: #26262c;
-      --bd-hi: #3a3a42;
-      --tx: #f3f4f6;
-      --tx-dim: #8b8d97;
-      --ac: #3aa0ff;
-      --ac-hi: #59b1ff;
-      --ac-line: rgba(255, 255, 255, .16);
-      --ac-soft: rgba(58, 160, 255, .15);
-      --ac-txt: #7cc0ff;
-
-      /* Contrast (UI review F3): text on the accent fill, and control edges
-         that reach 3:1 against every surface (WCAG 1.4.11). --bd stays for
-         dividers and panels, which are decoration. */
-      --on-ac: #06121f;
-      --bd-control: #63656e;
-      --bd-control-hi: #8b8d97;
-      --sleep: #e0b64b;
-      --sleep-soft: rgba(224, 182, 75, .15);
-      --danger: #ff8585;
-      --ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
-      --mono: ui-monospace, 'Cascadia Code', 'Segoe UI Mono', 'SFMono-Regular', Consolas, monospace;
-    }
-
+    /* Tokens, fonts, light/dark and the tab-group chips live in
+       huddle-theme.css; this sheet is the popup's layout only. */
     * {
       box-sizing: border-box;
     }
@@ -63,7 +37,7 @@
     }
 
     .p-pad {
-      padding: 12px 14px;
+      padding: 10px 14px;
       display: flex;
       flex-direction: column;
       gap: 8px;
@@ -84,22 +58,16 @@
     }
 
     .logo {
-      width: 22px;
-      height: 22px;
-      border-radius: 7px;
-      background: var(--ac);
-      display: grid;
-      place-items: center;
-      color: var(--on-ac);
-      box-shadow: 0 0 0 1px var(--ac-line) inset;
-      font-size: 12px;
+      width: 24px;
+      height: 24px;
       flex: 0 0 auto;
+      display: block;
     }
 
     .brand h2 {
       margin: 0;
-      font-size: 14.5px;
-      font-weight: 650;
+      font-size: 15px;
+      font-weight: 700;
       letter-spacing: -.01em;
       color: var(--tx);
     }
@@ -143,32 +111,33 @@
       box-shadow: 0 1px 2px rgba(0, 0, 0, .35);
     }
 
-    /* groups */
-    .eyebrow {
-      font-size: 9.5px;
-      text-transform: uppercase;
-      letter-spacing: .14em;
-      font-weight: 600;
-      color: var(--tx-dim);
-      margin: 0 0 4px;
+    /* Sections are tab groups: a Chrome-style group chip and its group line
+       (see huddle-theme.css). */
+    .section-head {
       display: flex;
       align-items: center;
       gap: 7px;
+      margin: 0 0 4px;
+      font-size: 11px;
     }
 
-    .eyebrow .rule {
-      flex: 1;
-      height: 1px;
-      background: var(--bd);
-      opacity: .6;
+    h3.group-chip {
+      margin: 0;
     }
 
-    .eyebrow .count-pill {
-      font: 600 9.5px var(--mono);
-      padding: 1px 6px;
+    /* Drawn icons (settings, open the nap room), in the text colour. */
+    .ico {
+      width: 12px;
+      height: 12px;
+      flex: 0 0 auto;
+    }
+
+    .group-chip .count-pill {
+      font: 700 10px/1.4 var(--mono);
+      padding: 0 5px;
       border-radius: 99px;
-      background: var(--sleep-soft);
-      color: var(--sleep);
+      background: rgba(0, 0, 0, .14);
+      color: inherit;
     }
 
     .grp {
@@ -204,7 +173,7 @@
       background: var(--comp);
       border: 1px solid var(--bd-control);
       border-radius: 7px;
-      padding: 7px 8px;
+      padding: 6px 8px;
       cursor: pointer;
       transition: background .12s, border-color .12s, transform .06s;
       white-space: nowrap;
@@ -225,17 +194,17 @@
       width: 100%;
     }
 
+    /* The AI action is a guest, not the hero: a soft blue action. */
     .btn.primary {
-      background: var(--ac);
+      background: var(--ac-soft);
       border-color: var(--ac);
-      color: var(--on-ac);
-      font-weight: 600;
+      color: var(--ac-txt);
+      font-weight: 700;
       justify-content: center;
     }
 
     .btn.primary:hover {
-      background: var(--ac-hi);
-      border-color: var(--ac-hi);
+      background: var(--comp-hi);
     }
 
     .btn.mini {
@@ -273,8 +242,10 @@
     }
 
     .ai-cog-btn {
-      flex: 0 0 32px;
+      flex: 0 0 auto;
       justify-content: center;
+      gap: 5px;
+      padding-inline: 8px;
     }
 
     /* Sits in the AI row, beside the button; the full model id is its title. */
@@ -301,25 +272,20 @@
       font: 700 8.5px var(--mono);
       line-height: 1.5;
       border-radius: 3px;
-      background: rgba(0, 0, 0, .32);
-      color: #fff;
+      background: var(--kbd-bg);
+      color: var(--kbd-tx);
       vertical-align: middle;
-      opacity: .8;
       pointer-events: none;
     }
 
     .seg button .hotkey-hint {
       margin-left: 3px;
-      background: rgba(0, 0, 0, .25);
     }
 
-    /* Badges on the accent fill follow its dark text, at full opacity: the
-       base badge's .8 opacity would dilute the contrast. */
-    .btn.primary .hotkey-hint,
+    /* Badges on the accent fill follow the fill's ink. */
     .seg button[aria-pressed="true"] .hotkey-hint {
-      background: rgba(6, 18, 31, .16);
+      background: rgba(0, 0, 0, .16);
       color: var(--on-ac);
-      opacity: 1;
     }
 
     .chip .hotkey-hint,
@@ -344,7 +310,7 @@
       align-items: center;
       justify-content: center;
       gap: 4px;
-      padding: 7px 4px;
+      padding: 6px 4px;
       background: var(--comp);
       border: 1px solid var(--bd-control);
       border-radius: 7px;
@@ -387,6 +353,12 @@
       gap: 4px;
     }
 
+    /* Five presets on two columns: the last one spans the row instead of
+       sitting alone. */
+    #snoozePreset-nextWeek {
+      grid-column: 1 / -1;
+    }
+
     .preset {
       min-width: 0;
       overflow: hidden;
@@ -394,7 +366,7 @@
       font-family: var(--ui);
       font-size: 10.5px;
       font-weight: 600;
-      color: var(--tx-dim);
+      color: var(--tx);
       background: transparent;
       border: 1px solid var(--bd-control);
       border-radius: 6px;
@@ -428,8 +400,14 @@
     }
 
     #snoozeCustomTime::-webkit-calendar-picker-indicator {
-      filter: invert(1);
       cursor: pointer;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      #snoozeCustomTime::-webkit-calendar-picker-indicator {
+        filter: invert(1) brightness(1.4);
+        opacity: 1;
+      }
     }
 
     #snoozeCustomConfirm,
@@ -618,8 +596,8 @@
 
     .toasts {
       position: fixed;
-      left: 14px;
-      right: 14px;
+      left: 10px;
+      right: 10px;
       bottom: 10px;
       display: flex;
       flex-direction: column;
@@ -628,13 +606,15 @@
       pointer-events: none;
     }
 
+    /* Toasts float: a raised surface, inset from the popup's edges, so they
+       never read as another list row. */
     .toasts > * {
       pointer-events: auto;
-      background: var(--panel);
-      border: 1px solid var(--bd-control);
-      border-radius: 9px;
-      padding: 8px 10px;
-      box-shadow: 0 6px 18px rgba(0, 0, 0, .55);
+      background: var(--comp-hi);
+      border: 1px solid var(--bd-hi);
+      border-radius: 10px;
+      padding: 8px 11px;
+      box-shadow: var(--shadow-float);
     }
 
     /* What the last action did. One line, announced politely. */
@@ -681,9 +661,12 @@
       align-items: center;
       gap: 5px;
       color: var(--tx-dim);
+      font: inherit;
       font-size: 10.5px;
+      background: none;
+      border: 0;
+      padding: 0;
       cursor: pointer;
-      text-decoration: none;
     }
 
     .foot-right {
@@ -710,7 +693,13 @@
 
     <div class="p-head">
       <div class="brand">
-        <span class="logo">H</span>
+        <svg class="logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <rect width="32" height="32" rx="8" fill="#1a73e8"/>
+          <path d="M5 21V14q0-2 2-2h2q2 0 2 2v7Z" fill="#fff"/>
+          <path d="M13 21V11q0-2 2-2h2q2 0 2 2v10Z" fill="#fff"/>
+          <path d="M21 21V14q0-2 2-2h2q2 0 2 2v7Z" fill="#fff"/>
+          <rect x="5" y="23.5" width="22" height="3" rx="1.5" fill="#fdd663"/>
+        </svg>
         <div>
           <h2>Huddle</h2>
           <small id="modeSubtitle">respecting groups</small>
@@ -724,7 +713,7 @@
 
 
     <div class="grp">
-      <div class="eyebrow">This window<span class="rule"></span></div>
+      <h3 class="section-head" data-group="blue"><span class="group-chip">This window</span><span class="group-line"></span></h3>
       <div class="grid3" style="margin-bottom: 6px">
         <button id="sortCurrentWindow" class="btn" data-action="sortCurrentWindow"
           title="Sort tabs alphabetically by URL">Sort</button>
@@ -746,12 +735,12 @@
         <!-- Beside the button rather than on its own line: keeps the popup under 600px. -->
         <span id="aiModelLine" class="ai-model-line" hidden></span>
         <button id="aiSettings" class="btn ai-cog-btn" data-action="openAiSettings" style="display: none"
-          title="AI settings">&#9881;</button>
+          title="AI settings" aria-label="AI settings"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="5.5" cy="10.5" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7.7 8.3 13 3M11 5l1.5 1.5M9.5 6.5 11 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
       </div>
     </div>
 
     <div class="grp">
-      <div class="eyebrow">Extract &amp; copy<span class="rule"></span></div>
+      <h3 class="section-head" data-group="green"><span class="group-chip">Extract &amp; copy</span><span class="group-line"></span></h3>
       <div class="grid2">
         <button id="extractDomain" class="btn mini" data-action="extractDomain"
           title="Move all tabs of the current domain into a new window">Extract domain</button>
@@ -765,15 +754,15 @@
     </div>
 
     <div class="grp" id="snoozeSection">
-      <div class="eyebrow">Snooze<span class="rule"></span></div>
+      <h3 class="section-head" data-group="yellow"><span class="group-chip">Snooze</span><span class="group-line"></span></h3>
       <div class="snooze-targets">
-        <button id="snoozeTab" class="chip" data-action="openSnoozePicker" data-unit="tab"
+        <button id="snoozeTab" class="chip" aria-expanded="false" aria-controls="snoozePickerPanel" data-action="openSnoozePicker" data-unit="tab"
           title="Snooze the active tab">Tab</button>
-        <button id="snoozeSelected" class="chip" data-action="openSnoozePicker" data-unit="selected"
+        <button id="snoozeSelected" class="chip" aria-expanded="false" aria-controls="snoozePickerPanel" data-action="openSnoozePicker" data-unit="selected"
           title="Snooze all highlighted tabs">Selected</button>
-        <button id="snoozeWindow" class="chip" data-action="openSnoozePicker" data-unit="window"
+        <button id="snoozeWindow" class="chip" aria-expanded="false" aria-controls="snoozePickerPanel" data-action="openSnoozePicker" data-unit="window"
           title="Snooze every tab in this window">Window</button>
-        <button id="snoozeGroup" class="chip" data-action="openSnoozePicker" data-unit="group"
+        <button id="snoozeGroup" class="chip" aria-expanded="false" aria-controls="snoozePickerPanel" data-action="openSnoozePicker" data-unit="group"
           title="Snooze the active tab's group">Group</button>
       </div>
       <div id="snoozePickerPanel" hidden>
@@ -785,7 +774,7 @@
           <button id="snoozePreset-nextWeek" class="preset"></button>
         </div>
         <div class="custom-row">
-          <input type="datetime-local" id="snoozeCustomTime">
+          <input type="datetime-local" id="snoozeCustomTime" aria-label="Custom snooze time">
           <button id="snoozeCustomConfirm">Snooze</button>
           <button id="snoozePickerCancel">Cancel</button>
         </div>
@@ -794,7 +783,7 @@
     </div>
 
     <div class="grp multi-window-section">
-      <div class="eyebrow">All windows<span class="rule"></span></div>
+      <h3 class="section-head" data-group="purple"><span class="group-chip">All windows</span><span class="group-line"></span></h3>
       <div class="grid2">
         <button id="sortAllWindows" class="btn" data-action="sortAllWindows"
           title="Sort tabs in every window alphabetically by URL">Sort all windows</button>
@@ -808,9 +797,10 @@
     </div>
 
     <div class="grp" id="sleepingSection" hidden>
-      <div class="eyebrow">Sleeping <span id="sleepingCount" class="count-pill">0</span><span class="rule"></span>
+      <div class="section-head" data-group="yellow">
+        <h3 class="group-chip">Sleeping <span id="sleepingCount" class="count-pill">0</span></h3><span class="group-line"></span>
         <button id="expandSleeping" class="expand-link" data-action="openNapRoom"
-          title="Open the full sleeping list in its own tab">Expand&#8599;</button>
+          title="Open the full sleeping list in its own tab">Nap room <svg class="ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6.5 3.5h6v6M12.5 3.5l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
       <div class="sleep-wrap">
         <ul id="snoozedList"></ul>
@@ -824,7 +814,7 @@
         <div class="multi-window-section"><span id="statusAllWindows"></span></div>
       </div>
       <div class="foot-right">
-        <a href="#" id="openOptions" class="gear">&#9881; Settings</a>
+        <button type="button" id="openOptions" class="gear"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 4h6.5M12.5 4H14M2 8h1.5M7.5 8H14M2 12h5.5M11.5 12H14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10.5" cy="4" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="5.5" cy="8" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="9.5" cy="12" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5"/></svg> Settings</button>
         <span id="openShortcut" class="open-shortcut" hidden></span>
       </div>
     </div>

@@ -1,22 +1,35 @@
-// Chrome tab group color values for the color picker
+// Chrome's tab group colours and their accessible names, for the colour
+// picker. The swatches themselves come from huddle-theme.css (data-group).
 const COLOR_MAP = {
-  grey:   '#9aa0a6',
-  blue:   '#8ab4f8',
-  red:    '#f28b82',
-  yellow: '#fdd663',
-  green:  '#81c995',
-  pink:   '#ff8bcb',
-  purple: '#c58af9',
-  cyan:   '#78d9ec',
-  orange: '#fcad70',
+  grey:   'Grey',
+  blue:   'Blue',
+  red:    'Red',
+  yellow: 'Yellow',
+  green:  'Green',
+  pink:   'Pink',
+  purple: 'Purple',
+  cyan:   'Cyan',
+  orange: 'Orange',
 };
+
+const CHECK_ICON = '<svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">'
+  + '<path d="M2.5 6.2l2.3 2.3 4.7-5" fill="none" stroke="currentColor" stroke-width="1.8" '
+  + 'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+function tabCountLabel(n) {
+  return n + (n === 1 ? ' tab' : ' tabs');
+}
 
 let proposal = null; // { groups, ungroupedTabIds, tabs, windowId }
 let tabMap = {};      // id → tab metadata
 
+// The error text can come from the network, so it is set as text, never HTML.
 function showError(msg) {
-  document.getElementById('content').innerHTML =
-    `<div class="error-msg">${msg}</div>`;
+  const content = document.getElementById('content');
+  const el = document.createElement('div');
+  el.className = 'error-msg';
+  el.textContent = msg;
+  content.replaceChildren(el);
 }
 
 function getTabMeta(tabId) {
@@ -27,6 +40,8 @@ function getTabMeta(tabId) {
 function buildMoveSelect(tabId, currentGroupIndex) {
   const select = document.createElement('select');
   select.className = 'tab-move';
+  select.setAttribute('aria-label', `Move "${getTabMeta(tabId).title}" to group`);
+  select.dataset.focusKey = `move-${tabId}`;
 
   proposal.groups.forEach((g, i) => {
     const opt = document.createElement('option');
@@ -74,15 +89,23 @@ function moveTab(tabId, fromGroupIndex, toValue) {
 function renderColorPicker(groupIndex) {
   const container = document.createElement('div');
   container.className = 'color-select';
+  container.setAttribute('role', 'group');
+  container.setAttribute('aria-label', 'Group colour');
 
-  for (const [name, hex] of Object.entries(COLOR_MAP)) {
-    const dot = document.createElement('div');
+  for (const [name, label] of Object.entries(COLOR_MAP)) {
+    const dot = document.createElement('button');
+    dot.type = 'button';
     dot.className = 'color-dot';
-    if (proposal.groups[groupIndex].color === name) {
+    const active = proposal.groups[groupIndex].color === name;
+    if (active) {
       dot.classList.add('active');
     }
-    dot.style.backgroundColor = hex;
-    dot.title = name;
+    dot.dataset.group = name;
+    dot.setAttribute('aria-label', label);
+    dot.setAttribute('aria-pressed', String(active));
+    dot.title = label;
+    dot.dataset.focusKey = `dot-${groupIndex}-${name}`;
+    dot.innerHTML = CHECK_ICON;
     dot.addEventListener('click', () => {
       proposal.groups[groupIndex].color = name;
       render();
@@ -96,6 +119,7 @@ function renderColorPicker(groupIndex) {
 function renderGroup(group, groupIndex) {
   const card = document.createElement('div');
   card.className = 'group-card';
+  card.dataset.group = group.color;
 
   // Header
   const header = document.createElement('div');
@@ -105,19 +129,27 @@ function renderGroup(group, groupIndex) {
   nameInput.type = 'text';
   nameInput.className = 'group-name';
   nameInput.value = group.name;
+  nameInput.setAttribute('aria-label', 'Group name');
+  nameInput.dataset.focusKey = `name-${groupIndex}`;
   nameInput.addEventListener('change', () => {
     proposal.groups[groupIndex].name = nameInput.value.slice(0, 40);
-    // Update all move-selects to reflect the new name
-    render();
+    // Update all move-selects to reflect the new name. Deferred a tick:
+    // `change` fires before Tab moves focus, so rendering now would remove
+    // the control focus is heading to.
+    setTimeout(render, 0);
   });
 
   const count = document.createElement('span');
   count.className = 'tab-count';
-  count.textContent = group.tabIds.length + (group.tabIds.length === 1 ? ' tab' : ' tabs');
+  count.textContent = tabCountLabel(group.tabIds.length);
+
+  const line = document.createElement('span');
+  line.className = 'group-line';
 
   header.appendChild(nameInput);
-  header.appendChild(renderColorPicker(groupIndex));
   header.appendChild(count);
+  header.appendChild(line);
+  header.appendChild(renderColorPicker(groupIndex));
   card.appendChild(header);
 
   // Tab list
@@ -131,6 +163,7 @@ function renderGroup(group, groupIndex) {
 
     const favicon = document.createElement('img');
     favicon.className = 'tab-favicon';
+    favicon.alt = '';
     favicon.src = meta.favIconUrl || 'chrome://favicon/size/16/' + meta.url;
     favicon.onerror = () => { favicon.style.display = 'none'; };
 
@@ -153,20 +186,17 @@ function renderUngrouped() {
   if (proposal.ungroupedTabIds.length === 0) return null;
 
   const card = document.createElement('div');
-  card.className = 'group-card';
-  card.style.opacity = '0.7';
+  card.className = 'group-card ungrouped';
 
   const header = document.createElement('div');
   header.className = 'group-header';
   const label = document.createElement('span');
-  label.className = 'group-name';
+  label.className = 'ungrouped-label';
   label.textContent = 'Ungrouped';
-  label.style.cursor = 'default';
-  label.style.opacity = '0.8';
 
   const count = document.createElement('span');
   count.className = 'tab-count';
-  count.textContent = proposal.ungroupedTabIds.length + ' tabs';
+  count.textContent = tabCountLabel(proposal.ungroupedTabIds.length);
 
   header.appendChild(label);
   header.appendChild(count);
@@ -182,6 +212,7 @@ function renderUngrouped() {
 
     const favicon = document.createElement('img');
     favicon.className = 'tab-favicon';
+    favicon.alt = '';
     favicon.src = meta.favIconUrl || 'chrome://favicon/size/16/' + meta.url;
     favicon.onerror = () => { favicon.style.display = 'none'; };
 
@@ -200,8 +231,13 @@ function renderUngrouped() {
   return card;
 }
 
+// Re-rendering replaces every control, so the focused one (a colour dot, a
+// move select, a name input) is found again by its focus key afterwards.
 function render() {
   const content = document.getElementById('content');
+  const focusKey = content.contains(document.activeElement)
+    ? document.activeElement.dataset.focusKey
+    : null;
   content.innerHTML = '';
 
   for (let i = 0; i < proposal.groups.length; i++) {
@@ -212,6 +248,11 @@ function render() {
   if (ungrouped) content.appendChild(ungrouped);
 
   document.getElementById('actionsContainer').style.display = 'flex';
+
+  if (focusKey) {
+    const target = content.querySelector(`[data-focus-key="${focusKey}"]`);
+    if (target) target.focus();
+  }
 }
 
 function escapeHtml(str) {
@@ -245,7 +286,7 @@ function initDebugSection(model, messages) {
 
   // Show debug section during streaming
   section.classList.add('visible');
-  document.getElementById('debugToggle').textContent = 'Hide raw model I/O';
+  document.getElementById('debugToggle').textContent = 'Hide the model\'s raw output';
 }
 
 function appendChunk(text) {
@@ -261,7 +302,7 @@ function setupDebugToggle() {
   const section = document.getElementById('debugSection');
   toggle.addEventListener('click', () => {
     const visible = section.classList.toggle('visible');
-    toggle.textContent = visible ? 'Hide raw model I/O' : 'Show raw model I/O';
+    toggle.textContent = visible ? 'Hide the model\'s raw output' : 'Show the model\'s raw output';
   });
 }
 
@@ -301,7 +342,7 @@ function handleMessage(msg) {
     // Collapse debug section now that the proposal is rendered
     const section = document.getElementById('debugSection');
     section.classList.remove('visible');
-    document.getElementById('debugToggle').textContent = 'Show raw model I/O';
+    document.getElementById('debugToggle').textContent = 'Show the model\'s raw output';
   } else if (msg.type === 'ai-error') {
     showError(msg.error);
   }
@@ -311,24 +352,19 @@ function showInstructionsInput() {
   const params = new URLSearchParams(window.location.search);
   const respectGroups = params.get('respectGroups') !== 'false';
   const modeHint = respectGroups
-    ? 'Organizing <strong>ungrouped tabs only</strong> (Tab Groups Mode)'
-    : 'Reorganizing <strong>all tabs</strong> (Individual Mode)';
+    ? 'Organizing <strong>ungrouped tabs only</strong> (Groups)'
+    : 'Reorganizing <strong>all tabs</strong> (Flat)';
 
   const content = document.getElementById('content');
   content.innerHTML = `
-    <div style="font-size: 12px; opacity: 0.7; text-align: center; margin-bottom: 12px;">${modeHint}</div>
-    <div style="margin: 20px 0;">
-      <label style="display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px;">
-        How should your tabs be organized?
-      </label>
-      <textarea id="userInstructions" rows="3" placeholder='Leave blank for default grouping, or e.g. "group movies by decade of release"'
-        style="width: 100%; padding: 10px 12px; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px;
-        background: rgba(255,255,255,0.1); color: white; font-size: 13px; font-family: inherit;
-        box-sizing: border-box; resize: vertical;"></textarea>
+    <p class="mode-hint">${modeHint}</p>
+    <div class="instructions">
+      <label for="userInstructions">How should your tabs be organized?</label>
+      <textarea id="userInstructions" rows="3" placeholder='Leave blank for default grouping, or e.g. "group movies by decade of release"'></textarea>
     </div>
-    <div style="display: flex; gap: 15px; justify-content: center;">
-      <button class="confirm" id="startOrganize" style="min-width: 150px;">Organize</button>
-      <button class="cancel" id="cancelOrganize" style="min-width: 150px;">Cancel</button>
+    <div class="form-actions">
+      <button class="btn primary confirm" id="startOrganize">Organize</button>
+      <button class="btn cancel" id="cancelOrganize">Cancel</button>
     </div>`;
 
   document.getElementById('startOrganize').addEventListener('click', () => {
@@ -337,7 +373,7 @@ function showInstructionsInput() {
 
     // Show debug section by default
     document.getElementById('debugSection').classList.add('visible');
-    document.getElementById('debugToggle').textContent = 'Hide raw model I/O';
+    document.getElementById('debugToggle').textContent = 'Hide the model\'s raw output';
 
     // Listen for pushed messages from background
     chrome.runtime.onMessage.addListener(handleMessage);
