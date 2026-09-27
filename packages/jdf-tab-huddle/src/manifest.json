@@ -40,8 +40,8 @@
   "commands": {
     "_execute_action": {
       "suggested_key": {
-        "default": "Ctrl+Shift+U",
-        "mac": "Command+Shift+U"
+        "default": "Alt+Shift+U",
+        "mac": "Alt+Shift+U"
       },
       "description": "Open the Huddle popup. Rebind at chrome://extensions/shortcuts"
     }
