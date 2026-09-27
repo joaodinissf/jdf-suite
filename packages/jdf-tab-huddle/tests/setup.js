@@ -205,6 +205,8 @@ const popupWrapper = `
   if (typeof loadBrowserSnapshot !== 'undefined') global.loadBrowserSnapshot = loadBrowserSnapshot;
   if (typeof describeActionResult !== 'undefined') global.describeActionResult = describeActionResult;
   if (typeof showActionResult !== 'undefined') global.showActionResult = showActionResult;
+  if (typeof openSnoozePicker !== 'undefined') global.openSnoozePicker = openSnoozePicker;
+  if (typeof closeSnoozePicker !== 'undefined') global.closeSnoozePicker = closeSnoozePicker;
   if (typeof aiOrganize !== 'undefined') global.aiOrganize = aiOrganize;
   if (typeof openAiSettings !== 'undefined') global.openAiSettings = openAiSettings;
   if (typeof updateAiButtonState !== 'undefined') global.updateAiButtonState = updateAiButtonState;

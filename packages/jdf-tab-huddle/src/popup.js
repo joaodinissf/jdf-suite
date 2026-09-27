@@ -567,6 +567,7 @@ function openSnoozePicker(unit) {
   markSelectedUnitButton(unit);
   clearSnoozeFeedback();
   panel.hidden = false;
+  document.body.classList.add('picking');
   // The picker is now the active (modal) hotkey set.
   refreshHotkeys();
 }
@@ -574,6 +575,7 @@ function openSnoozePicker(unit) {
 function closeSnoozePicker() {
   const panel = document.getElementById('snoozePickerPanel');
   if (panel) panel.hidden = true;
+  document.body.classList.remove('picking');
   pendingSnoozeUnit = null;
   markSelectedUnitButton(null);
   // Back to the main hotkey set.
@@ -658,12 +660,13 @@ function renderSnoozedList() {
       const wakeBtn = document.createElement('button');
       wakeBtn.className = 'snoozed-wake';
       wakeBtn.setAttribute('data-action', 'wake');
-      wakeBtn.textContent = 'Wake now';
+      wakeBtn.textContent = 'Wake';
+      wakeBtn.title = 'Wake now: reopen these tabs';
 
       const discardBtn = document.createElement('button');
       discardBtn.className = 'snoozed-discard';
       discardBtn.setAttribute('data-action', 'discard');
-      discardBtn.textContent = 'Discard';
+      discardBtn.innerHTML = TRASH_ICON;
       discardBtn.title = 'Discard these tabs without reopening them';
       discardBtn.setAttribute('aria-label', `Discard ${item.summary} without reopening`);
 
@@ -685,6 +688,12 @@ function wakeNow(id) {
   // mutates snoozedItems — no explicit re-render (avoids a double render).
   chrome.runtime.sendMessage({ action: 'wakeSnoozed', id }, () => {});
 }
+
+// Drawn (not an emoji) so it matches the popup's stroke weight; the button's
+// accessible name comes from its aria-label.
+const TRASH_ICON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">'
+  + '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M7 7v4M9 7v4" fill="none" '
+  + 'stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 // Discarding drops the snoozed tabs for good (they were closed at snooze time),
 // so it is undoable for a few seconds instead of asking for confirmation.

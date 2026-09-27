@@ -126,6 +126,8 @@ export default [
         loadBrowserSnapshot: 'readonly',
         describeActionResult: 'readonly',
         showActionResult: 'readonly',
+        openSnoozePicker: 'readonly',
+        closeSnoozePicker: 'readonly',
         formatTabsAsText: 'readonly',
         handleCopyTabs: 'readonly',
         updateContent: 'readonly',
