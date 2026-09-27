@@ -60,6 +60,39 @@ describe('callOpenRouter - error status mapping', () => {
     );
   });
 
+  test('401 with an OpenRouter explanation shows that explanation, not "invalid key"', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ...makeErrorResponse(401),
+      text: async () => JSON.stringify({
+        error: { code: 401, message: 'User not found.', metadata: { provider_name: 'DeepSeek' } },
+      }),
+    });
+    const err = await callOpenRouter('key', 'model', []).catch((e) => e);
+    expect(err.message).toBe('OpenRouter refused the request (401): User not found. (provider: DeepSeek)');
+    expect(err.status).toBe(401);
+    expect(err.openRouterError.code).toBe(401);
+  });
+
+  test('other statuses append OpenRouter\'s explanation', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ...makeErrorResponse(503),
+      text: async () => JSON.stringify({ error: { message: 'No endpoints available' } }),
+    });
+    await expect(callOpenRouter('key', 'model', [])).rejects.toThrow(
+      'OpenRouter API error (503): No endpoints available'
+    );
+  });
+
+  test('a non-JSON error body is shown as text', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ...makeErrorResponse(500),
+      text: async () => 'upstream timeout',
+    });
+    await expect(callOpenRouter('key', 'model', [])).rejects.toThrow(
+      'OpenRouter API error (500): upstream timeout'
+    );
+  });
+
   test('500 -> generic status-coded message', async () => {
     global.fetch = vi.fn().mockResolvedValue(makeErrorResponse(500));
     await expect(callOpenRouter('key', 'model', [])).rejects.toThrow(
