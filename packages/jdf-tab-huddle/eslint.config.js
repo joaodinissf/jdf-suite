@@ -107,6 +107,8 @@ export default [
         setRespectGroups: 'readonly',
         saveUserPreference: 'readonly',
         loadUserPreferences: 'readonly',
+        initModeToggle: 'readonly',
+        handleSortCurrentWindow: 'readonly',
         sortAllWindows: 'readonly',
         sortCurrentWindow: 'readonly',
         extractDomain: 'readonly',

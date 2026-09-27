@@ -1091,8 +1091,12 @@ async function handleSortAllWindows(respectGroups = true, sendResponse) {
     console.log('[Tab Organizer] Sorting tabs in', windows.length, 'windows', respectGroups ? '(preserving groups)' : '(individual tabs)');
 
     // Sort tabs within each window
+    let unsorted = 0;
     for (const window of windows) {
-      await sortWindowTabs(window.id, respectGroups);
+      if (!(await sortWindowTabs(window.id, respectGroups))) unsorted++;
+    }
+    if (unsorted > 0) {
+      throw new Error(`${unsorted} of ${windows.length} windows couldn't be sorted. Try again.`);
     }
 
     console.log('[Tab Organizer] Completed sortAllWindows');
@@ -1113,7 +1117,9 @@ async function handleSortCurrentWindow(respectGroups = true, sendResponse) {
     const tabs = await chrome.tabs.query({ currentWindow: true });
     console.log('[Tab Organizer] Sorting tabs in current window', respectGroups ? '(preserving groups)' : '(individual tabs)');
 
-    await sortWindowTabs(tabs[0].windowId, respectGroups);
+    if (!(await sortWindowTabs(tabs[0].windowId, respectGroups))) {
+      throw new Error('The window couldn\'t be sorted. Try again.');
+    }
 
     console.log('[Tab Organizer] Completed sortCurrentWindow');
     sendResponse({ success: true, tabs: tabs.length });
@@ -1617,84 +1623,96 @@ function sortTabsAsUnits(tabs) {
 // Sort a window's tabs. The batch move dissolves every Split View it touches,
 // so the pairs are recorded first and split again afterwards; this covers every
 // operation that ends in a sort (sort, dedup, AI organize, extract, merge).
+// Resolves true once sorted, false if it couldn't be.
 async function sortWindowTabs(windowId, respectGroups = true) {
   const splitPairs = await captureSplitPairs([windowId]);
-  await moveTabsIntoSortedOrder(windowId, respectGroups);
+  const sorted = await moveTabsIntoSortedOrder(windowId, respectGroups);
   await restoreSplitPairs(splitPairs);
+  return sorted;
 }
 
+// A tab that closes between the query and the batch move makes Chrome reject
+// the whole move, so the first failure re-queries and tries once more.
 async function moveTabsIntoSortedOrder(windowId, respectGroups = true) {
-  try {
-    const tabsWithGroups = respectGroups ? await getTabsWithGroupInfo(windowId) : await chrome.tabs.query({ windowId });
-    
-    // Separate pinned tabs (never move these)
-    const pinnedTabs = tabsWithGroups.filter(tab => tab.pinned);
-    const unpinnedTabs = tabsWithGroups.filter(tab => !tab.pinned);
-    
-    if (!respectGroups) {
-      // Simple sort for individual mode (Split View pairs stay together)
-      const sortedTabs = sortTabsAsUnits(unpinnedTabs);
-
-      // Move tabs to sorted positions as a batch (omit windowId — tabs are
-      // already in this window)
-      if (sortedTabs.length > 0) {
-        await chrome.tabs.move(
-          sortedTabs.map(t => t.id),
-          { index: pinnedTabs.length }
-        );
-      }
-      return;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      await sortWindowTabsOnce(windowId, respectGroups);
+      return true;
+    } catch (error) {
+      console.error(`[Tab Organizer] Error sorting window tabs (attempt ${attempt}):`, error);
     }
+  }
+  return false;
+}
 
-    // Group-aware sorting logic
-    const ungroupedTabs = [];
-    const groupedTabsMap = new Map();
+// One pass of sortWindowTabs: query the window's tabs and move them into order.
+async function sortWindowTabsOnce(windowId, respectGroups) {
+  const tabsWithGroups = respectGroups ? await getTabsWithGroupInfo(windowId) : await chrome.tabs.query({ windowId });
+  
+  // Separate pinned tabs (never move these)
+  const pinnedTabs = tabsWithGroups.filter(tab => tab.pinned);
+  const unpinnedTabs = tabsWithGroups.filter(tab => !tab.pinned);
+  
+  if (!respectGroups) {
+    // Simple sort for individual mode (Split View pairs stay together)
+    const sortedTabs = sortTabsAsUnits(unpinnedTabs);
 
-    for (const tab of unpinnedTabs) {
-      if (tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
-        ungroupedTabs.push(tab);
-      } else {
-        if (!groupedTabsMap.has(tab.groupId)) {
-          groupedTabsMap.set(tab.groupId, []);
-        }
-        groupedTabsMap.get(tab.groupId).push(tab);
-      }
-    }
-
-    // Sort ungrouped tabs by URL (Split View pairs stay together)
-    const sortedUngrouped = sortTabsAsUnits(ungroupedTabs);
-
-    // Sort tabs within each group by URL (Split View pairs stay together)
-    for (const [groupId, groupTabs] of groupedTabsMap.entries()) {
-      groupedTabsMap.set(groupId, sortTabsAsUnits(groupTabs));
-    }
-
-    // Determine the final order: pinned tabs, then ungrouped tabs, then grouped tabs
-    let currentIndex = pinnedTabs.length;
-
-    // Move ungrouped tabs first as a batch (omit windowId — tabs are already
-    // in this window, and passing windowId can trigger Chrome's cross-window
-    // group migration)
-    if (sortedUngrouped.length > 0) {
+    // Move tabs to sorted positions as a batch (omit windowId — tabs are
+    // already in this window)
+    if (sortedTabs.length > 0) {
       await chrome.tabs.move(
-        sortedUngrouped.map(t => t.id),
-        { index: currentIndex }
+        sortedTabs.map(t => t.id),
+        { index: pinnedTabs.length }
       );
     }
-    currentIndex += sortedUngrouped.length;
+    return;
+  }
 
-    // Move grouped tabs as a batch per group to avoid Chrome's group migration
-    // behavior that can occur with sequential single-tab moves
-    for (const [_groupId, groupTabs] of groupedTabsMap.entries()) {
-      await chrome.tabs.move(
-        groupTabs.map(t => t.id),
-        { index: currentIndex }
-      );
-      currentIndex += groupTabs.length;
+  // Group-aware sorting logic
+  const ungroupedTabs = [];
+  const groupedTabsMap = new Map();
+
+  for (const tab of unpinnedTabs) {
+    if (tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
+      ungroupedTabs.push(tab);
+    } else {
+      if (!groupedTabsMap.has(tab.groupId)) {
+        groupedTabsMap.set(tab.groupId, []);
+      }
+      groupedTabsMap.get(tab.groupId).push(tab);
     }
-    
-  } catch (error) {
-    console.error('[Tab Organizer] Error sorting window tabs:', error);
+  }
+
+  // Sort ungrouped tabs by URL (Split View pairs stay together)
+  const sortedUngrouped = sortTabsAsUnits(ungroupedTabs);
+
+  // Sort tabs within each group by URL (Split View pairs stay together)
+  for (const [groupId, groupTabs] of groupedTabsMap.entries()) {
+    groupedTabsMap.set(groupId, sortTabsAsUnits(groupTabs));
+  }
+
+  // Determine the final order: pinned tabs, then ungrouped tabs, then grouped tabs
+  let currentIndex = pinnedTabs.length;
+
+  // Move ungrouped tabs first as a batch (omit windowId — tabs are already
+  // in this window, and passing windowId can trigger Chrome's cross-window
+  // group migration)
+  if (sortedUngrouped.length > 0) {
+    await chrome.tabs.move(
+      sortedUngrouped.map(t => t.id),
+      { index: currentIndex }
+    );
+  }
+  currentIndex += sortedUngrouped.length;
+
+  // Move grouped tabs as a batch per group to avoid Chrome's group migration
+  // behavior that can occur with sequential single-tab moves
+  for (const [_groupId, groupTabs] of groupedTabsMap.entries()) {
+    await chrome.tabs.move(
+      groupTabs.map(t => t.id),
+      { index: currentIndex }
+    );
+    currentIndex += groupTabs.length;
   }
 }
 
