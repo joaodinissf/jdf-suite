@@ -1080,6 +1080,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 });
 
+// Give Chrome a moment to settle closed or moved tabs before re-sorting. The
+// handlers await this (rather than sorting in a detached timer) so they reply
+// only once the work is done, with counts the popup can report.
+const settle = (ms = 200) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function handleSortAllWindows(respectGroups = true, sendResponse) {
   try {
     const windows = await chrome.windows.getAll({ populate: true });
@@ -1091,7 +1096,11 @@ async function handleSortAllWindows(respectGroups = true, sendResponse) {
     }
 
     console.log('[Tab Organizer] Completed sortAllWindows');
-    sendResponse({ success: true });
+    sendResponse({
+      success: true,
+      tabs: windows.reduce((sum, w) => sum + w.tabs.length, 0),
+      windows: windows.length,
+    });
 
   } catch (error) {
     console.error('[Tab Organizer] Error in sortAllWindows:', error);
@@ -1107,7 +1116,7 @@ async function handleSortCurrentWindow(respectGroups = true, sendResponse) {
     await sortWindowTabs(tabs[0].windowId, respectGroups);
 
     console.log('[Tab Organizer] Completed sortCurrentWindow');
-    sendResponse({ success: true });
+    sendResponse({ success: true, tabs: tabs.length });
 
   } catch (error) {
     console.error('[Tab Organizer] Error in sortCurrentWindow:', error);
@@ -1183,16 +1192,16 @@ async function handleExtractDomain(message, sendResponse) {
     await restoreSplitPairs(splitPairs);
 
     // Wait a moment for tabs to settle, then sort
-    setTimeout(async () => {
-      await sortWindowTabs(newWindow.id, respectGroups);
+    await settle();
+    await sortWindowTabs(newWindow.id, respectGroups);
 
-      // Activate the original active tab
-      await chrome.tabs.update(message.tabId, { active: true });
+    // Activate the original active tab
+    await chrome.tabs.update(message.tabId, { active: true });
 
-      console.log('[Tab Organizer] Completed extractDomain');
-    }, 200);
+    console.log('[Tab Organizer] Completed extractDomain');
 
-    sendResponse({ success: true });
+    // The active tab went into the new window too.
+    sendResponse({ success: true, moved: tabsToMove.length + 1, domain: targetDomain });
 
   } catch (error) {
     console.error('[Tab Organizer] Error in extractDomain:', error);
@@ -1214,12 +1223,11 @@ async function handleRemoveDuplicatesWindow(respectGroups = true, sendResponse) 
     }
 
     // Sort remaining tabs in the current window
-    setTimeout(async () => {
-      await sortWindowTabs(tabs[0].windowId, respectGroups);
-      console.log('[Tab Organizer] Completed removeDuplicatesWindow');
-    }, 200);
+    await settle();
+    await sortWindowTabs(tabs[0].windowId, respectGroups);
+    console.log('[Tab Organizer] Completed removeDuplicatesWindow');
 
-    sendResponse({ success: true });
+    sendResponse({ success: true, removed: tabsToRemove.length });
 
   } catch (error) {
     console.error('[Tab Organizer] Error in removeDuplicatesWindow:', error);
@@ -1242,14 +1250,13 @@ async function handleRemoveDuplicatesAllWindows(respectGroups = true, sendRespon
     }
 
     // Sort all windows
-    setTimeout(async () => {
-      for (const window of windows) {
-        await sortWindowTabs(window.id, respectGroups);
-      }
-      console.log('[Tab Organizer] Completed removeDuplicatesAllWindows');
-    }, 200);
+    await settle();
+    for (const window of windows) {
+      await sortWindowTabs(window.id, respectGroups);
+    }
+    console.log('[Tab Organizer] Completed removeDuplicatesAllWindows');
 
-    sendResponse({ success: true });
+    sendResponse({ success: true, removed: tabsToRemove.length });
 
   } catch (error) {
     console.error('[Tab Organizer] Error in removeDuplicatesAllWindows:', error);
@@ -1273,14 +1280,13 @@ async function handleRemoveDuplicatesGlobally(respectGroups = true, sendResponse
     }
 
     // Sort all windows
-    setTimeout(async () => {
-      for (const window of windows) {
-        await sortWindowTabs(window.id, respectGroups);
-      }
-      console.log('[Tab Organizer] Completed removeDuplicatesGlobally');
-    }, 200);
+    await settle();
+    for (const window of windows) {
+      await sortWindowTabs(window.id, respectGroups);
+    }
+    console.log('[Tab Organizer] Completed removeDuplicatesGlobally');
 
-    sendResponse({ success: true });
+    sendResponse({ success: true, removed: tabsToRemove.length });
 
   } catch (error) {
     console.error('[Tab Organizer] Error in removeDuplicatesGlobally:', error);
@@ -1471,15 +1477,14 @@ async function handleExtractAllDomains(respectGroups = true, sendResponse) {
     await performExtractAllDomains(domainAnalysis, respectGroups);
 
     // Sort all windows after operations
-    setTimeout(async () => {
-      const windows = await chrome.windows.getAll({ populate: true });
-      for (const window of windows) {
-        await sortWindowTabs(window.id, respectGroups);
-      }
-      console.log('[Tab Organizer] Completed Extract All Domains');
-    }, 200);
+    await settle();
+    const windows = await chrome.windows.getAll({ populate: true });
+    for (const window of windows) {
+      await sortWindowTabs(window.id, respectGroups);
+    }
+    console.log('[Tab Organizer] Completed Extract All Domains');
 
-    sendResponse({ success: true });
+    sendResponse({ success: true, windows: totalWindowsToCreate });
 
   } catch (error) {
     console.error('[Tab Organizer] Error in Extract All Domains:', error);
@@ -1756,7 +1761,7 @@ async function handleFlattenWindow(sendResponse) {
       await chrome.tabs.ungroup(groupedTabIds);
     }
 
-    sendResponse({ success: true });
+    sendResponse({ success: true, ungrouped: groupedTabIds.length });
   } catch (error) {
     console.error('[Tab Organizer] Error in flattenWindow:', error);
     sendResponse({ success: false, error: error.message });
@@ -1947,7 +1952,7 @@ async function handleMoveAllToSingleWindow(message, sendResponse) {
 
     if (windows.length <= 1) {
       console.log('[Tab Organizer] Only one window exists, nothing to move');
-      sendResponse({ success: true });
+      sendResponse({ success: true, moved: 0 });
       return;
     }
 
@@ -1982,7 +1987,7 @@ async function handleMoveAllToSingleWindow(message, sendResponse) {
 
     if (tabsToMove.length === 0) {
       console.log('[Tab Organizer] No unpinned tabs to move');
-      sendResponse({ success: true });
+      sendResponse({ success: true, moved: 0 });
       return;
     }
 
@@ -2002,21 +2007,20 @@ async function handleMoveAllToSingleWindow(message, sendResponse) {
     console.log('[Tab Organizer] Moved', tabsToMove.length, 'unpinned tabs to single window');
 
     // Wait a moment for tabs to settle, then sort tabs in the target window
-    setTimeout(async () => {
-      await sortWindowTabs(targetWindow.id, respectGroups);
+    await settle();
+    await sortWindowTabs(targetWindow.id, respectGroups);
 
-      console.log('[Tab Organizer] Completed moveAllToSingleWindow');
+    console.log('[Tab Organizer] Completed moveAllToSingleWindow');
 
-      // Bring the target window into focus
-      await chrome.windows.update(targetWindow.id, { focused: true });
+    // Bring the target window into focus
+    await chrome.windows.update(targetWindow.id, { focused: true });
 
-      // If we have an active tab ID, make sure it stays active
-      if (message.activeTabId) {
-        await chrome.tabs.update(message.activeTabId, { active: true });
-      }
-    }, 200);
+    // If we have an active tab ID, make sure it stays active
+    if (message.activeTabId) {
+      await chrome.tabs.update(message.activeTabId, { active: true });
+    }
 
-    sendResponse({ success: true });
+    sendResponse({ success: true, moved: tabsToMove.length });
 
   } catch (error) {
     console.error('[Tab Organizer] Error in moveAllToSingleWindow:', error);

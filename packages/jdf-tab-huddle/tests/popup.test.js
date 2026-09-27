@@ -504,3 +504,37 @@ describe('Popup Script', () => {
     });
   });
 });
+
+describe('Action results (UI review F2)', () => {
+  test.each([
+    ['sortCurrentWindow', { tabs: 14 }, 'Sorted 14 tabs'],
+    ['sortCurrentWindow', { tabs: 1 }, 'Sorted 1 tab'],
+    ['sortAllWindows', { tabs: 20, windows: 2 }, 'Sorted 20 tabs in 2 windows'],
+    ['removeDuplicatesWindow', { removed: 3 }, 'Closed 3 duplicates and sorted'],
+    ['removeDuplicatesGlobally', { removed: 1 }, 'Closed 1 duplicate and sorted'],
+    ['removeDuplicatesAllWindows', { removed: 0 }, 'No duplicates found'],
+    ['flattenWindow', { ungrouped: 5 }, 'Ungrouped 5 tabs'],
+    ['flattenWindow', { ungrouped: 0 }, 'No groups to ungroup'],
+    ['extractDomain', { moved: 4, domain: 'example.com' }, 'Moved 4 tabs from example.com to a new window'],
+    ['extractAllDomains', { windows: 3 }, 'Split into 3 windows'],
+    ['extractAllDomains', { cancelled: true }, 'Split cancelled'],
+    ['moveAllToSingleWindow', { moved: 6 }, 'Merged 6 tabs into this window'],
+    ['moveAllToSingleWindow', { moved: 0 }, 'Nothing to merge'],
+    ['compactWindow', { paired: 2 }, 'Paired 2 Split Views'],
+    ['expandWindow', { unsplit: 0 }, 'No Split Views to separate'],
+    ['aiGroupTabs', {}, ''],
+  ])('%s %j → "%s"', (action, response, expected) => {
+    expect(describeActionResult(action, response)).toBe(expected);
+  });
+
+  test('the result line is a polite live region that shows the text, and errors are marked', () => {
+    document.body.insertAdjacentHTML('beforeend', '<div id="actionResult" role="status" aria-live="polite" hidden></div>');
+    const el = document.getElementById('actionResult');
+    showActionResult('Sorted 3 tabs');
+    expect(el.hidden).toBe(false);
+    expect(el.textContent).toBe('Sorted 3 tabs');
+    expect(el.classList.contains('error')).toBe(false);
+    showActionResult("Couldn't sort: boom", 'error');
+    expect(el.classList.contains('error')).toBe(true);
+  });
+});
