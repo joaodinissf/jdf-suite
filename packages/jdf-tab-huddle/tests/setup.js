@@ -32,6 +32,7 @@ global.chrome = {
   },
   tabs: {
     query: vi.fn(),
+    get: vi.fn(),
     move: vi.fn(),
     group: vi.fn(),
     ungroup: vi.fn(),
@@ -212,6 +213,10 @@ const popupWrapper = `
   if (typeof loadBrowserSnapshot !== 'undefined') global.loadBrowserSnapshot = loadBrowserSnapshot;
   if (typeof describeActionResult !== 'undefined') global.describeActionResult = describeActionResult;
   if (typeof showActionResult !== 'undefined') global.showActionResult = showActionResult;
+  if (typeof actionResultKind !== 'undefined') global.actionResultKind = actionResultKind;
+  if (typeof updateToastSpace !== 'undefined') global.updateToastSpace = updateToastSpace;
+  if (typeof sendAction !== 'undefined') global.sendAction = sendAction;
+  if (typeof submitSnooze !== 'undefined') global.submitSnooze = submitSnooze;
   if (typeof openSnoozePicker !== 'undefined') global.openSnoozePicker = openSnoozePicker;
   if (typeof closeSnoozePicker !== 'undefined') global.closeSnoozePicker = closeSnoozePicker;
   if (typeof aiOrganize !== 'undefined') global.aiOrganize = aiOrganize;

@@ -215,7 +215,8 @@ describe('Background Script', () => {
 
   describe('analyzeDomainDistribution', () => {
     test('should return valid structure', async () => {
-      // Test the return structure rather than complex mocking
+      chrome.tabs.query.mockResolvedValue([]);
+      chrome.tabGroups.query.mockResolvedValue([]);
       const result = await analyzeDomainDistribution();
       
       expect(result).toHaveProperty('extractableDomains');
@@ -337,5 +338,120 @@ describe('sortWindowTabs when a tab closes mid-sort', () => {
       success: false,
       error: "The window couldn't be sorted. Try again.",
     });
+  });
+});
+
+describe('Results say what actually happened (moves and follow-up sorts)', () => {
+  const tab = (id, url, windowId, groupId = -1) => ({ id, url, pinned: false, groupId, windowId, index: id });
+  let allTabs;
+
+  beforeEach(() => {
+    chrome.tabs.query.mockReset();
+    chrome.tabs.move.mockReset();
+    chrome.tabs.remove.mockReset().mockResolvedValue(undefined);
+    chrome.tabs.update.mockReset().mockResolvedValue({});
+    chrome.tabs.group.mockReset().mockResolvedValue(50);
+    chrome.tabGroups.query.mockReset().mockResolvedValue([{ id: 9, title: 'G', color: 'blue' }]);
+    chrome.tabGroups.update.mockReset().mockResolvedValue({});
+    chrome.windows.update.mockReset().mockResolvedValue({});
+    // Answer each query with the tabs it actually asks for, not every tab.
+    chrome.tabs.query.mockImplementation(async (q) => allTabs.filter((t) =>
+      (q.windowId === undefined || t.windowId === q.windowId) &&
+      (!q.currentWindow || t.windowId === 1)));
+  });
+
+  test('moveTabsWithGroups returns how many tabs moved, skipping a rejected batch', async () => {
+    chrome.tabs.move.mockImplementation(async (ids) => {
+      if (ids.includes(3)) throw new Error('No tab with id: 3.');
+      return [];
+    });
+    const moved = await moveTabsWithGroups([
+      tab(1, 'https://a.test', 2),
+      tab(2, 'https://a.test', 2, 9),
+      tab(3, 'https://a.test', 2, 8),
+    ].map((t) => ({ ...t, groupInfo: t.groupId === -1 ? null : { title: 'G' } })), 1);
+    expect(moved).toBe(2);
+    // The group after the rejected one still moved.
+    expect(chrome.tabs.move).toHaveBeenCalledTimes(3);
+  });
+
+  test('Deduplicate does not claim a sort that failed', async () => {
+    allTabs = [tab(1, 'https://b.test', 1), tab(2, 'https://a.test', 1), tab(3, 'https://a.test', 1)];
+    chrome.tabs.move.mockRejectedValue(new Error('Tabs cannot be edited right now.'));
+    const sendResponse = vi.fn();
+    await handleRemoveDuplicatesWindow(false, sendResponse);
+    expect(sendResponse).toHaveBeenCalledWith({ success: true, removed: 1, sortFailed: true });
+  });
+
+  test.each([
+    ['handleRemoveDuplicatesAllWindows'],
+    ['handleRemoveDuplicatesGlobally'],
+  ])('%s reports a window that could not be sorted', async (handler) => {
+    allTabs = [tab(1, 'https://b.test', 1), tab(2, 'https://a.test', 1), tab(3, 'https://a.test', 2)];
+    chrome.windows.getAll.mockResolvedValue([
+      { id: 1, tabs: allTabs.filter((t) => t.windowId === 1) },
+      { id: 2, tabs: allTabs.filter((t) => t.windowId === 2) },
+    ]);
+    chrome.tabs.move.mockImplementation(async (ids) => {
+      if (ids.includes(1)) throw new Error('Tabs cannot be edited right now.');
+      return [];
+    });
+    const sendResponse = vi.fn();
+    await globalThis[handler](false, sendResponse);
+    expect(sendResponse.mock.calls[0][0]).toMatchObject({ success: true, sortFailed: true });
+  });
+
+  test('Merge windows reports the tabs that really moved', async () => {
+    allTabs = [tab(1, 'https://a.test', 1), tab(2, 'https://b.test', 2, 9), tab(3, 'https://c.test', 2)];
+    chrome.windows.getAll.mockResolvedValue([
+      { id: 1, focused: true, tabs: [allTabs[0]] },
+      { id: 2, tabs: [allTabs[1], allTabs[2]] },
+    ]);
+    chrome.tabs.move.mockImplementation(async (ids) => {
+      if (ids.includes(2)) throw new Error('Tabs cannot be edited right now.');
+      return [];
+    });
+    const sendResponse = vi.fn();
+    await handleMoveAllToSingleWindow({ activeTabId: 1, respectGroups: true }, sendResponse);
+    expect(sendResponse).toHaveBeenCalledWith({ success: true, moved: 1, notMoved: 1, sortFailed: false });
+  });
+
+  test('Extract domain counts the tabs that really moved', async () => {
+    allTabs = [tab(1, 'https://a.test/1', 1), tab(2, 'https://a.test/2', 1, 9), tab(3, 'https://a.test/3', 1)];
+    chrome.windows.create.mockResolvedValue({ id: 200 });
+    chrome.tabs.move.mockImplementation(async (ids) => {
+      if (ids.includes(2)) throw new Error('No tab with id: 2.');
+      return [];
+    });
+    const sendResponse = vi.fn();
+    await handleExtractDomain({ tabId: 1, url: 'https://a.test/1', respectGroups: true }, sendResponse);
+    expect(sendResponse).toHaveBeenCalledWith({
+      success: true, moved: 2, notMoved: 1, domain: 'a.test', sortFailed: false,
+    });
+  });
+
+  test('Split domains counts the windows it made and the tabs left behind', async () => {
+    allTabs = [
+      tab(1, 'https://a.test/1', 1), tab(2, 'https://a.test/2', 1), tab(3, 'https://a.test/3', 1, 9),
+      tab(4, 'https://b.test', 1), tab(5, 'https://c.test', 1),
+    ];
+    let nextWindow = 100;
+    chrome.windows.create.mockImplementation(async () => ({ id: nextWindow++ }));
+    chrome.windows.getAll.mockResolvedValue([]);
+    chrome.tabs.move.mockImplementation(async (ids) => {
+      if (ids.includes(3)) throw new Error('Tabs cannot be edited right now.');
+      return [];
+    });
+    const sendResponse = vi.fn();
+    await handleExtractAllDomains(true, sendResponse);
+    expect(sendResponse).toHaveBeenCalledWith({ success: true, windows: 2, notMoved: 1, sortFailed: false });
+  });
+
+  test('Split domains reports a failed tab query instead of "Split into 0 windows"', async () => {
+    chrome.tabs.query.mockRejectedValue(new Error('Tabs cannot be queried right now.'));
+    const sendResponse = vi.fn();
+    await handleExtractAllDomains(true, sendResponse);
+    expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'Tabs cannot be queried right now.' });
+    expect(chrome.windows.create).not.toHaveBeenCalled();
   });
 });

@@ -339,6 +339,18 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
       expect(spy).toHaveBeenCalledTimes(1);
     });
 
+    test('a held key (auto-repeat keydown) clicks only once', () => {
+      refreshHotkeys();
+      const btn = document.getElementById('removeDuplicatesWindow');
+      const spy = vi.fn();
+      btn.addEventListener('click', spy);
+
+      handleHotkeyKeydown(keyEvent('d'));
+      handleHotkeyKeydown({ ...keyEvent('d'), repeat: true });
+      handleHotkeyKeydown({ ...keyEvent('d'), repeat: true });
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
     test('Shift does not block an action', () => {
       refreshHotkeys();
       const btn = document.getElementById('sortCurrentWindow');

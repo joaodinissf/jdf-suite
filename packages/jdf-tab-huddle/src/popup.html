@@ -617,21 +617,28 @@
       box-shadow: var(--shadow-float);
     }
 
-    /* What the last action did. One line, announced politely. */
+    /* What the last action did, announced politely. Long messages (errors
+       carry what to do next) wrap rather than lose their end to an ellipsis. */
     .action-result {
       font-size: 11px;
       color: var(--ac-txt);
       border-radius: 7px;
       padding: 6px 10px;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
+      overflow-wrap: anywhere;
     }
 
+    /* Keep the raised surface: a see-through error would be drawn straight
+       over the controls underneath. */
     .action-result.error {
       color: var(--danger);
-      background: transparent;
+      background: color-mix(in srgb, var(--danger) 8%, var(--comp-hi));
       border: 1px solid var(--danger);
+    }
+
+    /* While a toast shows, reserve its height (measured by the popup script)
+       at the bottom of the page, so it never sits on the footer's controls. */
+    body.has-toast {
+      padding-bottom: calc(var(--toast-space, 34px) + 10px);
     }
 
     /* footer */

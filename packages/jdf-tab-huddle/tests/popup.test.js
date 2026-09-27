@@ -552,6 +552,19 @@ describe('Action results (UI review F2)', () => {
     ['moveAllToSingleWindow', { moved: 0 }, 'Nothing to merge'],
     ['compactWindow', { paired: 2 }, 'Paired 2 Split Views'],
     ['expandWindow', { unsplit: 0 }, 'No Split Views to separate'],
+    // Part of the work failed: say so instead of reading as success.
+    ['compactWindow', { paired: 2, failed: 1 }, "Paired 2 Split Views; 1 couldn't be paired"],
+    ['compactWindow', { paired: 0, failed: 2 }, "Couldn't pair any tabs"],
+    ['expandWindow', { unsplit: 1, failed: 1 }, "Separated 1 Split View; 1 couldn't be separated"],
+    ['expandWindow', { unsplit: 0, failed: 1 }, "Couldn't separate any Split Views"],
+    ['removeDuplicatesWindow', { removed: 2, sortFailed: true }, "Closed 2 duplicates; couldn't sort, try Sort"],
+    ['removeDuplicatesGlobally', { removed: 0, sortFailed: true }, "No duplicates found; couldn't sort, try Sort"],
+    ['extractDomain', { moved: 3, notMoved: 2, domain: 'a.test' }, "Moved 3 tabs from a.test to a new window; 2 couldn't be moved"],
+    ['extractDomain', { moved: 3, domain: 'a.test', sortFailed: true }, "Moved 3 tabs from a.test to a new window; couldn't sort, try Sort"],
+    ['extractAllDomains', { windows: 3, notMoved: 1 }, "Split into 3 windows; 1 tab couldn't be moved"],
+    ['moveAllToSingleWindow', { moved: 5, notMoved: 2 }, "Merged 5 tabs into this window; 2 couldn't be moved"],
+    ['moveAllToSingleWindow', { moved: 0, notMoved: 2 }, "Couldn't move any of 2 tabs"],
+    ['moveAllToSingleWindow', { moved: 5, sortFailed: true }, "Merged 5 tabs into this window; couldn't sort, try Sort"],
     ['aiGroupTabs', {}, ''],
   ])('%s %j → "%s"', (action, response, expected) => {
     expect(describeActionResult(action, response)).toBe(expected);
