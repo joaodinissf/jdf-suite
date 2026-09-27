@@ -51,16 +51,43 @@ function setupEventListeners() {
   }
 }
 
-function respond(confirmed) {
+// The background closes this tab once it has the answer. If it could not act
+// (the request ended, or the split failed), say so here instead of sitting
+// silent; Cancel still closes the tab.
+async function respond(confirmed) {
+  const confirmBtn = document.getElementById('confirmButton');
+  const cancelBtn = document.getElementById('cancelButton');
+  if (confirmBtn) confirmBtn.disabled = true;
+  if (cancelBtn) cancelBtn.disabled = true;
+
+  let response;
   try {
-    chrome.runtime.sendMessage({
+    response = await chrome.runtime.sendMessage({
       action: 'extractAllDomainsConfirmation',
       confirmed: confirmed
     });
   } catch (error) {
     console.error('[Tab Organizer] Error sending confirmation response:', error);
-    window.close();
   }
+  if (response && response.success) return;
+
+  if (!confirmed) {
+    window.close();
+    return;
+  }
+  showDialogError((response && response.error) || 'Huddle did not answer. Close this tab and run Split domains again.');
+  // The request is spent either way, so only Close is left.
+  if (cancelBtn) {
+    cancelBtn.disabled = false;
+    cancelBtn.textContent = 'Close';
+  }
+}
+
+function showDialogError(text) {
+  const errorEl = document.getElementById('dialogError');
+  if (!errorEl) return;
+  errorEl.textContent = text;
+  errorEl.hidden = false;
 }
 
 // Try to update immediately (works if DOM is already loaded)

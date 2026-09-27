@@ -162,7 +162,7 @@ CI lives at the monorepo root: [`.github/workflows/jdf-tab-huddle-ci.yml`](../..
 
 ## Browser Compatibility
 
-- **Chrome**: Manifest V3 (Chrome 88+); Split View Compact/Expand need Chrome 155+ and are hidden on older versions
+- **Chrome**: Manifest V3 (Chrome 102+, for `chrome.storage.session`); Split View Compact/Expand need Chrome 155+ and are hidden on older versions
 - **Edge**: Chromium-based Edge
 - **Firefox**: Not supported (uses Chrome-specific APIs)
 

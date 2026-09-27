@@ -4,6 +4,7 @@
   "short_name": "Huddle",
   "version": "0.5.0",
   "description": "Sort and organize tabs by URL and domain",
+  "minimum_chrome_version": "102",
   "permissions": [
     "tabs",
     "windows",
