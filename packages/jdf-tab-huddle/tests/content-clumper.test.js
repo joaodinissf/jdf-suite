@@ -105,6 +105,22 @@ describe('clumperKeyMatches', () => {
     expect(global.clumperKeyMatches({}, 'z')).toBe(false);
     expect(global.clumperKeyMatches(null, 'z')).toBe(false);
   });
+
+  it('matches the labelled key on any layout', () => {
+    expect(global.clumperKeyMatches({ key: 'z', code: 'KeyZ' }, 'z')).toBe(true);
+    expect(global.clumperKeyMatches({ key: 'a', code: 'KeyA' }, 'z')).toBe(false);
+    // AZERTY: the key labelled A sends code KeyQ.
+    expect(global.clumperKeyMatches({ key: 'a', code: 'KeyQ' }, 'a')).toBe(true);
+    expect(global.clumperKeyMatches({ key: 'a', code: 'KeyQ' }, 'q')).toBe(false);
+  });
+
+  it('matches Shift+digit, whose event.key is the shifted symbol', () => {
+    expect(global.clumperKeyMatches({ key: '!', code: 'Digit1', shiftKey: true }, '1')).toBe(true);
+  });
+
+  it('matches macOS Option+letter, whose event.key is a composed character', () => {
+    expect(global.clumperKeyMatches({ key: 'Ω', code: 'KeyZ', altKey: true }, 'z')).toBe(true);
+  });
 });
 
 describe('clumperModifierMatches', () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 describe('getAllowedKeys', () => {
   it('returns 26 letters + 10 digits = 36 entries', () => {
@@ -182,6 +182,69 @@ describe('readFormState / writeFormState', () => {
   });
 });
 
+describe('showStatus / handleFormChange', () => {
+  let statusEl;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '';
+    statusEl = document.createElement('div');
+    statusEl.id = 'clumping-status';
+    document.body.appendChild(statusEl);
+    global.chrome.storage.sync.set.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('a success message fades after 1.8s', () => {
+    global.showStatus('Saved');
+    expect(statusEl.classList.contains('visible')).toBe(true);
+    vi.advanceTimersByTime(1800);
+    expect(statusEl.classList.contains('visible')).toBe(false);
+  });
+
+  it('a quick second save is not hidden by the first save\'s timer', () => {
+    global.showStatus('first');
+    vi.advanceTimersByTime(1000);
+    global.showStatus('second');
+    vi.advanceTimersByTime(1000);
+    expect(statusEl.classList.contains('visible')).toBe(true);
+    expect(statusEl.textContent).toBe('second');
+    vi.advanceTimersByTime(800);
+    expect(statusEl.classList.contains('visible')).toBe(false);
+  });
+
+  it('a save error stays visible until the next successful save', async () => {
+    global.chrome.storage.sync.set.mockImplementation((_payload, cb) => {
+      global.chrome.runtime.lastError = { message: 'quota exceeded' };
+      cb && cb();
+      global.chrome.runtime.lastError = null;
+    });
+    await global.handleFormChange();
+    expect(statusEl.textContent).toBe('Error: quota exceeded');
+    expect(statusEl.classList.contains('error')).toBe(true);
+    vi.advanceTimersByTime(10000);
+    expect(statusEl.classList.contains('visible')).toBe(true);
+
+    global.chrome.storage.sync.set.mockImplementation((_payload, cb) => cb && cb());
+    await global.handleFormChange();
+    expect(statusEl.textContent).toMatch(/^Saved/);
+    expect(statusEl.classList.contains('error')).toBe(false);
+    vi.advanceTimersByTime(1800);
+    expect(statusEl.classList.contains('visible')).toBe(false);
+  });
+
+  it('an error cancels a pending fade from an earlier success', () => {
+    global.showStatus('Saved');
+    vi.advanceTimersByTime(1000);
+    global.showStatus('Error: boom', { error: true });
+    vi.advanceTimersByTime(5000);
+    expect(statusEl.classList.contains('visible')).toBe(true);
+  });
+});
+
 describe('content-clumper integration: clumperApplySettings', () => {
   beforeEach(() => {
     global.clumperResetStateForTest();
@@ -203,6 +266,24 @@ describe('content-clumper integration: clumperApplySettings', () => {
   it('disabled=false prevents arming even on the activation key', () => {
     global.clumperApplySettings({ enabled: false, key: 'z', modifier: null });
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', bubbles: true }));
+    expect(global.clumperGetStateForTest().keyHeld).toBe(false);
+    global.clumperApplySettings({ enabled: true, key: 'z', modifier: null });
+  });
+
+  it('arms on Shift+digit, whose event.key is the shifted symbol', () => {
+    global.clumperApplySettings({ enabled: true, key: '1', modifier: 'shift' });
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: '!', code: 'Digit1', shiftKey: true, bubbles: true }));
+    expect(global.clumperGetStateForTest().keyHeld).toBe(true);
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: '1', code: 'Digit1', bubbles: true }));
+    expect(global.clumperGetStateForTest().keyHeld).toBe(false);
+    global.clumperApplySettings({ enabled: true, key: 'z', modifier: null });
+  });
+
+  it('arms on macOS Option+letter, whose event.key is a composed character', () => {
+    global.clumperApplySettings({ enabled: true, key: 'z', modifier: 'alt' });
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Ω', code: 'KeyZ', altKey: true, bubbles: true }));
+    expect(global.clumperGetStateForTest().keyHeld).toBe(true);
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Ω', code: 'KeyZ', altKey: true, bubbles: true }));
     expect(global.clumperGetStateForTest().keyHeld).toBe(false);
     global.clumperApplySettings({ enabled: true, key: 'z', modifier: null });
   });

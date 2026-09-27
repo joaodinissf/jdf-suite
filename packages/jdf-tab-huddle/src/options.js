@@ -88,12 +88,21 @@ function writeFormState(settings) {
   if (modifierEl) modifierEl.value = applied.modifier || '';
 }
 
-function showStatus(message) {
+let statusHideTimer = null;
+
+// Success messages fade after 1.8s; errors stay until the next successful save.
+// Each call cancels the previous fade so a quick second save is not hidden early.
+function showStatus(message, { error = false } = {}) {
   const statusEl = document.getElementById('clumping-status');
   if (!statusEl) return;
+  clearTimeout(statusHideTimer);
+  statusHideTimer = null;
   statusEl.textContent = message;
+  statusEl.classList.toggle('error', error);
   statusEl.classList.add('visible');
-  setTimeout(() => statusEl.classList.remove('visible'), 1800);
+  if (!error) {
+    statusHideTimer = setTimeout(() => statusEl.classList.remove('visible'), 1800);
+  }
 }
 
 async function handleFormChange() {
@@ -101,7 +110,7 @@ async function handleFormChange() {
     const saved = await saveClumpingSettings(readFormState());
     showStatus(`Saved · key "${saved.key.toUpperCase()}"${saved.modifier ? ' + ' + saved.modifier : ''}, ${saved.enabled ? 'enabled' : 'disabled'}`);
   } catch (err) {
-    showStatus(`Error: ${err.message}`);
+    showStatus(`Error: ${err.message}`, { error: true });
   }
 }
 
