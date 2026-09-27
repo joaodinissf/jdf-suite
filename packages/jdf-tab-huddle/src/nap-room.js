@@ -20,12 +20,23 @@ function napStartOfDay(d) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
+// "1 tab" / "3 tabs".
+function napPlural(n, noun) {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+}
+
 // Compute the day-section header info for a wakeAt timestamp: a bucket key
 // to group rows by calendar day, a short label ("Today" / "Tomorrow" /
-// weekday name), and a subtitle with the full date.
+// weekday name), and a subtitle with the full date. A wake time already in
+// the past (a wake that failed and is waiting for a retry, or was kept after
+// nothing could be reopened) goes under "Overdue", never a weekday that would
+// read as next week.
 function napDayInfo(wakeAt, now = Date.now()) {
   const wake = new Date(wakeAt);
   const nowDate = new Date(now);
+  if (wakeAt <= now) {
+    return { dayKey: 'overdue', label: 'Overdue', subtitle: 'should have woken already' };
+  }
   const dayKey = napStartOfDay(wake);
   const dayDiff = Math.round((dayKey - napStartOfDay(nowDate)) / 86400000);
 
@@ -43,12 +54,20 @@ function napDayInfo(wakeAt, now = Date.now()) {
 }
 
 // Human summary of the next wake, e.g. "today at 15:00", used in the header.
+// Overdue records are counted separately ("1 overdue · next wakes …").
 function napNextWakeSummary(items, now = Date.now()) {
   if (!items || items.length === 0) return null;
-  const next = items[0]; // `items` is expected sorted ascending by wakeAt
-  const { label } = napDayInfo(next.wakeAt, now);
-  const when = label === 'Today' || label === 'Tomorrow' ? label.toLowerCase() : label;
-  return `next wakes ${when} at ${napFormatClock(next.wakeAt)}`;
+  // `items` is expected sorted ascending by wakeAt
+  const overdue = items.filter((r) => r.wakeAt <= now).length;
+  const next = items.find((r) => r.wakeAt > now);
+  const parts = [];
+  if (overdue > 0) parts.push(`${overdue} overdue`);
+  if (next) {
+    const { label } = napDayInfo(next.wakeAt, now);
+    const when = label === 'Today' || label === 'Tomorrow' ? label.toLowerCase() : label;
+    parts.push(`next wakes ${when} at ${napFormatClock(next.wakeAt)}`);
+  }
+  return parts.join(' · ');
 }
 
 // Row title: the tab's own title for single-tab snoozes, otherwise the
@@ -195,7 +214,10 @@ function napBuildDaySection(section) {
   return day;
 }
 
-function napRenderAll(items) {
+// True while Wake all runs: its own re-renders must not re-enable the button.
+let napWakingAll = false;
+
+function napRenderAll(items, now = Date.now()) {
   const daysEl = document.getElementById('napDays');
   const emptyEl = document.getElementById('napEmpty');
   const summaryEl = document.getElementById('napSummary');
@@ -212,15 +234,14 @@ function napRenderAll(items) {
   }
 
   if (emptyEl) emptyEl.hidden = true;
-  if (wakeAllBtn) wakeAllBtn.disabled = false;
+  if (wakeAllBtn) wakeAllBtn.disabled = napWakingAll;
 
   const totalTabs = items.reduce((sum, r) => sum + (r.tabs ? r.tabs.length : 1), 0);
   if (summaryEl) {
-    const tabWord = totalTabs === 1 ? 'tab' : 'tabs';
-    summaryEl.textContent = `${totalTabs} ${tabWord} sleeping · ${napNextWakeSummary(items)}`;
+    summaryEl.textContent = `${napPlural(totalTabs, 'tab')} sleeping · ${napNextWakeSummary(items, now)}`;
   }
 
-  const sections = napGroupByDay(items);
+  const sections = napGroupByDay(items, now);
   for (const section of sections) {
     daysEl.appendChild(napBuildDaySection(section));
   }
@@ -233,8 +254,58 @@ function napLoadAndRender() {
   });
 }
 
+// "Today" and "Tomorrow" are only true until midnight: re-render then, so a
+// page left open overnight does not keep yesterday's headers.
+let napMidnightTimer = null;
+
+function napScheduleMidnightRefresh(now = Date.now()) {
+  if (napMidnightTimer) clearTimeout(napMidnightTimer);
+  const d = new Date(now);
+  const nextMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+  napMidnightTimer = setTimeout(() => {
+    napLoadAndRender();
+    napScheduleMidnightRefresh();
+  }, nextMidnight - now + 1000);
+}
+
+// One status line for what Wake now / Wake all / Discard / Undo did.
+const NAP_STATUS_MS = 6000;
+const NAP_ERROR_MS = 15000;
+let napStatusTimer = null;
+
+function napShowStatus(text, kind = 'ok') {
+  const el = document.getElementById('napStatus');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('error', kind === 'error');
+  el.hidden = false;
+  if (napStatusTimer) clearTimeout(napStatusTimer);
+  napStatusTimer = setTimeout(() => { el.hidden = true; }, kind === 'error' ? NAP_ERROR_MS : NAP_STATUS_MS);
+}
+
+// Promise wrapper for a message that reports a failed delivery as an error
+// reply instead of throwing.
+function napSend(message) {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage(message, (response) => {
+      if (chrome.runtime.lastError) {
+        resolve({ success: false, error: chrome.runtime.lastError.message });
+        return;
+      }
+      resolve(response || { success: false, error: 'no reply' });
+    });
+  });
+}
+
 function napWakeNow(id) {
-  chrome.runtime.sendMessage({ action: 'wakeSnoozed', id }, () => {
+  return napSend({ action: 'wakeSnoozed', id }).then((response) => {
+    if (!response.success) {
+      napShowStatus(response.error || 'Couldn\'t wake these tabs', 'error');
+    } else if (response.failedCount > 0) {
+      napShowStatus(`Reopened ${napPlural(response.createdCount || 0, 'tab')} — ${response.failedCount} could not be reopened`, 'error');
+    } else {
+      napShowStatus(`Reopened ${napPlural(response.createdCount || 0, 'tab')}`);
+    }
     napLoadAndRender();
   });
 }
@@ -245,9 +316,14 @@ const NAP_UNDO_MS = 10000;
 let napPendingDiscard = null; // { record, timer }
 
 function napDiscard(id) {
-  chrome.runtime.sendMessage({ action: 'cancelSnoozed', id }, (response) => {
+  return napSend({ action: 'cancelSnoozed', id }).then((response) => {
     napLoadAndRender();
-    if (chrome.runtime.lastError || !response || !response.success || !response.record) return;
+    // A plain { success: false } means it was already gone; say nothing.
+    if (response.error) {
+      napShowStatus(`Couldn't discard: ${response.error}`, 'error');
+      return;
+    }
+    if (!response.success || !response.record) return;
     napShowDiscardNotice(response.record);
   });
 }
@@ -269,33 +345,80 @@ function napHideDiscardNotice() {
   if (notice) notice.hidden = true;
 }
 
+// The notice (and its record) stays until the background confirms the record
+// is back, so a failed Undo can be tried again instead of losing the tabs.
 function napUndoDiscard() {
-  if (!napPendingDiscard) return;
-  const { record } = napPendingDiscard;
-  napHideDiscardNotice();
-  chrome.runtime.sendMessage({ action: 'restoreSnoozed', record }, () => {
+  if (!napPendingDiscard || napPendingDiscard.undoing) return;
+  const current = napPendingDiscard;
+  current.undoing = true;
+  return napSend({ action: 'restoreSnoozed', record: current.record }).then((response) => {
+    current.undoing = false;
     napLoadAndRender();
+    // { success: false } without an error: the record is already there.
+    if (response.error) {
+      napShowStatus(`Couldn't undo: ${response.error}`, 'error');
+      return;
+    }
+    if (napPendingDiscard === current) napHideDiscardNotice();
   });
 }
 
-// Wake every currently-listed record, one at a time.
+// Wake every currently-listed record, one at a time, saying how far it got
+// and what could not be reopened.
 async function napWakeAll() {
+  if (napWakingAll) return;
+  napWakingAll = true;
   const wakeAllBtn = document.getElementById('wakeAll');
   if (wakeAllBtn) wakeAllBtn.disabled = true;
-  const response = await new Promise((resolve) => {
-    chrome.runtime.sendMessage({ action: 'listSnoozed' }, resolve);
-  });
-  const items = (response && response.success && response.items) || [];
-  for (const item of items) {
-    await new Promise((resolve) => {
-      chrome.runtime.sendMessage({ action: 'wakeSnoozed', id: item.id }, resolve);
-    });
+  try {
+    const response = await napSend({ action: 'listSnoozed' });
+    if (!response.success) {
+      napShowStatus(`Couldn't wake: ${response.error || 'could not read the sleeping tabs'}`, 'error');
+      return;
+    }
+    const items = response.items || [];
+    let reopened = 0;
+    let failedTabs = 0;
+    const errors = [];
+    for (let i = 0; i < items.length; i++) {
+      napShowStatus(`Waking ${i + 1} of ${items.length}…`);
+      const reply = await napSend({ action: 'wakeSnoozed', id: items[i].id });
+      reopened += reply.createdCount || 0;
+      failedTabs += reply.failedCount || 0;
+      // "Snooze not found": it woke on its own (or elsewhere) meanwhile.
+      if (!reply.success && !reply.failedCount && reply.error !== 'Snooze not found') {
+        errors.push(reply.error || 'couldn\'t wake');
+      }
+    }
+    const done = `Reopened ${napPlural(reopened, 'tab')}`;
+    if (failedTabs > 0 || errors.length > 0) {
+      const parts = [done];
+      if (failedTabs > 0) parts.push(`${failedTabs} could not be reopened`);
+      if (errors.length > 0) parts.push(errors[0]);
+      napShowStatus(parts.join(' — '), 'error');
+    } else {
+      napShowStatus(done);
+    }
+  } finally {
+    napWakingAll = false;
+    // Re-enable now; the re-render below disables it again if nothing is left.
+    if (wakeAllBtn) wakeAllBtn.disabled = false;
+    napLoadAndRender();
   }
-  napLoadAndRender();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   napLoadAndRender();
+  napScheduleMidnightRefresh();
+
+  // A tab left in the background (or a laptop asleep) may miss the midnight
+  // timer; catch up when the page is looked at again.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      napLoadAndRender();
+      napScheduleMidnightRefresh();
+    }
+  });
 
   const daysEl = document.getElementById('napDays');
   if (daysEl) {

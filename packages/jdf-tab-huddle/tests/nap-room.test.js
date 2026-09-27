@@ -42,8 +42,9 @@ describe('Nap Room', () => {
     });
 
     test('buckets items into the same dayKey regardless of time of day', () => {
-      const morning = napDayInfo(at(0, 8), NOW);
-      const evening = napDayInfo(at(0, 22), NOW);
+      const earlyNow = at(0, 7);
+      const morning = napDayInfo(at(0, 8), earlyNow);
+      const evening = napDayInfo(at(0, 22), earlyNow);
       expect(morning.dayKey).toBe(evening.dayKey);
     });
   });
@@ -132,7 +133,7 @@ describe('Nap Room', () => {
   describe('napGroupByDay', () => {
     test('buckets sorted items into day sections, preserving chronological order', () => {
       const items = [
-        { id: '1', wakeAt: at(0, 9) },
+        { id: '1', wakeAt: at(0, 13) },
         { id: '2', wakeAt: at(0, 18) },
         { id: '3', wakeAt: at(1, 9) },
         { id: '4', wakeAt: at(3, 9) },

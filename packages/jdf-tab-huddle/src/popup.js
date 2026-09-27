@@ -473,11 +473,10 @@ function loadBrowserSnapshot() {
 
 // Update UI based on number of windows
 function updateUIForWindowCount(windows) {
-  if (windows.length === 1) {
-    document.querySelectorAll('.multi-window-section').forEach(section => {
-      section.style.display = 'none';
-    });
-  }
+  // Both ways: a wake can open a second window while the popup stays open.
+  document.querySelectorAll('.multi-window-section').forEach(section => {
+    section.style.display = windows.length === 1 ? 'none' : '';
+  });
 }
 
 // AI Organize
@@ -528,6 +527,8 @@ let pendingSnoozeUnit = null;
 let snoozeInFlight = false;
 // Preset metadata from the background: [{ key, label, wakeAt }]
 let snoozePresetData = [];
+// True once getSnoozePresets has failed: the picker says so when it opens.
+let snoozePresetsFailed = false;
 
 const SNOOZE_UNIT_TO_ACTION = {
   tab: 'snoozeTab',
@@ -569,13 +570,15 @@ function initSnoozeUi() {
   document.getElementById('snoozeGroup').addEventListener('click', () => openSnoozePicker('group'));
 
   // Picker controls.
-  document.getElementById('snoozePickerCancel').addEventListener('click', () => closeSnoozePicker());
+  document.getElementById('snoozePickerCancel').addEventListener('click', () => closeSnoozePicker({ restoreFocus: true }));
   document.getElementById('snoozeCustomConfirm').addEventListener('click', () => submitCustomSnooze());
 
-  // Preset buttons.
+  // Preset buttons stay disabled (so no hotkey binds to them) until their
+  // times arrive from the background.
   for (const key of SNOOZE_PRESET_KEYS) {
     const btn = document.getElementById('snoozePreset-' + key);
     if (btn) {
+      btn.disabled = true;
       btn.addEventListener('click', () => {
         const data = snoozePresetData.find((d) => d.key === key);
         if (data) submitSnooze(data.wakeAt, key);
@@ -583,13 +586,30 @@ function initSnoozeUi() {
     }
   }
 
-  // Constrain the custom input to at least one minute in the future.
+  // Constrain the custom input to at least one minute in the future, and let
+  // Enter in the field submit it (hotkeys are off while typing there).
   const customInput = document.getElementById('snoozeCustomTime');
-  if (customInput) customInput.min = toLocalDatetimeValue(Date.now() + 60000);
+  if (customInput) {
+    customInput.min = toLocalDatetimeValue(Date.now() + 60000);
+    customInput.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.isComposing) return;
+      event.preventDefault();
+      submitCustomSnooze();
+    });
+  }
 
   // Fetch preset times/labels (single source of truth in the background).
   chrome.runtime.sendMessage({ action: 'getSnoozePresets' }, (response) => {
-    if (chrome.runtime.lastError || !response || !response.success) return;
+    if (chrome.runtime.lastError || !response || !response.success) {
+      snoozePresetsFailed = true;
+      for (const key of SNOOZE_PRESET_KEYS) {
+        const btn = document.getElementById('snoozePreset-' + key);
+        if (btn) btn.textContent = 'Unavailable';
+      }
+      if (pendingSnoozeUnit) showSnoozeFeedback('Could not load snooze times');
+      return;
+    }
+    snoozePresetsFailed = false;
     snoozePresetData = response.presets || [];
     labelSnoozePresetButtons();
   });
@@ -624,11 +644,31 @@ function initSnoozeUi() {
   renderSnoozedList();
 }
 
+// "Later today" and "Tonight" add a fixed time late in the evening, which can
+// land after midnight. Name the day then, instead of calling tomorrow today.
+const SNOOZE_SAME_DAY_LABELS = { laterToday: 'Later', tonight: 'In an hour' };
+
+function snoozePresetLabel(p, now = Date.now()) {
+  const wake = new Date(p.wakeAt);
+  const today = new Date(now);
+  const sameDay = wake.getFullYear() === today.getFullYear() &&
+    wake.getMonth() === today.getMonth() && wake.getDate() === today.getDate();
+  if (SNOOZE_SAME_DAY_LABELS[p.key] && !sameDay) {
+    return `${SNOOZE_SAME_DAY_LABELS[p.key]} · ${formatWakeTime(p.wakeAt, now)}`;
+  }
+  return `${p.label} · ${formatSnoozeClock(p.wakeAt)}`;
+}
+
 function labelSnoozePresetButtons() {
   for (const p of snoozePresetData) {
     const btn = document.getElementById('snoozePreset-' + p.key);
-    if (btn) btn.textContent = `${p.label} · ${formatSnoozeClock(p.wakeAt)}`;
+    if (btn) {
+      btn.textContent = snoozePresetLabel(p);
+      btn.disabled = false;
+    }
   }
+  // Setting the labels removed the key badges, and the buttons are now enabled.
+  refreshHotkeys();
 }
 
 // Show Compact/Expand only where Chrome can create Split Views, and disable
@@ -677,20 +717,31 @@ function openSnoozePicker(unit) {
   pendingSnoozeUnit = unit;
   markSelectedUnitButton(unit);
   clearSnoozeFeedback();
+  if (snoozePresetsFailed) showSnoozeFeedback('Could not load snooze times');
   panel.hidden = false;
   document.body.classList.add('picking');
   // The picker is now the active (modal) hotkey set.
   refreshHotkeys();
 }
 
-function closeSnoozePicker() {
+// Hiding the panel would drop focus on <body> if it was inside it; hand it
+// back to the unit chip that opened the picker. `restoreFocus` does so even
+// when focus was elsewhere (Escape / Cancel after opening by hotkey).
+function closeSnoozePicker({ restoreFocus = false } = {}) {
   const panel = document.getElementById('snoozePickerPanel');
+  const unit = pendingSnoozeUnit;
+  const focusWasInside = !!(panel && panel.contains(document.activeElement));
   if (panel) panel.hidden = true;
   document.body.classList.remove('picking');
   pendingSnoozeUnit = null;
   markSelectedUnitButton(null);
   // Back to the main hotkey set.
   refreshHotkeys();
+  if (unit && (focusWasInside || restoreFocus)) {
+    let chip = document.getElementById(SNOOZE_UNIT_TO_BUTTON_ID[unit]);
+    if (!chip || chip.disabled) chip = document.getElementById('snoozeTab');
+    if (chip) chip.focus();
+  }
 }
 
 function showSnoozeFeedback(text) {
@@ -724,8 +775,10 @@ function submitSnooze(wakeAt, preset) {
       // (#snoozeFeedback lives inside the picker and would vanish with it).
       closeSnoozePicker();
       showActionResult('Snoozed until ' + formatWakeTime(response.record.wakeAt));
-      // No explicit re-render: the background's storage write fires the
-      // chrome.storage.onChanged listener, which re-renders the list once.
+      // No explicit re-render of the list: the background's storage write
+      // fires the chrome.storage.onChanged listener, which re-renders it once.
+      // The tabs did change, so the counts, Group button and hotkeys refresh.
+      loadBrowserSnapshot();
     } else {
       showSnoozeFeedback((response && response.error) || 'Could not snooze');
     }
@@ -797,10 +850,33 @@ function renderSnoozedList() {
   });
 }
 
+// What a wakeSnoozed reply means for the user: an error line, or how many
+// tabs came back. Shared wording with the nap room's own copy.
+function describeWakeReply(response) {
+  if (!response || !response.success) {
+    return { text: (response && response.error) || 'Couldn\'t wake these tabs', kind: 'error' };
+  }
+  const created = response.createdCount || 0;
+  if (response.failedCount > 0) {
+    return { text: `Reopened ${plural(created, 'tab')} — ${response.failedCount} could not be reopened`, kind: 'error' };
+  }
+  return { text: `Reopened ${plural(created, 'tab')}`, kind: 'ok' };
+}
+
 function wakeNow(id) {
-  // Render happens via the storage.onChanged listener when the background
+  // The list re-renders via the storage.onChanged listener when the background
   // mutates snoozedItems — no explicit re-render (avoids a double render).
-  chrome.runtime.sendMessage({ action: 'wakeSnoozed', id }, () => {});
+  chrome.runtime.sendMessage({ action: 'wakeSnoozed', id }, (response) => {
+    if (chrome.runtime.lastError) {
+      showActionResult(`Couldn't wake: ${chrome.runtime.lastError.message}`, 'error');
+      return;
+    }
+    const { text, kind } = describeWakeReply(response);
+    showActionResult(text, kind);
+    // Woken tabs (or a whole window) opened behind the popup: refresh the
+    // counts, the multi-window controls and the hotkeys.
+    loadBrowserSnapshot();
+  });
 }
 
 // A drawn close mark (not an emoji, and not a trash can: a sleeping item is
@@ -817,7 +893,17 @@ let pendingDiscard = null; // { record, timer }
 
 function discardSnooze(id) {
   chrome.runtime.sendMessage({ action: 'cancelSnoozed', id }, (response) => {
-    if (chrome.runtime.lastError || !response || !response.success || !response.record) return;
+    if (chrome.runtime.lastError) {
+      showActionResult(`Couldn't discard: ${chrome.runtime.lastError.message}`, 'error');
+      return;
+    }
+    // A plain { success: false } means it was already gone (woken or discarded
+    // elsewhere); the list re-renders from storage, so say nothing.
+    if (response && response.error) {
+      showActionResult(`Couldn't discard: ${response.error}`, 'error');
+      return;
+    }
+    if (!response || !response.success || !response.record) return;
     showDiscardNotice(response.record);
   });
 }
@@ -843,12 +929,25 @@ function hideDiscardNotice() {
   refreshHotkeys();
 }
 
+// The notice (and its record) stays until the background confirms the record
+// is back, so a failed Undo can be tried again instead of losing the tabs.
 function undoDiscard() {
-  if (!pendingDiscard) return;
-  const { record } = pendingDiscard;
-  hideDiscardNotice();
+  if (!pendingDiscard || pendingDiscard.undoing) return;
+  const current = pendingDiscard;
+  current.undoing = true;
   // The storage.onChanged listener re-renders the list once the record is back.
-  chrome.runtime.sendMessage({ action: 'restoreSnoozed', record }, () => {});
+  chrome.runtime.sendMessage({ action: 'restoreSnoozed', record: current.record }, (response) => {
+    current.undoing = false;
+    const error = chrome.runtime.lastError
+      ? chrome.runtime.lastError.message
+      : (!response ? 'no reply' : response.error);
+    if (error) {
+      showActionResult(`Couldn't undo: ${error}`, 'error');
+      return;
+    }
+    // success, or { success: false } without an error: the record is already there.
+    if (pendingDiscard === current) hideDiscardNotice();
+  });
 }
 
 // Human-friendly wake time: "Today 18:00", "Tomorrow 09:00", "Sat 09:00",
@@ -1090,7 +1189,7 @@ function handleHotkeyKeydown(event) {
   if (event.key === 'Escape') {
     if (pickerOpen) {
       event.preventDefault();
-      closeSnoozePicker();
+      closeSnoozePicker({ restoreFocus: true });
     }
     return;
   }

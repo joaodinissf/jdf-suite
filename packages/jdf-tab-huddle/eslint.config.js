@@ -199,6 +199,12 @@ export default [
         renderSnoozedList: 'readonly',
         updateSnoozeButtonState: 'readonly',
         updateSplitViewButtons: 'readonly',
+        initSnoozeUi: 'readonly',
+        snoozePresetLabel: 'readonly',
+        wakeNow: 'readonly',
+        discardSnooze: 'readonly',
+        showDiscardNotice: 'readonly',
+        undoDiscard: 'readonly',
 
         // Keyboard shortcut functions (loaded by setup.js)
         buildHotkeyMap: 'readonly',
@@ -215,6 +221,13 @@ export default [
         napRowUrl: 'readonly',
         napGroupBadge: 'readonly',
         napGroupByDay: 'readonly',
+        napRenderAll: 'readonly',
+        napScheduleMidnightRefresh: 'readonly',
+        napWakeNow: 'readonly',
+        napWakeAll: 'readonly',
+        napDiscard: 'readonly',
+        napShowDiscardNotice: 'readonly',
+        napUndoDiscard: 'readonly',
 
         // ai-proposal.js / callOpenRouter / handleAiGroupTabs exposures (loaded by setup.js)
         escapeHtml: 'readonly',

@@ -117,13 +117,15 @@ describe('Tab Snoozing', () => {
     });
     test('tabs summary counts tabs', () => {
       expect(buildSnoozeSummary('tabs', [{}, {}, {}])).toBe('3 selected tabs');
+      expect(buildSnoozeSummary('tabs', [{}])).toBe('1 selected tab');
     });
     test('group summary uses title, (unnamed) when empty', () => {
       expect(buildSnoozeSummary('group', [{}, {}], { title: 'Research' })).toBe('Group "Research" (2 tabs)');
-      expect(buildSnoozeSummary('group', [{}], { title: '' })).toBe('Group "(unnamed)" (1 tabs)');
+      expect(buildSnoozeSummary('group', [{}], { title: '' })).toBe('Group "(unnamed)" (1 tab)');
     });
     test('window summary counts tabs', () => {
       expect(buildSnoozeSummary('window', [{}, {}, {}, {}])).toBe('Window (4 tabs)');
+      expect(buildSnoozeSummary('window', [{}])).toBe('Window (1 tab)');
     });
   });
 
@@ -396,6 +398,51 @@ describe('Tab Snoozing', () => {
         error: 'Could not restore right now — will retry automatically',
       });
     });
+
+    test('a wake that reopens nothing reports it and keeps the record', async () => {
+      const record = {
+        id: 'r9', type: 'tab', summary: 'A', wakeAt: at(4, 9), preset: 'tomorrow',
+        windowId: 1, tabs: [{ url: 'file:///secret.html', title: 'A', pinned: false, index: 0 }],
+      };
+      const store = useMemoryStore({ snoozedItems: [record] });
+      chrome.windows.getLastFocused.mockResolvedValue({ id: 5 });
+      chrome.tabs.create.mockRejectedValue(new Error('Cannot access file URLs'));
+
+      const sendResponse = vi.fn();
+      await handleWakeNow({ id: 'r9' }, sendResponse);
+
+      expect(sendResponse).toHaveBeenCalledWith({
+        success: false,
+        error: 'Could not reopen 1 tab — kept in the nap room',
+        createdCount: 0,
+        failedCount: 1,
+      });
+      expect(store.snoozedItems).toEqual([record]);
+      // No retry alarm: the same URL would be refused again.
+      expect(chrome.alarms.create).not.toHaveBeenCalled();
+    });
+
+    test('a partial wake reports how many tabs reopened and how many failed', async () => {
+      const record = {
+        id: 'r10', type: 'tabs', summary: '2 selected tabs', wakeAt: at(4, 9), preset: 'tomorrow',
+        windowId: 1,
+        tabs: [
+          { url: 'https://a/', title: 'A', pinned: false, index: 0 },
+          { url: 'file:///b.html', title: 'B', pinned: false, index: 1 },
+        ],
+      };
+      const store = useMemoryStore({ snoozedItems: [record] });
+      chrome.windows.getLastFocused.mockResolvedValue({ id: 5 });
+      chrome.tabs.create
+        .mockResolvedValueOnce({ id: 60 })
+        .mockRejectedValueOnce(new Error('Cannot access file URLs'));
+
+      const sendResponse = vi.fn();
+      await handleWakeNow({ id: 'r10' }, sendResponse);
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, createdCount: 1, failedCount: 1 });
+      expect(store.snoozedItems).toEqual([]);
+    });
   });
 
   describe('handleCancelSnooze', () => {
@@ -644,6 +691,131 @@ describe('Tab Snoozing', () => {
         'snooze-wake:r7',
         expect.objectContaining({ message: '2 tabs are back — 1 could not be reopened' })
       );
+    });
+  });
+
+  describe('wake failures and counts', () => {
+    test('an alarm wake that reopens nothing says so instead of "is back", and keeps the record', async () => {
+      const record = {
+        id: 'r11', type: 'tab', summary: 'Local page', wakeAt: at(4, 9), preset: 'tomorrow',
+        windowId: 1, tabs: [{ url: 'file:///page.html', title: 'Local page', pinned: false, index: 0 }],
+      };
+      const store = useMemoryStore({ snoozedItems: [record] });
+      chrome.windows.getLastFocused.mockResolvedValue({ id: 5 });
+      chrome.tabs.create.mockRejectedValue(new Error('Cannot access file URLs'));
+
+      const result = await wakeSnoozedRecord('r11', { notify: true });
+
+      expect(result.kept).toBe(true);
+      expect(store.snoozedItems).toEqual([record]);
+      expect(chrome.notifications.create).toHaveBeenCalledWith(
+        'snooze-wake:r11',
+        expect.objectContaining({ message: '"Local page" could not be reopened — it is still in the nap room' })
+      );
+    });
+
+    test('several tabs that all fail to reopen read "they are still in the nap room"', async () => {
+      const record = {
+        id: 'r14', type: 'tabs', summary: '2 selected tabs', wakeAt: at(4, 9), preset: 'tomorrow',
+        windowId: 1,
+        tabs: [
+          { url: 'file:///a.html', title: 'A', pinned: false, index: 0 },
+          { url: 'file:///b.html', title: 'B', pinned: false, index: 1 },
+        ],
+      };
+      useMemoryStore({ snoozedItems: [record] });
+      chrome.windows.getLastFocused.mockResolvedValue({ id: 5 });
+      chrome.tabs.create.mockRejectedValue(new Error('Cannot access file URLs'));
+
+      await wakeSnoozedRecord('r14', { notify: true });
+
+      expect(chrome.notifications.create).toHaveBeenCalledWith(
+        'snooze-wake:r14',
+        expect.objectContaining({ message: '2 tabs could not be reopened — they are still in the nap room' })
+      );
+    });
+
+    test('one woken tab reads "1 tab is back"', async () => {
+      const record = {
+        id: 'r12', type: 'tabs', summary: '2 selected tabs', wakeAt: at(4, 9), preset: 'tomorrow',
+        windowId: 1,
+        tabs: [
+          { url: 'https://a/', title: 'A', pinned: false, index: 0 },
+          { url: 'file:///b.html', title: 'B', pinned: false, index: 1 },
+        ],
+      };
+      useMemoryStore({ snoozedItems: [record] });
+      chrome.windows.getLastFocused.mockResolvedValue({ id: 5 });
+      chrome.tabs.create
+        .mockResolvedValueOnce({ id: 60 })
+        .mockRejectedValueOnce(new Error('Cannot access file URLs'));
+
+      await wakeSnoozedRecord('r12', { notify: true });
+
+      expect(chrome.notifications.create).toHaveBeenCalledWith(
+        'snooze-wake:r12',
+        expect.objectContaining({ message: '1 tab is back — 1 could not be reopened' })
+      );
+    });
+
+    test('a window Chrome refuses as a whole reopens its other tabs one by one', async () => {
+      const record = {
+        id: 'r13', type: 'window', summary: 'Window (3 tabs)', wakeAt: at(4, 9), preset: 'custom',
+        windowId: 9,
+        groups: [{ title: 'Work', color: 'blue' }],
+        tabs: [
+          { url: 'https://one/', title: 'One', pinned: false, index: 0, groupIndex: 0 },
+          { url: 'file:///two.html', title: 'Two', pinned: false, index: 1 },
+          { url: 'https://three/', title: 'Three', pinned: true, index: 2, groupIndex: 0 },
+        ],
+      };
+      useMemoryStore({ snoozedItems: [record] });
+      chrome.windows.create
+        .mockRejectedValueOnce(new Error('Cannot access file URLs'))
+        .mockResolvedValueOnce({ id: 77, tabs: [{ id: 900 }] }); // the New Tab placeholder
+      chrome.tabs.create
+        .mockResolvedValueOnce({ id: 1 })
+        .mockRejectedValueOnce(new Error('Cannot access file URLs'))
+        .mockResolvedValueOnce({ id: 3 });
+      chrome.tabs.update.mockResolvedValue(undefined);
+      chrome.tabs.remove.mockResolvedValue(undefined);
+      chrome.tabs.group.mockResolvedValue(40);
+
+      const result = await wakeSnoozedRecord('r13', { notify: true });
+
+      for (const url of ['https://one/', 'file:///two.html', 'https://three/']) {
+        expect(chrome.tabs.create).toHaveBeenCalledWith(expect.objectContaining({ windowId: 77, url }));
+      }
+      expect(result.createdCount).toBe(2);
+      expect(result.failedCount).toBe(1);
+      // The placeholder New Tab goes, and is never pinned or grouped.
+      expect(chrome.tabs.remove).toHaveBeenCalledWith(900);
+      expect(chrome.tabs.update).toHaveBeenCalledTimes(1);
+      expect(chrome.tabs.update).toHaveBeenCalledWith(3, { pinned: true });
+      expect(chrome.tabs.group).toHaveBeenCalledWith(expect.objectContaining({ tabIds: [1, 3] }));
+      expect(chrome.notifications.create).toHaveBeenCalledWith(
+        'snooze-wake:r13',
+        expect.objectContaining({ message: 'Window restored (2 tabs) — 1 could not be reopened' })
+      );
+    });
+
+    test('a window whose every tab is refused closes the empty window and keeps the record', async () => {
+      const record = {
+        id: 'r14', type: 'window', summary: 'Window (1 tab)', wakeAt: at(4, 9), preset: 'custom',
+        windowId: 9, tabs: [{ url: 'file:///two.html', title: 'Two', pinned: false, index: 0 }],
+      };
+      const store = useMemoryStore({ snoozedItems: [record] });
+      chrome.windows.create
+        .mockRejectedValueOnce(new Error('Cannot access file URLs'))
+        .mockResolvedValueOnce({ id: 78, tabs: [{ id: 901 }] });
+      chrome.windows.remove.mockResolvedValue(undefined);
+      chrome.tabs.create.mockRejectedValue(new Error('Cannot access file URLs'));
+
+      const result = await wakeSnoozedRecord('r14', { notify: false });
+
+      expect(result.createdCount).toBe(0);
+      expect(chrome.windows.remove).toHaveBeenCalledWith(78);
+      expect(store.snoozedItems).toEqual([record]);
     });
   });
 

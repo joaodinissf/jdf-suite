@@ -375,10 +375,16 @@
       white-space: nowrap;
     }
 
-    .preset:hover {
+    .preset:hover:not(:disabled) {
       color: var(--ac-txt);
       border-color: var(--ac);
       background: var(--ac-soft);
+    }
+
+    /* Until the preset times arrive from the background. */
+    .preset:disabled {
+      color: var(--tx-dim);
+      cursor: default;
     }
 
     .custom-row {
@@ -430,9 +436,11 @@
       background: var(--ac-soft);
     }
 
+    /* Only ever carries errors (a snooze that worked closes the picker and
+       reports in #actionResult), so it reads as one. */
     #snoozeFeedback {
       font-size: 10.5px;
-      color: var(--ac-txt);
+      color: var(--danger);
       text-align: center;
       opacity: 0;
       transition: opacity .2s ease;
@@ -774,18 +782,18 @@
       </div>
       <div id="snoozePickerPanel" hidden>
         <div class="presets">
-          <button id="snoozePreset-laterToday" class="preset"></button>
-          <button id="snoozePreset-tonight" class="preset"></button>
-          <button id="snoozePreset-tomorrow" class="preset"></button>
-          <button id="snoozePreset-weekend" class="preset"></button>
-          <button id="snoozePreset-nextWeek" class="preset"></button>
+          <button id="snoozePreset-laterToday" class="preset" disabled>Loading…</button>
+          <button id="snoozePreset-tonight" class="preset" disabled>Loading…</button>
+          <button id="snoozePreset-tomorrow" class="preset" disabled>Loading…</button>
+          <button id="snoozePreset-weekend" class="preset" disabled>Loading…</button>
+          <button id="snoozePreset-nextWeek" class="preset" disabled>Loading…</button>
         </div>
         <div class="custom-row">
           <input type="datetime-local" id="snoozeCustomTime" aria-label="Custom snooze time">
           <button id="snoozeCustomConfirm">Snooze</button>
           <button id="snoozePickerCancel">Cancel</button>
         </div>
-        <div id="snoozeFeedback"></div>
+        <div id="snoozeFeedback" role="status" aria-live="polite"></div>
       </div>
     </div>
 
