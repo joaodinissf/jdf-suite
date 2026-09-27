@@ -49,12 +49,19 @@ The mark is three tabs huddled into one group, on Chrome blue, over a group line
 
 ## Layout and components (popup)
 
-- **Width** is fixed at 380px, and the popup must stay under Chrome's **600px** cap in its heaviest normal state (the Split View row, several sleeping items, AI configured). Measured: 598px on Chrome 155.
+- **Width** is fixed at 380px, and the popup must stay under Chrome's **600px** cap in its heaviest normal state (the Split View row, several sleeping items). Measured: 598px on Chrome 155.
 - **Buttons** are neutral surfaces (`--comp`) with a `--bd-control` edge. The Groups/Flat toggle's active side is a solid blue fill. "Organize with AI" is a soft blue action, deliberately not a solid hero: AI is a guest.
 - **Hotkey badges** use `--kbd-bg`/`--kbd-tx` and show the bare key (`D`, or a row digit).
 - **Feedback** (the result line, Undo, "Copied!") floats as toasts over the bottom edge. While one shows, the page reserves its height at the bottom, so a toast never covers the footer or the picker's last row. Errors keep an opaque surface and wrap instead of truncating.
 - **The snooze picker is modal:** the rest of the popup steps aside while it's open.
-- **Icons** are drawn SVG at a 1.5px stroke in `currentColor`: settings sliders, a key for AI settings, "open" arrow, and a close mark for discarding a sleeping item (a dismissal in the nap voice, not a trash can). No emoji or Unicode glyphs stand in for icons. `⇧` and `⌘` appear only as key notation.
+- **Icons** are drawn SVG at a 1.5px stroke in `currentColor`: settings sliders, "open" arrow, and a close mark for discarding a sleeping item (a dismissal in the nap voice, not a trash can). No emoji or Unicode glyphs stand in for icons. `⇧` and `⌘` appear only as key notation.
+
+## AI configuration
+
+- **Not in the popup.** "Organize with AI" is a plain action there: no settings cog, no model line.
+- **Settings** holds the lasting setup in a grey "Organize with AI" section: key status, replacing or deleting the key, its expiry, and the default model.
+- **The organize page** holds the choice for one run: a bar under the title with a purple "Model" chip, the model's name, Make default and Change (which opens the filterable picker), and Run again once a proposal is on screen. With no key, or an expired one, the same page shows the key form inline (a cyan "OpenRouter key" chip) and starts the run once the key is saved.
+- The key form and the model picker are one shared component (`src/ai-config.js`, `src/ai-config.css`), so both pages look and check the same way.
 
 ## Motion
 

@@ -146,6 +146,17 @@ test('59: All buttons have correct IDs (single action set)', async ({ sw, contex
   await popup.close();
 });
 
+test('59a: Organize with AI is a plain action, with no AI settings cog or model line', async ({ context, extensionId }) => {
+  const popup = await openPopup(context, extensionId);
+
+  // The model and key live on the organize page and in Settings.
+  await expect(popup.locator('#aiOrganize')).toBeVisible();
+  await expect(popup.locator('#aiSettings')).toHaveCount(0);
+  await expect(popup.locator('#aiModelLine')).toHaveCount(0);
+
+  await popup.close();
+});
+
 test('59b: The popup says what an action did (closed duplicates) and refreshes its counts', async ({ sw, context, extensionId }) => {
   // One page open three times: deduplicating closes two copies.
   await createTabs(sw, [URLS.EXAMPLE_A, URLS.EXAMPLE_A, URLS.EXAMPLE_A, URLS.TEST_A]);

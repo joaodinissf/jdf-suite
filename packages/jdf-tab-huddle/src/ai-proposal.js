@@ -1,3 +1,4 @@
+/* global HuddleAi */
 // Chrome's tab group colours and their accessible names, for the colour
 // picker. The swatches themselves come from huddle-theme.css (data-group).
 const COLOR_MAP = {
@@ -23,8 +24,27 @@ function tabCountLabel(n) {
 let proposal = null; // { groups, ungroupedTabIds, tabs, windowId }
 let tabMap = {};      // id → tab metadata
 
+const pageParams = new URLSearchParams(window.location.search);
 // Groups (true) or Flat (false), as chosen in the popup.
-const respectGroups = new URLSearchParams(window.location.search).get('respectGroups') !== 'false';
+const respectGroups = pageParams.get('respectGroups') !== 'false';
+
+// 'missing' or 'expired' while organize needs a key first (the popup says so
+// in the URL; the stored config confirms it once loaded), else null.
+let keyNeeded = ['missing', 'expired'].includes(pageParams.get('key')) ? pageParams.get('key') : null;
+
+// From 'loadAiConfig': the stored config, the built-in default model and the
+// expiry choices for the inline key form.
+let aiConfig = null;
+let builtInDefaultModel = null;
+let expiryPresets = [];
+let modelPicker = null;
+let keyForm = null;
+
+// What the current run was started with, so Run again can repeat it.
+let lastInstructions = '';
+let runModelId = null;
+// True from the start of a run until its proposal, error or end is shown.
+let runInProgress = false;
 
 // Why a sendMessage reply was not a success, as a short phrase.
 function replyFailure(response) {
@@ -48,41 +68,195 @@ function buildFormActions(...buttons) {
   return actions;
 }
 
-// Starts a fresh organize run (it opens its own proposal tab), then closes
-// this one. If the run cannot start, the reason is shown here instead.
-function runAgain() {
-  chrome.runtime.sendMessage({ action: 'aiGroupTabs', respectGroups }, (response) => {
-    if (!chrome.runtime.lastError && response && response.success) {
-      window.close();
-      return;
+function openSettings() {
+  if (chrome.runtime.openOptionsPage) chrome.runtime.openOptionsPage();
+}
+
+// ---- Model for this run ------------------------------------------------------
+
+function savedDefaultModel() {
+  return (aiConfig && aiConfig.model) || builtInDefaultModel || null;
+}
+
+// The picker's choice, or null (the background then uses the default).
+function selectedModelId() {
+  return (modelPicker && modelPicker.getModelId()) || null;
+}
+
+function modelLabel(id) {
+  return (modelPicker && modelPicker.modelName(id)) || id;
+}
+
+function setModelNote(text) {
+  const note = document.getElementById('modelNote');
+  if (note) note.textContent = text;
+}
+
+// The bar names the model this run uses (or used), marks the saved default,
+// and offers Make default for any other choice.
+function updateModelBar() {
+  const nameEl = document.getElementById('modelName');
+  if (!nameEl) return;
+  const id = selectedModelId() || savedDefaultModel();
+  nameEl.textContent = id ? modelLabel(id) : 'Default model';
+  nameEl.title = id || '';
+
+  const isDefault = !!id && id === savedDefaultModel();
+  document.getElementById('defaultTag').hidden = !isDefault;
+  document.getElementById('makeDefault').hidden = !id || isDefault;
+
+  if (runModelId && id && id !== runModelId) {
+    // Run again only shows once the proposal is in, so mid-run the note
+    // cannot point at it.
+    setModelNote(runInProgress
+      ? `This run uses ${modelLabel(runModelId)}. ${modelLabel(id)} applies when you run again after it finishes.`
+      : `This run used ${modelLabel(runModelId)}. Run again to use ${modelLabel(id)}.`);
+  } else {
+    setModelNote('');
+  }
+}
+
+function setRunAgainVisible(visible) {
+  const button = document.getElementById('runAgainButton');
+  if (button) button.hidden = !visible;
+}
+
+function makeDefault() {
+  const id = selectedModelId();
+  if (!id) return;
+  HuddleAi.request({ action: 'saveAiDefaultModel', model: id }).then((response) => {
+    if (!response || !response.success) {
+      throw new Error((response && response.error) || 'no reply from Huddle');
     }
-    showError(`Couldn't start a new run: ${replyFailure(response)}`);
+    aiConfig = response.config || { ...(aiConfig || {}), model: id };
+    updateModelBar();
+    setModelNote(`${modelLabel(id)} is now your default model.`);
+  }).catch((err) => {
+    setModelNote(`Couldn't save the default model: ${err.message}`);
   });
 }
 
-function openAiSettings() {
-  chrome.runtime.sendMessage({ action: 'openAiSettings' });
+function setupModelBar() {
+  const panel = document.getElementById('modelPanel');
+  if (!panel) return;
+  modelPicker = HuddleAi.createModelPicker(panel, {
+    idPrefix: 'run',
+    onChange: updateModelBar,
+  });
+
+  const change = document.getElementById('changeModel');
+  change.addEventListener('click', () => {
+    panel.hidden = !panel.hidden;
+    change.setAttribute('aria-expanded', String(!panel.hidden));
+    change.textContent = panel.hidden ? 'Change' : 'Done';
+  });
+  document.getElementById('makeDefault').addEventListener('click', makeDefault);
+  document.getElementById('runAgainButton').addEventListener('click', runAgain);
+}
+
+// The stored config decides whether a key is needed; the URL was only a hint.
+function loadPageConfig() {
+  return HuddleAi.request({ action: 'loadAiConfig' }).then((data) => {
+    if (!data) return;
+    builtInDefaultModel = data.defaultModel || null;
+    expiryPresets = data.expiryPresets || [];
+    if (!data.error) {
+      aiConfig = data.config || null;
+      keyNeeded = HuddleAi.keyState(aiConfig);
+    }
+    if (modelPicker) {
+      modelPicker.setCatalog(data.models, data.modelsMeta, selectedModelId() || savedDefaultModel());
+    }
+    updateKeySection();
+    updateModelBar();
+  }).catch(() => {
+    // The picker stays empty and the run uses the default model.
+    updateModelBar();
+  });
+}
+
+// ---- Runs ----------------------------------------------------------------
+
+function resetDebugSection() {
+  const toggle = document.getElementById('debugToggle');
+  const section = document.getElementById('debugSection');
+  toggle.hidden = true;
+  toggle.textContent = 'Show the model\'s raw output';
+  section.classList.remove('visible');
+  section.innerHTML = '';
+}
+
+// Starts the run parked for this tab, with the picked model for this run
+// only. If no run is waiting (or the background can't answer), says so
+// rather than sit on 'Starting...'.
+function startRun(instructions) {
+  lastInstructions = instructions;
+  runModelId = null;
+  runInProgress = true;
+  hideApplyError();
+  setRunAgainVisible(false);
+  document.getElementById('actionsContainer').style.display = 'none';
+  resetDebugSection();
+  showStatus('Starting...');
+  updateModelBar();
+
+  // Listen for pushed messages from background (once, however many runs).
+  chrome.runtime.onMessage.removeListener(handleMessage);
+  chrome.runtime.onMessage.addListener(handleMessage);
+
+  chrome.runtime.sendMessage({
+    action: 'aiProposalReady',
+    instructions,
+    model: selectedModelId(),
+  }, (response) => {
+    if (!chrome.runtime.lastError && response && response.pending) return;
+    chrome.runtime.onMessage.removeListener(handleMessage);
+    showRunEnded();
+  });
+}
+
+// Run again and Retry: a new run in this same tab, with the model now in the
+// picker. A missing key brings back the form with the key field.
+function runAgain() {
+  setRunAgainVisible(false);
+  chrome.runtime.sendMessage({ action: 'aiRestartRun', respectGroups }, (response) => {
+    if (chrome.runtime.lastError || !response || !response.success) {
+      showError(`Couldn't start a new run: ${replyFailure(response)}`);
+      return;
+    }
+    if (keyNeeded) {
+      showInstructionsInput();
+    } else {
+      startRun(lastInstructions);
+    }
+  });
 }
 
 // The error text can come from the network, so it is set as text, never HTML.
 function showError(msg) {
+  runInProgress = false;
+  updateModelBar();
   const content = document.getElementById('content');
   document.getElementById('actionsContainer').style.display = 'none';
+  setRunAgainVisible(false);
   const el = document.createElement('div');
   el.className = 'error-msg';
   el.setAttribute('role', 'alert');
   el.textContent = msg;
   content.replaceChildren(el, buildFormActions(
     buildButton('Retry', 'btn primary confirm', runAgain),
-    buildButton('Open AI settings', 'btn', openAiSettings),
+    buildButton('Open Settings', 'btn', openSettings),
   ));
 }
 
 // No run is waiting for this page: it was refreshed, opened on its own, or
 // Chrome stopped Huddle's background worker while the page sat idle.
 function showRunEnded() {
+  runInProgress = false;
+  updateModelBar();
   const content = document.getElementById('content');
   document.getElementById('actionsContainer').style.display = 'none';
+  setRunAgainVisible(false);
   const el = document.createElement('div');
   el.className = 'ended-msg';
   el.setAttribute('role', 'status');
@@ -333,6 +507,8 @@ function render() {
   if (ungrouped) content.appendChild(ungrouped);
 
   document.getElementById('actionsContainer').style.display = 'flex';
+  // With a proposal on screen, another model can be tried in this tab.
+  setRunAgainVisible(true);
 
   if (focusKey) {
     const target = content.querySelector(`[data-focus-key="${focusKey}"]`);
@@ -439,21 +615,94 @@ function handleMessage(msg) {
   } else if (msg.type === 'ai-status') {
     showStatus(msg.text);
   } else if (msg.type === 'ai-debug') {
+    runModelId = msg.model || null;
     initDebugSection(msg.model, msg.messages);
+    updateModelBar();
   } else if (msg.type === 'ai-proposal') {
+    runInProgress = false;
     proposal = msg;
     tabMap = {};
     for (const t of proposal.tabs) {
       tabMap[t.id] = t;
     }
     render();
+    updateModelBar();
     // Collapse debug section now that the proposal is rendered
     const section = document.getElementById('debugSection');
     section.classList.remove('visible');
     document.getElementById('debugToggle').textContent = 'Show the model\'s raw output';
   } else if (msg.type === 'ai-error') {
+    // The key went missing or expired since the page opened: Retry asks for it.
+    if (msg.needsKey) keyNeeded = msg.needsKey;
     showError(msg.error);
   }
+}
+
+function showKeyError(msg) {
+  const el = document.getElementById('keyError');
+  if (!el) return;
+  el.textContent = msg;
+  el.hidden = !msg;
+}
+
+// Shows the inline key form while a key is needed, and fills its expiry
+// choice once the presets have loaded. Organize waits for them: an empty
+// expiry choice cannot be saved.
+function updateKeySection() {
+  const section = document.getElementById('keySetup');
+  if (!section) return;
+  section.hidden = !keyNeeded;
+  document.getElementById('keyIntro').textContent = keyNeeded === 'expired'
+    ? 'Your OpenRouter key has expired. Enter it again to organize.'
+    : 'Organize with AI uses your own OpenRouter API key. Add it once and Huddle keeps it for next time.';
+  if (keyForm && !keyForm.expirySelect.options.length && expiryPresets.length) {
+    const selected = aiConfig && aiConfig.expiryDuration !== undefined ? aiConfig.expiryDuration : 86400000;
+    keyForm.setExpiryPresets(expiryPresets, selected);
+  }
+  const start = document.getElementById('startOrganize');
+  start.textContent = keyNeeded ? 'Save key and organize' : 'Organize';
+  start.disabled = !!keyNeeded && !expiryPresets.length;
+}
+
+// With a key needed, Organize first runs the key checks (OpenRouter's too)
+// and saves it, then starts the run here. The default model is left alone.
+async function onOrganize() {
+  const instructions = document.getElementById('userInstructions').value.trim();
+  if (!keyNeeded) {
+    startRun(instructions);
+    return;
+  }
+
+  const start = document.getElementById('startOrganize');
+  showKeyError('');
+  start.disabled = true;
+  const result = await keyForm.collect();
+  if (!result.ok) {
+    start.disabled = false;
+    showKeyError(result.error);
+    return;
+  }
+
+  let response;
+  try {
+    response = await HuddleAi.request({
+      action: 'saveAiConfig',
+      config: { key: result.key, expiryDuration: result.expiryDuration },
+    });
+  } catch (err) {
+    response = { success: false, error: err.message };
+  }
+  if (!response || !response.success) {
+    start.disabled = false;
+    showKeyError((response && response.error) || 'Failed to save the key.');
+    return;
+  }
+
+  aiConfig = response.config || aiConfig;
+  keyNeeded = null;
+  keyForm.clear();
+  updateModelBar();
+  startRun(instructions);
 }
 
 function showInstructionsInput() {
@@ -461,8 +710,20 @@ function showInstructionsInput() {
     ? 'Organizing <strong>ungrouped tabs only</strong> (Groups)'
     : 'Reorganizing <strong>all tabs</strong> (Flat)';
 
+  document.getElementById('actionsContainer').style.display = 'none';
+  setRunAgainVisible(false);
   const content = document.getElementById('content');
   content.innerHTML = `
+    <section id="keySetup" class="key-setup ai-form" data-group="cyan" hidden>
+      <h2 class="section-head"><span class="group-chip">OpenRouter key</span><span class="group-line"></span></h2>
+      <p id="keyIntro" class="key-intro"></p>
+      <div class="key-warning">
+        <p>Huddle keeps the key in this browser with basic encoding. It is <strong>not encrypted</strong>, so use a key with a spending limit on OpenRouter and a short expiry.</p>
+      </div>
+      <div id="keyFormMount"></div>
+      <p class="field-help">You can replace or delete the key later in <button type="button" class="link-btn" id="openSettingsLink">Settings</button>.</p>
+      <div id="keyError" class="error-msg" role="alert" hidden></div>
+    </section>
     <p class="mode-hint">${modeHint}</p>
     <div class="instructions">
       <label for="userInstructions">How should your tabs be organized?</label>
@@ -473,29 +734,22 @@ function showInstructionsInput() {
       <button class="btn cancel" id="cancelOrganize">Cancel</button>
     </div>`;
 
-  document.getElementById('startOrganize').addEventListener('click', () => {
-    const instructions = document.getElementById('userInstructions').value.trim();
-    showStatus('Starting...');
+  keyForm = HuddleAi.createKeyForm(document.getElementById('keyFormMount'), { idPrefix: 'inline' });
+  document.getElementById('openSettingsLink').addEventListener('click', openSettings);
+  // Set as a value, never as markup: it is the user's own text.
+  document.getElementById('userInstructions').value = lastInstructions;
+  updateKeySection();
 
-    // Listen for pushed messages from background
-    chrome.runtime.onMessage.addListener(handleMessage);
-
-    // Tell background we're ready, with optional instructions. If no run is
-    // waiting for this tab (or the background can't answer), say so rather
-    // than sit on 'Starting...'.
-    chrome.runtime.sendMessage({ action: 'aiProposalReady', instructions }, (response) => {
-      if (!chrome.runtime.lastError && response && response.pending) return;
-      chrome.runtime.onMessage.removeListener(handleMessage);
-      showRunEnded();
-    });
-  });
-
+  document.getElementById('startOrganize').addEventListener('click', onOrganize);
   document.getElementById('cancelOrganize').addEventListener('click', () => {
     window.close();
   });
 
-  // Focus the textarea
-  document.getElementById('userInstructions').focus();
+  if (keyNeeded) {
+    keyForm.keyInput.focus();
+  } else {
+    document.getElementById('userInstructions').focus();
+  }
 }
 
 // A refresh drops the page's link to its run, so it cannot pick it up again.
@@ -511,11 +765,13 @@ function wasReloaded() {
 function init() {
   setupDebugToggle();
   setupActionButtons();
+  setupModelBar();
   if (wasReloaded()) {
     showRunEnded();
   } else {
     showInstructionsInput();
   }
+  loadPageConfig();
 }
 
 if (document.readyState === 'loading') {

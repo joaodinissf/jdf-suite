@@ -57,8 +57,6 @@
       "resources": [
         "confirmation-dialog.html",
         "confirmation-dialog.js",
-        "ai-setup.html",
-        "ai-setup.js",
         "ai-proposal.html",
         "ai-proposal.js"
       ],

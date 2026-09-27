@@ -225,40 +225,6 @@
       flex: 0 0 auto;
     }
 
-    .ai-row {
-      display: flex;
-      gap: 6px;
-      align-items: stretch;
-    }
-
-    .ai-row .btn.primary {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .ai-cog-btn {
-      flex: 0 0 auto;
-      justify-content: center;
-      gap: 5px;
-      padding-inline: 8px;
-    }
-
-    /* Sits in the AI row, beside the button; the full model id is its title. */
-    .ai-model-line {
-      flex: 0 1 auto;
-      max-width: 42%;
-      align-self: center;
-      font-size: 10.5px;
-      color: var(--tx-dim);
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-    }
-
-    .ai-model-line[hidden] {
-      display: none !important;
-    }
-
     /* keyboard hotkey hint badges */
     .hotkey-hint {
       display: inline-block;
@@ -733,14 +699,8 @@
         <button id="expandWindow" class="btn" data-action="expandWindow"
           title="Separate every Split View in this window">Expand</button>
       </div>
-      <div class="ai-row">
-        <button id="aiOrganize" class="btn primary" data-action="aiGroupTabs"
-          title="Use AI to organize tabs into groups">Organize with AI</button>
-        <!-- Beside the button rather than on its own line: keeps the popup under 600px. -->
-        <span id="aiModelLine" class="ai-model-line" hidden></span>
-        <button id="aiSettings" class="btn ai-cog-btn" data-action="openAiSettings" style="display: none"
-          title="AI settings" aria-label="AI settings"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="5.5" cy="10.5" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7.7 8.3 13 3M11 5l1.5 1.5M9.5 6.5 11 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
-      </div>
+      <button id="aiOrganize" class="btn primary wide" data-action="aiGroupTabs"
+        title="Use AI to organize tabs into groups">Organize with AI</button>
     </div>
 
     <div class="grp">

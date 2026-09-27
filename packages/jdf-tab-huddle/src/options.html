@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <title>Huddle — Settings</title>
   <link rel="stylesheet" href="huddle-theme.css">
+  <link rel="stylesheet" href="ai-config.css">
   <style>
     /* Tokens, fonts, light/dark and the tab-group chips live in
        huddle-theme.css; this sheet is the settings page's layout only. */
@@ -147,6 +148,109 @@
     .status.error {
       color: var(--danger);
     }
+
+    section + section {
+      margin-top: 36px;
+    }
+
+    /* AI: the key and the default model, each a card of stacked fields. */
+    .card.stack {
+      padding: 16px 18px;
+    }
+
+    .card.stack + .card.stack {
+      margin-top: 14px;
+    }
+
+    .card-title {
+      margin: 0 0 12px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .key-status-line {
+      margin: 0 0 14px;
+      font-size: 13.5px;
+      color: var(--tx-dim);
+    }
+
+    .key-status-line strong {
+      color: var(--tx);
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    .btn {
+      font: 600 14px/1.2 var(--ui);
+      color: var(--tx);
+      background: var(--comp);
+      border: 1px solid var(--bd-control);
+      border-radius: 8px;
+      padding: 9px 16px;
+      cursor: pointer;
+      transition: background .12s, border-color .12s;
+    }
+
+    .btn:hover {
+      background: var(--comp-hi);
+      border-color: var(--bd-control-hi);
+    }
+
+    .btn:disabled {
+      opacity: .5;
+      cursor: default;
+    }
+
+    .btn.small {
+      font-size: 13px;
+      padding: 6px 12px;
+    }
+
+    .btn.primary {
+      background: var(--ac);
+      border-color: var(--ac);
+      color: var(--on-ac);
+    }
+
+    .btn.primary:hover {
+      background: var(--ac-hi);
+      border-color: var(--ac-hi);
+    }
+
+    /* Delete key drops the saved key: set apart from Save, red on reach. */
+    .btn.danger {
+      margin-left: auto;
+    }
+
+    .btn.danger:hover,
+    .btn.danger:focus-visible {
+      color: var(--danger);
+      border-color: var(--danger);
+    }
+
+    .btn[hidden] {
+      display: none;
+    }
+
+    .error-msg {
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: var(--danger-soft);
+      border: 1px solid var(--danger);
+      border-radius: 8px;
+      color: var(--danger);
+      font-size: 13.5px;
+      font-weight: 600;
+    }
+
+    .error-msg[hidden] {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -157,7 +261,7 @@
         <h1>Settings</h1>
       </div>
     </header>
-    <p class="subtitle">These settings follow your Chrome profile to every computer you sign in on.</p>
+    <p class="subtitle">Link clumping follows your Chrome profile to every computer you sign in on. The AI key and model stay in this browser.</p>
 
     <section>
       <h2 class="section-head" data-group="cyan"><span class="group-chip">Link clumping</span><span class="group-line"></span></h2>
@@ -187,8 +291,40 @@
 
       <div id="clumping-status" class="status" role="status" aria-live="polite"></div>
     </section>
+
+    <section id="aiSection">
+      <h2 class="section-head" data-group="grey"><span class="group-chip">Organize with AI</span><span class="group-line"></span></h2>
+      <p class="hint">Organize with AI sends your tabs' titles and addresses to OpenRouter with your own API key. The model chosen here is the default; the organize page can use another one for a single run.</p>
+
+      <div class="key-warning">
+        <p><strong>You are responsible for your API key.</strong> Huddle stores it in this browser with basic encoding. It is <strong>not encrypted</strong>: anyone with access to this computer could read it. Use a key with a spending limit on OpenRouter, keep the expiry short, and never share this browser profile.</p>
+      </div>
+
+      <div class="card stack ai-form">
+        <h3 class="card-title">Key</h3>
+        <p class="key-status-line">Status: <strong id="aiKeyStatus">Loading…</strong></p>
+        <div id="aiKeyForm"></div>
+        <div id="aiKeyError" class="error-msg" role="alert" hidden></div>
+        <div class="card-actions">
+          <button type="button" class="btn primary" id="aiSaveKey" disabled>Save key</button>
+          <button type="button" class="btn danger" id="aiDeleteKey" hidden>Delete key</button>
+        </div>
+      </div>
+
+      <div class="card stack ai-form">
+        <h3 class="card-title">Default model</h3>
+        <div id="aiModelPicker"></div>
+        <div id="aiModelError" class="error-msg" role="alert" hidden></div>
+        <div class="card-actions">
+          <button type="button" class="btn primary" id="aiSaveModel" disabled>Save default model</button>
+        </div>
+      </div>
+
+      <div id="ai-status" class="status" role="status" aria-live="polite"></div>
+    </section>
   </main>
 
+  <script src="ai-config.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

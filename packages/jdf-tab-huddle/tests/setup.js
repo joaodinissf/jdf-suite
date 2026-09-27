@@ -30,6 +30,7 @@ global.chrome = {
       callListeners: (...args) => messageListeners.forEach(fn => fn(...args)),
     },
     getURL: vi.fn((path) => `chrome-extension://test-id/${path}`),
+    openOptionsPage: vi.fn(),
     lastError: null,
     onStartup: {
       addListener: vi.fn(),
@@ -149,6 +150,8 @@ const backgroundWrapper = `
   if (typeof decodeKey !== 'undefined') global.decodeKey = decodeKey;
   if (typeof saveAiConfig !== 'undefined') global.saveAiConfig = saveAiConfig;
   if (typeof loadAiConfig !== 'undefined') global.loadAiConfig = loadAiConfig;
+  if (typeof saveAiDefaultModel !== 'undefined') global.saveAiDefaultModel = saveAiDefaultModel;
+  if (typeof deleteAiKey !== 'undefined') global.deleteAiKey = deleteAiKey;
   if (typeof isKeyExpired !== 'undefined') global.isKeyExpired = isKeyExpired;
   if (typeof buildAiPrompt !== 'undefined') global.buildAiPrompt = buildAiPrompt;
   if (typeof parseAiResponse !== 'undefined') global.parseAiResponse = parseAiResponse;
@@ -193,6 +196,7 @@ const backgroundWrapper = `
   // AI proposal / grouping exposures
   if (typeof callOpenRouter !== 'undefined') global.callOpenRouter = callOpenRouter;
   if (typeof handleAiGroupTabs !== 'undefined') global.handleAiGroupTabs = handleAiGroupTabs;
+  if (typeof runAiOrganizeInTab !== 'undefined') global.runAiOrganizeInTab = runAiOrganizeInTab;
   if (typeof handleApplyAiProposal !== 'undefined') global.handleApplyAiProposal = handleApplyAiProposal;
 })();
 `;
@@ -238,8 +242,6 @@ const popupWrapper = `
   if (typeof openSnoozePicker !== 'undefined') global.openSnoozePicker = openSnoozePicker;
   if (typeof closeSnoozePicker !== 'undefined') global.closeSnoozePicker = closeSnoozePicker;
   if (typeof aiOrganize !== 'undefined') global.aiOrganize = aiOrganize;
-  if (typeof openAiSettings !== 'undefined') global.openAiSettings = openAiSettings;
-  if (typeof updateAiButtonState !== 'undefined') global.updateAiButtonState = updateAiButtonState;
   // Namespaced to avoid colliding with confirmation-dialog.js's own
   // (differently-scoped) global.setupEventListeners export above.
   if (typeof setupEventListeners !== 'undefined') global.popupSetupEventListeners = setupEventListeners;
@@ -264,6 +266,12 @@ const popupWrapper = `
 })();
 `;
 eval(popupWrapper);
+
+// The shared AI script (key checks, key form, model picker) that the
+// organize page and the Settings page both load first. Pure definitions, no
+// auto-run; its one global, HuddleAi, is what those pages call.
+const aiConfigJs = readFileSync(resolve(__dirname, '../src/ai-config.js'), 'utf8');
+eval(`(function() {\n${aiConfigJs}\nglobal.HuddleAi = HuddleAi;\n})();`);
 
 // Load and execute ai-proposal script, exposing functions globally.
 // ai-proposal.js's top-level init() runs synchronously on eval (jsdom's
@@ -312,33 +320,6 @@ const confirmationWrapper = `
 })();
 `;
 eval(confirmationWrapper);
-
-// Load and execute the AI setup/settings page script, exposing its pure
-// helper + test hooks. The module reads window.location.search once at
-// eval time (pageMode) and its bottom auto-run is guarded (see
-// hasRequiredPageElements() in the source) so evaluating it here — against
-// jsdom's default, mostly-empty document — is a safe no-op; individual
-// tests that need pageMode='edit' or a populated currentConfig re-eval the
-// source on demand (see tests/ai-setup.test.js), mirroring the pattern
-// tests/confirmation-dialog.test.js already uses for the same reason.
-const aiSetupJs = readFileSync(resolve(__dirname, '../src/ai-setup.js'), 'utf8');
-const aiSetupWrapper = `
-(function() {
-  ${aiSetupJs}
-
-  // Expose functions to global scope (namespaced to avoid colliding with
-  // same-named helpers already exposed from other pages above).
-  if (typeof formatTimeRemaining !== 'undefined') global.formatTimeRemaining = formatTimeRemaining;
-  if (typeof showError !== 'undefined') global.aiSetupShowError = showError;
-  if (typeof hideError !== 'undefined') global.aiSetupHideError = hideError;
-  if (typeof populateModels !== 'undefined') global.aiSetupPopulateModels = populateModels;
-  if (typeof populateExpiry !== 'undefined') global.aiSetupPopulateExpiry = populateExpiry;
-  if (typeof updateModelCost !== 'undefined') global.aiSetupUpdateModelCost = updateModelCost;
-  if (typeof init !== 'undefined') global.aiSetupInit = init;
-  if (typeof setupEventListeners !== 'undefined') global.aiSetupSetupEventListeners = setupEventListeners;
-})();
-`;
-eval(aiSetupWrapper);
 
 // Load and execute content-clumper script, exposing its pure helpers + test hooks
 const clumperJs = readFileSync(resolve(__dirname, '../src/content-clumper.js'), 'utf8');

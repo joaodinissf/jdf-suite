@@ -1,3 +1,9 @@
+import { readFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 describe('Popup Script', () => {
   beforeEach(() => {
     // Setup DOM for popup tests
@@ -22,8 +28,6 @@ describe('Popup Script', () => {
       </div>
       <div id="copyFeedback" class="copy-feedback">Copied!</div>
       <button id="aiOrganize">Organize with AI</button>
-      <button id="aiSettings" style="display: none;">⚙️</button>
-      <div id="aiModelLine" hidden></div>
       <span id="statusThisWindow"></span>
       <span id="statusAllWindows"></span>
     `;
@@ -466,71 +470,26 @@ describe('Popup Script', () => {
       );
     });
 
-    test('clicking #aiSettings sends openAiSettings', () => {
-      document.getElementById('aiSettings').click();
-      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-        { action: 'openAiSettings' },
-        expect.any(Function)
-      );
-    });
   });
 
-  describe('updateAiButtonState', () => {
-    const mockStatus = (payload) => {
-      chrome.runtime.sendMessage.mockImplementation((message, callback) => {
-        if (message.action === 'loadAiStatus') callback(payload);
-      });
-    };
+  // The model and the key live on the organize page and in Settings.
+  describe('no AI settings in the popup', () => {
+    const popupHtml = readFileSync(resolve(__dirname, '../src/popup.html'), 'utf8');
 
-    test('asks for the lightweight status, not the whole model catalog', () => {
-      mockStatus({ config: { key: 'encoded-key' }, modelName: null });
-
-      updateAiButtonState();
-
-      // loadAiConfig fetches the OpenRouter catalog and would stall first paint.
-      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-        { action: 'loadAiStatus' },
-        expect.any(Function)
-      );
+    test('the popup has no AI settings cog and no model line', () => {
+      expect(popupHtml).not.toContain('id="aiSettings"');
+      expect(popupHtml).not.toContain('openAiSettings');
+      expect(popupHtml).not.toContain('id="aiModelLine"');
+      expect(popupHtml).toContain('id="aiOrganize"');
     });
 
-    test('shows the AI settings cog when a key is configured', () => {
-      mockStatus({ config: { key: 'encoded-key' }, modelName: null });
-
-      updateAiButtonState();
-
-      expect(document.getElementById('aiSettings').style.display).toBe('flex');
-    });
-
-    test('hides the AI settings cog when no key is configured', () => {
-      document.getElementById('aiSettings').style.display = 'flex';
-      mockStatus({ config: null, modelName: null });
-
-      updateAiButtonState();
-
-      expect(document.getElementById('aiSettings').style.display).toBe('none');
-    });
-
-    test('labels the model line with the resolved name, keeping the id as title', () => {
-      mockStatus({
-        config: { key: 'encoded-key', model: 'anthropic/claude-haiku-4.5' },
-        modelName: 'Claude Haiku 4.5',
-      });
-
-      updateAiButtonState();
-
-      const line = document.getElementById('aiModelLine');
-      expect(line.hidden).toBe(false);
-      expect(line.textContent).toBe('Model: Claude Haiku 4.5');
-      expect(line.title).toBe('anthropic/claude-haiku-4.5');
-    });
-
-    test('falls back to the raw id when the name cannot be resolved', () => {
-      mockStatus({ config: { key: 'k', model: 'weird/model' }, modelName: null });
-
-      updateAiButtonState();
-
-      expect(document.getElementById('aiModelLine').textContent).toBe('Model: weird/model');
+    test('the popup script no longer asks for the AI status', () => {
+      popupSetupEventListeners();
+      document.getElementById('aiOrganize').click();
+      const actions = chrome.runtime.sendMessage.mock.calls.map(([m]) => m.action);
+      expect(actions).toEqual(['aiGroupTabs']);
+      expect(global.updateAiButtonState).toBeUndefined();
+      expect(global.openAiSettings).toBeUndefined();
     });
   });
 });
