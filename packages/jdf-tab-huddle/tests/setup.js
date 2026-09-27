@@ -183,6 +183,7 @@ const popupWrapper = `
   if (typeof setRespectGroups !== 'undefined') global.setRespectGroups = setRespectGroups;
   if (typeof saveUserPreference !== 'undefined') global.saveUserPreference = saveUserPreference;
   if (typeof loadUserPreferences !== 'undefined') global.loadUserPreferences = loadUserPreferences;
+  if (typeof initModeToggle !== 'undefined') global.initModeToggle = initModeToggle;
   if (typeof sortAllWindows !== 'undefined') global.sortAllWindows = sortAllWindows;
   if (typeof sortCurrentWindow !== 'undefined') global.sortCurrentWindow = sortCurrentWindow;
   if (typeof extractDomain !== 'undefined') global.extractDomain = extractDomain;

@@ -112,6 +112,36 @@ describe('Popup Script', () => {
       expect(getRespectGroups()).toBe(true);
       expect(chrome.storage.local.set).toHaveBeenCalledWith({ respectGroups: true });
     });
+
+    test('a toggle choice made before the saved preference arrives is kept', () => {
+      let deliver;
+      chrome.storage.local.get.mockImplementation((keys, callback) => {
+        deliver = callback;
+      });
+
+      initModeToggle();
+      setRespectGroups(true, { persist: false });
+      loadUserPreferences();
+      document.getElementById('modeFlat').click();
+      deliver({ respectGroups: true });
+
+      expect(getRespectGroups()).toBe(false);
+      expect(document.getElementById('modeFlat').getAttribute('aria-pressed')).toBe('true');
+      expect(chrome.storage.local.set).toHaveBeenLastCalledWith({ respectGroups: false });
+    });
+
+    test('the saved preference still applies when it arrives before any choice', () => {
+      let deliver;
+      chrome.storage.local.get.mockImplementation((keys, callback) => {
+        deliver = callback;
+      });
+
+      initModeToggle();
+      loadUserPreferences();
+      deliver({ respectGroups: false });
+
+      expect(getRespectGroups()).toBe(false);
+    });
   });
 
   describe('Action functions', () => {
