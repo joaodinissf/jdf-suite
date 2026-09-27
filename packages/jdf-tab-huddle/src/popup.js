@@ -193,6 +193,8 @@ const ACTION_VERBS = {
   moveAllToSingleWindow: 'merge windows',
   compactWindow: 'compact',
   expandWindow: 'expand',
+  aiGroupTabs: 'organize with AI',
+  openAiSettings: 'open AI settings',
 };
 
 // One line saying what an action did, from the counts the background returns.

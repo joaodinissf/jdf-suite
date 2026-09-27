@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const messageListeners = [];
+const tabRemovedListeners = [];
 
 global.chrome = {
   runtime: {
@@ -33,10 +34,15 @@ global.chrome = {
     query: vi.fn(),
     move: vi.fn(),
     group: vi.fn(),
+    ungroup: vi.fn(),
     create: vi.fn(),
     remove: vi.fn(),
     update: vi.fn(),
     sendMessage: vi.fn(),
+    onRemoved: {
+      addListener: vi.fn((fn) => tabRemovedListeners.push(fn)),
+      callListeners: (...args) => tabRemovedListeners.forEach(fn => fn(...args)),
+    },
   },
   tabGroups: {
     TAB_GROUP_ID_NONE: -1,
@@ -245,7 +251,7 @@ document.body.innerHTML = `
     <button class="cancel" id="cancelButton">Cancel</button>
   </div>
   <div id="content"><div class="loading">Loading proposal...</div></div>
-  <button class="debug-toggle" id="debugToggle">Show the model's raw output</button>
+  <button class="debug-toggle" id="debugToggle" hidden>Show the model's raw output</button>
   <div class="debug-section" id="debugSection"></div>
 `;
 const aiProposalJs = readFileSync(resolve(__dirname, '../src/ai-proposal.js'), 'utf8');

@@ -39,7 +39,7 @@ export default [
       // Relaxed rules for Chrome extension development
       'no-unused-vars': ['warn', {
         argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_|^(lexHost|getRespectGroups|setRespectGroups|AI_MODELS|DEFAULT_MODEL|EXPIRY_PRESETS|DEFAULT_EXPIRY|VALID_TAB_GROUP_COLORS|encodeKey|decodeKey|isKeyExpired|saveAiConfig|loadAiConfig|aiProposalReadyResolve|stripQueryParams|buildAiPrompt|callOpenRouter|parseAiResponse|handleAiGroupTabs|handleApplyAiProposal|aiOrganize|openAiSettings|updateAiButtonState|COLOR_MAP|handleMessage|clumperResetStateForTest|clumperGetStateForTest|napFormatClock|napDayInfo|napNextWakeSummary|napRowTitle|napRowUrl|napGroupBadge|napGroupByDay)$',
+        varsIgnorePattern: '^_|^(lexHost|getRespectGroups|setRespectGroups|AI_MODELS|DEFAULT_MODEL|EXPIRY_PRESETS|DEFAULT_EXPIRY|VALID_TAB_GROUP_COLORS|encodeKey|decodeKey|isKeyExpired|saveAiConfig|loadAiConfig|stripQueryParams|buildAiPrompt|callOpenRouter|parseAiResponse|handleAiGroupTabs|handleApplyAiProposal|aiOrganize|openAiSettings|updateAiButtonState|COLOR_MAP|handleMessage|clumperResetStateForTest|clumperGetStateForTest|napFormatClock|napDayInfo|napNextWakeSummary|napRowTitle|napRowUrl|napGroupBadge|napGroupByDay)$',
         caughtErrorsIgnorePattern: '^_' // Ignore unused error parameters prefixed with _
       }],
       'no-console': 'off', // Console is used for debugging in extensions
@@ -111,6 +111,8 @@ export default [
         handleSortCurrentWindow: 'readonly',
         sortAllWindows: 'readonly',
         sortCurrentWindow: 'readonly',
+        handleSortCurrentWindow: 'readonly',
+        initModeToggle: 'readonly',
         extractDomain: 'readonly',
         removeDuplicatesWindow: 'readonly',
         removeDuplicatesAllWindows: 'readonly',

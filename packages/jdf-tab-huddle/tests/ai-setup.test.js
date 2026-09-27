@@ -259,6 +259,38 @@ describe('ai-setup.js', () => {
       expect(document.getElementById('errorMsg').style.display).not.toBe('block');
     });
 
+    test.each([
+      ['?mode=setup&respectGroups=false', false],
+      ['?mode=expired&respectGroups=false', false],
+      ['?mode=expired', true],
+    ])('Save & organize from %s runs with respectGroups=%s', async (search, expected) => {
+      setLocationSearch(search);
+      mockBackground({
+        loadConfigResponse: {
+          models: MODELS,
+          expiryPresets: EXPIRY_PRESETS,
+          modelsMeta: MODELS_META,
+          config: null,
+        },
+        saveConfigResponse: { success: true },
+      });
+      window.close = vi.fn();
+
+      const mod = loadAiSetup();
+      buildAiSetupDom();
+      await mod.init();
+      mod.setupEventListeners();
+
+      document.getElementById('apiKeyInput').value = 'sk-new-key';
+      document.getElementById('saveButton').click();
+      await flushPromises();
+
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+        action: 'aiGroupTabs',
+        respectGroups: expected,
+      });
+    });
+
     test('failure branch: shows the server-provided error and does not close the tab', async () => {
       setLocationSearch('');
       mockBackground({
