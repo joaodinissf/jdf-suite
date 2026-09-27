@@ -7,6 +7,8 @@ let models = [];
 let expiryPresets = [];
 let currentConfig = null;
 let modelsMeta = null;
+// True when the stored key is past its deadline, whatever mode opened the page.
+let storedKeyExpired = false;
 
 function showError(msg) {
   const el = document.getElementById('errorMsg');
@@ -22,6 +24,14 @@ function getSelectedModelId() {
   const custom = (document.getElementById('customModelId')?.value || '').trim();
   if (custom) return custom;
   return document.getElementById('modelSelect')?.value || '';
+}
+
+// The list choice alone, never the custom id, so a filter or refresh cannot
+// turn a typed custom id into a list option that outlives the custom field.
+function getListModelId() {
+  return document.getElementById('modelSelect')?.value
+    || (currentConfig && currentConfig.model)
+    || null;
 }
 
 function findModel(id) {
@@ -187,8 +197,11 @@ function updateModelCost() {
   if (hintEl) {
     if (!id) {
       hintEl.textContent = '';
-    } else if (!model || model.supportsStructuredOutputs == null) {
-      // Either a custom id, or a curated entry the catalog has not confirmed
+    } else if (!model) {
+      // Not in the list Huddle filtered to models that can answer in JSON.
+      hintEl.textContent = 'Warning: this model is not in Huddle\'s list and may not support JSON output, so organize may fail.';
+    } else if (model.supportsStructuredOutputs == null) {
+      // A curated entry the catalog has not confirmed
       // yet — we genuinely do not know, so do not claim the model lacks support.
       hintEl.textContent = 'Structured outputs: unknown — will use JSON object unless the catalog says otherwise.';
     } else if (model.supportsStructuredOutputs) {
@@ -218,7 +231,6 @@ function formatModelsStatus(meta, count) {
     base += ' · just refreshed';
   }
   if (meta.error && !meta.fallback) base += ` · ${meta.error}`;
-  if (meta.error && meta.stale) base += ` · ${meta.error}`;
   return base;
 }
 
@@ -247,7 +259,7 @@ async function refreshCatalog() {
   if (status) status.textContent = 'Loading catalog…';
 
   // Preserve selection if the request fails or returns only curated models.
-  const selectedBefore = getSelectedModelId() || (currentConfig && currentConfig.model) || null;
+  const selectedBefore = getListModelId();
 
   try {
     const data = await new Promise((resolve, reject) => {
@@ -295,6 +307,11 @@ async function refreshCatalog() {
 }
 
 async function init() {
+  // Save stays off until the selects are filled: an empty expiry select would
+  // otherwise send no duration at all.
+  const saveButton = document.getElementById('saveButton');
+  saveButton.disabled = true;
+
   // Load config and metadata from background
   const data = await chrome.runtime.sendMessage({ action: 'loadAiConfig' });
   models = data.models || [];
@@ -303,7 +320,11 @@ async function init() {
   modelsMeta = data.modelsMeta || null;
 
   const isEdit = pageMode === 'edit';
-  const isExpired = pageMode === 'expired';
+  storedKeyExpired = !!(currentConfig && currentConfig.key
+    && typeof currentConfig.expiresAt === 'number'
+    && Date.now() > currentConfig.expiresAt);
+  // The popup cog opens mode=edit even for an expired key; treat it the same.
+  const isExpired = pageMode === 'expired' || storedKeyExpired;
 
   // Page title
   if (isEdit) {
@@ -330,11 +351,14 @@ async function init() {
   }
 
   // Key status + help in edit mode (model/expiry can change without a new key)
+  // An expired key cannot be kept, so do not offer to keep it.
   if (isEdit && currentConfig) {
     document.getElementById('keyStatus').textContent = keyStatusLabel(currentConfig);
-    document.getElementById('apiKeyInput').placeholder = 'Leave blank to keep current key';
-    const keyHelp = document.getElementById('keyHelp');
-    if (keyHelp) keyHelp.hidden = false;
+    if (!storedKeyExpired) {
+      document.getElementById('apiKeyInput').placeholder = 'Leave blank to keep current key';
+      const keyHelp = document.getElementById('keyHelp');
+      if (keyHelp) keyHelp.hidden = false;
+    }
   }
 
   // Buttons
@@ -357,6 +381,7 @@ async function init() {
   }
 
   updateCurrentConfigCard();
+  saveButton.disabled = false;
 
   // If the catalog is empty, only curated, or marked stale/fallback, refresh once.
   const shouldAutoRefresh = !modelsMeta
@@ -367,6 +392,50 @@ async function init() {
     // Fire-and-forget; UI already shows curated/cached list.
     refreshCatalog();
   }
+}
+
+// Pasted keys often carry the header prefix ("Bearer sk-or-...").
+function normalizeKeyInput(raw) {
+  return (raw || '').trim().replace(/^Bearer\s+/i, '');
+}
+
+function keyFormatError(key) {
+  if (/\s/.test(key)) {
+    return 'The key contains spaces or line breaks. Paste only the key itself.';
+  }
+  if (!key.startsWith('sk-or-')) {
+    return 'That is not an OpenRouter key. OpenRouter keys start with "sk-or-".';
+  }
+  return null;
+}
+
+// Asks OpenRouter whether it accepts the key before it is stored.
+async function verifyOpenRouterKey(key) {
+  let response;
+  try {
+    response = await fetch('https://openrouter.ai/api/v1/key', {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${key}`,
+      },
+    });
+  } catch (_err) {
+    return {
+      ok: false,
+      error: 'Could not reach OpenRouter to check this key. Check your connection and try again.',
+    };
+  }
+  if (response.status === 401 || response.status === 403) {
+    return { ok: false, error: 'OpenRouter rejected this key.' };
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: `OpenRouter could not check this key right now (HTTP ${response.status}). Try again.`,
+    };
+  }
+  return { ok: true };
 }
 
 function setupEventListeners() {
@@ -380,7 +449,7 @@ function setupEventListeners() {
   const filterEl = document.getElementById('modelFilter');
   if (filterEl) {
     filterEl.addEventListener('input', () => {
-      populateModels(getSelectedModelId() || (currentConfig && currentConfig.model) || null);
+      populateModels(getListModelId());
       updateCurrentConfigCard();
     });
   }
@@ -398,18 +467,32 @@ function setupEventListeners() {
   }
 
   // Save
-  document.getElementById('saveButton').addEventListener('click', async () => {
+  const saveButton = document.getElementById('saveButton');
+  saveButton.addEventListener('click', async () => {
     hideError();
-    const keyInput = document.getElementById('apiKeyInput').value.trim();
+    const keyInput = normalizeKeyInput(document.getElementById('apiKeyInput').value);
     const model = getSelectedModelId();
     const expiryRaw = document.getElementById('expirySelect').value;
-    const expiryDuration = expiryRaw === 'null' ? null : parseInt(expiryRaw);
+    const expiryDuration = expiryRaw === 'null' ? null : parseInt(expiryRaw, 10);
 
     // In edit mode, key is optional (keeps current)
     const isEdit = pageMode === 'edit';
     if (!isEdit && !keyInput) {
       showError('Please enter your OpenRouter API key.');
       return;
+    }
+
+    if (isEdit && !keyInput && storedKeyExpired) {
+      showError('Your key has expired — enter it again to renew.');
+      return;
+    }
+
+    if (keyInput) {
+      const formatError = keyFormatError(keyInput);
+      if (formatError) {
+        showError(formatError);
+        return;
+      }
     }
 
     // Determine the actual key to save
@@ -432,6 +515,22 @@ function setupEventListeners() {
     if (!model) {
       showError('Please choose a model or enter a custom model id.');
       return;
+    }
+
+    if (expiryDuration !== null && !Number.isFinite(expiryDuration)) {
+      showError('Please choose when the key should expire.');
+      return;
+    }
+
+    // Only a newly typed key is checked; a kept key was checked when saved.
+    if (keyInput) {
+      saveButton.disabled = true;
+      const check = await verifyOpenRouterKey(keyInput);
+      saveButton.disabled = false;
+      if (!check.ok) {
+        showError(check.error);
+        return;
+      }
     }
 
     const response = await chrome.runtime.sendMessage({

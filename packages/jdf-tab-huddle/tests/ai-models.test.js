@@ -108,6 +108,23 @@ describe('saveAiConfig key expiry', () => {
 
     expect(saved.expiresAt).toBeGreaterThan(Date.now() + DAY - 5000);
   });
+
+  // The page sends NaN before its expiry select fills, and messaging turns
+  // NaN into null; a missing duration is the same. None of these may become
+  // a key that never expires.
+  test.each([
+    ['NaN', NaN],
+    ['undefined', undefined],
+    ['a string', ''],
+  ])('an unparsable duration (%s) falls back to the 24 h default', async (_label, duration) => {
+    withStored(null);
+
+    const saved = await saveAiConfig({ key: 'sk-new', model: 'm', expiryDuration: duration });
+
+    expect(saved.expiryDuration).toBe(DAY);
+    expect(saved.expiresAt).toBeGreaterThan(Date.now() + DAY - 5000);
+    expect(saved.expiresAt).toBeLessThan(Date.now() + DAY + 5000);
+  });
 });
 
 describe('formatModelCost', () => {
@@ -126,6 +143,8 @@ describe('formatModelCost', () => {
 });
 
 describe('normalizeOpenRouterModel', () => {
+  const TEXT_OUT = { input_modalities: ['text'], output_modalities: ['text'] };
+
   test('returns null without id', () => {
     expect(normalizeOpenRouterModel(null)).toBeNull();
     expect(normalizeOpenRouterModel({})).toBeNull();
@@ -136,7 +155,8 @@ describe('normalizeOpenRouterModel', () => {
       id: 'acme/model',
       name: 'Acme Model',
       pricing: { prompt: '0.000001' },
-      supported_parameters: ['temperature', 'structured_outputs'],
+      architecture: TEXT_OUT,
+      supported_parameters: ['temperature', 'response_format', 'structured_outputs'],
     });
     expect(m).toEqual({
       id: 'acme/model',
@@ -150,9 +170,50 @@ describe('normalizeOpenRouterModel', () => {
   test('structured_outputs false when only response_format is listed', () => {
     const m = normalizeOpenRouterModel({
       id: 'x/y',
+      architecture: TEXT_OUT,
       supported_parameters: ['response_format'],
     });
     expect(m.supportsStructuredOutputs).toBe(false);
+  });
+
+  test('drops a model without response_format (it cannot answer in JSON)', () => {
+    expect(normalizeOpenRouterModel({
+      id: 'x/plain',
+      architecture: TEXT_OUT,
+      supported_parameters: ['temperature', 'structured_outputs'],
+    })).toBeNull();
+  });
+
+  test('drops a model whose output is not text', () => {
+    expect(normalizeOpenRouterModel({
+      id: 'x/image-gen',
+      architecture: { input_modalities: ['text'], output_modalities: ['image'] },
+      supported_parameters: ['response_format'],
+    })).toBeNull();
+    // Older catalog shape.
+    expect(normalizeOpenRouterModel({
+      id: 'x/image-gen-old',
+      architecture: { modality: 'text->image' },
+      supported_parameters: ['response_format'],
+    })).toBeNull();
+    expect(normalizeOpenRouterModel({
+      id: 'x/multi-old',
+      architecture: { modality: 'text+image->text' },
+      supported_parameters: ['response_format'],
+    })).not.toBeNull();
+    // No modality information at all: not known to emit text.
+    expect(normalizeOpenRouterModel({
+      id: 'x/unknown',
+      supported_parameters: ['response_format'],
+    })).toBeNull();
+  });
+
+  test('drops batch-only ids', () => {
+    expect(normalizeOpenRouterModel({
+      id: 'acme/model:batch',
+      architecture: TEXT_OUT,
+      supported_parameters: ['response_format', 'structured_outputs'],
+    })).toBeNull();
   });
 });
 
@@ -182,6 +243,25 @@ describe('mergeModelsForPicker', () => {
     expect(merged[0].cost).toBe('$9.99/M in');
     expect(merged.some((m) => m.id === 'other/model')).toBe(true);
     expect(merged.filter((m) => m.id === AI_MODELS[0].id)).toHaveLength(1);
+  });
+
+  test('leaves out batch-only ids, even from an older cache', () => {
+    const merged = mergeModelsForPicker([
+      { id: 'acme/model', name: 'Acme', cost: 'free', supportsStructuredOutputs: true, curated: false },
+      { id: 'acme/model:batch', name: 'Acme (batch)', cost: 'free', supportsStructuredOutputs: true, curated: false },
+    ]);
+    const ids = merged.map((m) => m.id);
+    expect(ids).toContain('acme/model');
+    expect(ids).not.toContain('acme/model:batch');
+  });
+
+  test('curated models stay when the catalog filtered them out', () => {
+    const merged = mergeModelsForPicker([
+      { id: 'other/model', name: 'Other', cost: 'free', supportsStructuredOutputs: false, curated: false },
+    ]);
+    for (const c of AI_MODELS) {
+      expect(merged.find((m) => m.id === c.id)).toMatchObject({ curated: true });
+    }
   });
 
   test('works with empty remote (curated only)', () => {
@@ -225,7 +305,22 @@ describe('getOpenRouterModels', () => {
             id: 'new/m',
             name: 'New',
             pricing: { prompt: '0' },
-            supported_parameters: ['structured_outputs'],
+            architecture: { output_modalities: ['text'] },
+            supported_parameters: ['response_format', 'structured_outputs'],
+          },
+          {
+            id: 'new/m:batch',
+            name: 'New (batch)',
+            pricing: { prompt: '0' },
+            architecture: { output_modalities: ['text'] },
+            supported_parameters: ['response_format', 'structured_outputs'],
+          },
+          {
+            id: 'new/no-json',
+            name: 'No JSON',
+            pricing: { prompt: '0' },
+            architecture: { output_modalities: ['text'] },
+            supported_parameters: ['temperature'],
           },
         ],
       }),
@@ -234,6 +329,9 @@ describe('getOpenRouterModels', () => {
     const result = await getOpenRouterModels({ forceRefresh: true });
     expect(result.fromCache).toBe(false);
     expect(result.models.some((m) => m.id === 'new/m' && m.supportsStructuredOutputs)).toBe(true);
+    // Only models Huddle can use reach the picker (and the cache).
+    expect(result.models.map((m) => m.id)).not.toContain('new/m:batch');
+    expect(result.models.map((m) => m.id)).not.toContain('new/no-json');
     expect(chrome.storage.local.set).toHaveBeenCalled();
   });
 
