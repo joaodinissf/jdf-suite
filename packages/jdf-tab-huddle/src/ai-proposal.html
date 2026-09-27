@@ -3,8 +3,9 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Huddle — AI grouping proposal</title>
+  <title>Huddle — Organize with AI</title>
   <link rel="stylesheet" href="huddle-theme.css">
+  <link rel="stylesheet" href="ai-config.css">
   <style>
     /* Tokens, fonts, light/dark and the tab-group chips live in
        huddle-theme.css; this sheet is the proposal page's layout only. */
@@ -45,6 +46,93 @@
       font-weight: 700;
       letter-spacing: -.015em;
       line-height: 1.25;
+    }
+
+    /* The model for this run: a purple group chip heading a one-line bar;
+       Change opens the shared picker (ai-config.css) under it. */
+    .model-bar {
+      background: var(--panel);
+      border: 1px solid var(--bd);
+      border-radius: 10px;
+      padding: 10px 16px;
+      margin: 0 0 20px;
+    }
+
+    .model-bar-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+    }
+
+    .model-bar .group-chip {
+      font-size: 12px;
+      padding: 2px 8px;
+    }
+
+    .model-name {
+      font-weight: 600;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .default-tag {
+      font: 600 12px/1.4 var(--mono);
+      color: var(--tx-dim);
+    }
+
+    .default-tag[hidden] {
+      display: none;
+    }
+
+    .model-bar .group-line {
+      min-width: 24px;
+    }
+
+    .model-note {
+      margin: 6px 0 0;
+      font-size: 13px;
+      color: var(--tx-dim);
+    }
+
+    .model-note:empty {
+      display: none;
+    }
+
+    .model-panel {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--bd);
+    }
+
+    .model-panel[hidden] {
+      display: none;
+    }
+
+    /* The inline key form, shown while organize needs a key */
+    .key-setup {
+      margin: 0 0 24px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 12px;
+      font-size: 12px;
+    }
+
+    .section-head .group-chip {
+      font-size: 12px;
+      padding: 2px 8px;
+    }
+
+    .key-intro {
+      margin: 0 0 12px;
+    }
+
+    .key-setup .error-msg {
+      margin-top: 12px;
     }
 
     .loading {
@@ -313,6 +401,20 @@
       border-color: var(--bd-control-hi);
     }
 
+    .btn.small {
+      font-size: 13px;
+      padding: 6px 12px;
+    }
+
+    .btn:disabled {
+      opacity: .5;
+      cursor: default;
+    }
+
+    .btn[hidden] {
+      display: none;
+    }
+
     .btn.primary {
       background: var(--ac);
       border-color: var(--ac);
@@ -387,9 +489,22 @@
     <header class="page-head">
       <img class="logo" src="icons/huddle-mark.svg" alt="Huddle">
       <div>
-        <h1>AI tab grouping</h1>
+        <h1>Organize with AI</h1>
       </div>
     </header>
+    <section id="modelBar" class="model-bar" data-group="purple" aria-label="Model for this run">
+      <div class="model-bar-row">
+        <span class="group-chip">Model</span>
+        <span id="modelName" class="model-name">Default model</span>
+        <span id="defaultTag" class="default-tag" hidden>default</span>
+        <button type="button" id="makeDefault" class="link-btn" hidden>Make default</button>
+        <button type="button" id="changeModel" class="link-btn" aria-expanded="false" aria-controls="modelPanel">Change</button>
+        <span class="group-line"></span>
+        <button type="button" id="runAgainButton" class="btn small" hidden>Run again</button>
+      </div>
+      <p id="modelNote" class="model-note" role="status" aria-live="polite"></p>
+      <div id="modelPanel" class="model-panel ai-form" hidden></div>
+    </section>
     <div id="actionsContainer" class="actions" style="display: none;">
       <button class="btn primary confirm" id="applyButton">Apply groups</button>
       <button class="btn cancel" id="cancelButton">Cancel</button>
@@ -400,6 +515,7 @@
     <button class="debug-toggle" id="debugToggle" hidden>Show the model's raw output</button>
     <div class="debug-section" id="debugSection"></div>
   </main>
+  <script src="ai-config.js"></script>
   <script src="ai-proposal.js"></script>
 </body>
 

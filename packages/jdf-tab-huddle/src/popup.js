@@ -12,9 +12,6 @@ document.addEventListener('DOMContentLoaded', function () {
   // snooze Group button and the status bar
   loadBrowserSnapshot();
 
-  // Update AI button visibility (show cog if key is set)
-  updateAiButtonState();
-
   // Initialize the Tab Snoozing UI (picker, presets, sleeping list)
   initSnoozeUi();
 
@@ -133,7 +130,6 @@ function setupEventListeners() {
 
   // AI listeners
   document.getElementById('aiOrganize').addEventListener('click', () => aiOrganize(getRespectGroups()));
-  document.getElementById('aiSettings').addEventListener('click', () => openAiSettings());
 
   // Expand the Sleeping preview into its own full-page tab (the nap room).
   const expandBtn = document.getElementById('expandSleeping');
@@ -202,7 +198,6 @@ const ACTION_VERBS = {
   compactWindow: 'compact',
   expandWindow: 'expand',
   aiGroupTabs: 'organize with AI',
-  openAiSettings: 'open AI settings',
 };
 
 // Appended when an action did its main work but the re-sort after it failed.
@@ -479,40 +474,10 @@ function updateUIForWindowCount(windows) {
   });
 }
 
-// AI Organize
+// AI Organize: opens the organize page, which also asks for a key when none
+// is on file. The model and key are set there and in Settings, not here.
 function aiOrganize(respectGroups = true) {
   sendAction('aiGroupTabs', { respectGroups });
-}
-
-function openAiSettings() {
-  sendAction('openAiSettings');
-}
-
-// Show/hide the AI settings cog based on whether a key is configured, and
-// surface the active model under Organize with AI.
-function updateAiButtonState() {
-  chrome.runtime.sendMessage({ action: 'loadAiStatus' }, function (response) {
-    if (chrome.runtime.lastError || !response) return;
-
-    const hasKey = response.config && response.config.key;
-    const cog = document.getElementById('aiSettings');
-    if (cog) cog.style.display = hasKey ? 'flex' : 'none';
-
-    const line = document.getElementById('aiModelLine');
-    if (line) {
-      if (hasKey && response.config.model) {
-        line.textContent = `Model: ${response.modelName || response.config.model}`;
-        line.title = response.config.model;
-        line.hidden = false;
-      } else {
-        line.textContent = '';
-        line.hidden = true;
-      }
-    }
-
-    // The AI settings cog visibility changed — recompute hotkeys.
-    refreshHotkeys();
-  });
 }
 
 // ============================================================
@@ -1005,7 +970,6 @@ const HOTKEY_PREFERENCES = {
   compactWindow: ['v'],               // split View
   expandWindow: ['j'],                // Expand (e and x are taken)
   aiOrganize: ['o'],                  // Organize with AI
-  aiSettings: ['k'],                  // settings cog (shown only with a key)
   // All windows
   sortAllWindows: ['a'],              // sort All windows
   moveAllToSingleWindow: ['m'],       // Merge windows
@@ -1056,7 +1020,7 @@ function isTextInputTarget(el) {
 // Layout-free visibility test: walk ancestors and reject if any is hidden via
 // the [hidden] attribute or inline display:none / visibility:hidden. This
 // mirrors every way the popup hides controls (hidden picker/sleeping sections,
-// display:none AI cog, display:none multi-window sections) and works
+// display:none multi-window sections) and works
 // identically in the browser and in jsdom (which has no layout engine).
 function isHotkeyVisible(el) {
   let node = el;

@@ -39,7 +39,7 @@ export default [
       // Relaxed rules for Chrome extension development
       'no-unused-vars': ['warn', {
         argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_|^(lexHost|getRespectGroups|setRespectGroups|AI_MODELS|DEFAULT_MODEL|EXPIRY_PRESETS|DEFAULT_EXPIRY|VALID_TAB_GROUP_COLORS|encodeKey|decodeKey|isKeyExpired|saveAiConfig|loadAiConfig|stripQueryParams|buildAiPrompt|callOpenRouter|parseAiResponse|handleAiGroupTabs|handleApplyAiProposal|aiOrganize|openAiSettings|updateAiButtonState|COLOR_MAP|handleMessage|clumperResetStateForTest|clumperGetStateForTest|napFormatClock|napDayInfo|napNextWakeSummary|napRowTitle|napRowUrl|napGroupBadge|napGroupByDay)$',
+        varsIgnorePattern: '^_|^(lexHost|getRespectGroups|setRespectGroups|AI_MODELS|DEFAULT_MODEL|EXPIRY_PRESETS|DEFAULT_EXPIRY|VALID_TAB_GROUP_COLORS|encodeKey|decodeKey|isKeyExpired|saveAiConfig|loadAiConfig|stripQueryParams|buildAiPrompt|callOpenRouter|parseAiResponse|handleAiGroupTabs|handleApplyAiProposal|aiOrganize|COLOR_MAP|handleMessage|clumperResetStateForTest|clumperGetStateForTest|napFormatClock|napDayInfo|napNextWakeSummary|napRowTitle|napRowUrl|napGroupBadge|napGroupByDay)$',
         caughtErrorsIgnorePattern: '^_' // Ignore unused error parameters prefixed with _
       }],
       'no-console': 'off', // Console is used for debugging in extensions
@@ -172,8 +172,6 @@ export default [
         MODELS_CACHE_KEY: 'readonly',
         MODELS_CACHE_TTL_MS: 'readonly',
         aiOrganize: 'readonly',
-        openAiSettings: 'readonly',
-        updateAiButtonState: 'readonly',
         popupSetupEventListeners: 'readonly',
 
         // Tab snoozing functions (loaded by setup.js)
@@ -239,17 +237,13 @@ export default [
         setupActionButtons: 'readonly',
         callOpenRouter: 'readonly',
         handleAiGroupTabs: 'readonly',
+        runAiOrganizeInTab: 'readonly',
         handleApplyAiProposal: 'readonly',
+        saveAiDefaultModel: 'readonly',
+        deleteAiKey: 'readonly',
 
-        // ai-setup.js exposures (loaded by setup.js)
-        formatTimeRemaining: 'readonly',
-        aiSetupShowError: 'readonly',
-        aiSetupHideError: 'readonly',
-        aiSetupPopulateModels: 'readonly',
-        aiSetupPopulateExpiry: 'readonly',
-        aiSetupUpdateModelCost: 'readonly',
-        aiSetupInit: 'readonly',
-        aiSetupSetupEventListeners: 'readonly'
+        // ai-config.js (shared AI script, loaded by setup.js)
+        HuddleAi: 'readonly'
       }
     },
     rules: {

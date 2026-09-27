@@ -322,9 +322,11 @@ async function saveAiConfig(config) {
     ? previous.expiresAt
     : (expiryDuration !== null ? Date.now() + expiryDuration : null);
 
+  // A key saved without a model (the organize page's inline key form) keeps
+  // the default model already chosen in Settings.
   const aiConfig = {
     key,
-    model: config.model || DEFAULT_MODEL,
+    model: config.model || (previous && previous.model) || DEFAULT_MODEL,
     expiresAt,
     expiryDuration,
     setupComplete: true,
@@ -339,10 +341,49 @@ async function loadAiConfig() {
   return result.aiConfig || null;
 }
 
+// The default model can be chosen before any key is on file, so it is stored
+// on its own: a config without a key still reads as "no key".
+async function saveAiDefaultModel(model) {
+  const id = typeof model === 'string' ? model.trim() : '';
+  if (!id) throw new Error('Choose a model first.');
+  const previous = await loadAiConfig();
+  const aiConfig = previous
+    ? { ...previous, model: id }
+    : { key: null, model: id, expiresAt: null, expiryDuration: DEFAULT_EXPIRY, setupComplete: false };
+  await chrome.storage.local.set({ aiConfig });
+  return aiConfig;
+}
+
+// Deleting the key keeps the default model and the expiry policy.
+async function deleteAiKey() {
+  const previous = await loadAiConfig();
+  if (!previous) return null;
+  const aiConfig = { ...previous, key: null, expiresAt: null };
+  await chrome.storage.local.set({ aiConfig });
+  return aiConfig;
+}
+
+// 'missing' or 'expired' when organize cannot run with the stored key.
+function aiKeyState(config) {
+  if (!config || !config.key) return 'missing';
+  return isKeyExpired(config) ? 'expired' : null;
+}
+
 // Runs waiting for their proposal tab to send 'aiProposalReady', keyed by
 // that tab's id. In memory only: if the service worker is stopped, the map
-// comes back empty and the page is told its run has ended.
+// comes back empty and the page is told its run has ended. A waiting run
+// resolves with { instructions, model } (model: for this run only, or null
+// for the default), or with null when it is dropped.
 const aiPendingRuns = new Map();
+
+// Parks a run for tabId, dropping any run that tab was still waiting on.
+function waitForAiProposalReady(tabId) {
+  const previous = aiPendingRuns.get(tabId);
+  if (previous) previous(null);
+  return new Promise((resolve) => {
+    aiPendingRuns.set(tabId, resolve);
+  });
+}
 
 // A proposal tab closed before it sent 'aiProposalReady' ends its run, so
 // the waiting promise settles and its config is not held until shutdown.
@@ -641,6 +682,8 @@ function parseAiResponse(responseText, originalTabs) {
 // AI Tab Grouping — Message Handlers
 // ============================================================
 
+// Opens the organize page and runs organize there. With no key, or an expired
+// one, the page asks for the key itself and starts the run once it is saved.
 async function handleAiGroupTabs(message, sendResponse) {
   // The popup waits on exactly one reply, including when something fails
   // before the proposal tab exists.
@@ -650,47 +693,66 @@ async function handleAiGroupTabs(message, sendResponse) {
     responded = true;
     sendResponse(response);
   };
-  // Set once the proposal tab is open, so the catch below can reach it.
-  let proposalTabId = null;
-  const send = (msg) => {
-    chrome.tabs.sendMessage(proposalTabId, msg).catch(() => {});
-  };
 
   try {
     const respectGroups = message.respectGroups !== undefined ? message.respectGroups : true;
-    const respectParam = respectGroups ? 'true' : 'false';
-    const config = await loadAiConfig();
+    const params = new URLSearchParams({ respectGroups: respectGroups ? 'true' : 'false' });
+    const keyState = aiKeyState(await loadAiConfig());
+    if (keyState) params.set('key', keyState);
 
-    // No key or expired → open setup page (carrying the Groups/Flat choice)
-    if (!config || !config.key || isKeyExpired(config)) {
-      const mode = config && config.key ? 'expired' : 'setup';
-      const url = chrome.runtime.getURL(`ai-setup.html?mode=${mode}&respectGroups=${respectParam}`);
-      await chrome.tabs.create({ url, active: true });
-      reply({ success: true, action: 'setup' });
+    const proposalUrl = chrome.runtime.getURL(`ai-proposal.html?${params}`);
+    const proposalTab = await chrome.tabs.create({ url: proposalUrl, active: true });
+    reply({ success: true, action: keyState ? 'setup' : 'proposal' });
+
+    await runAiOrganizeInTab(proposalTab.id, respectGroups, proposalTab.windowId);
+  } catch (error) {
+    console.error('[Tab Organizer] Error in AI group tabs:', error);
+    reply({ success: false, error: error.message });
+  }
+}
+
+// One organize run in the organize page open in tabId: waits for the page to
+// send 'aiProposalReady' (instructions, and a model for this run only), then
+// streams the proposal to it. Run again on the page parks a new one here.
+async function runAiOrganizeInTab(tabId, respectGroups, windowId = null) {
+  const send = (msg) => {
+    chrome.tabs.sendMessage(tabId, msg).catch(() => {});
+  };
+
+  // Registered before any await, so the page's ready message cannot race it.
+  const start = await waitForAiProposalReady(tabId);
+  // The proposal tab was closed (or restarted) before the user started the run.
+  if (start === null) return;
+
+  try {
+    // The page may have saved a key since it opened, so read it now.
+    const config = await loadAiConfig();
+    const keyState = aiKeyState(config);
+    if (keyState) {
+      send({
+        type: 'ai-error',
+        needsKey: keyState,
+        error: keyState === 'expired'
+          ? 'Your OpenRouter key has expired. Enter it again to organize.'
+          : 'Huddle has no OpenRouter key yet. Add one to organize.',
+      });
       return;
     }
-
-    // Open proposal tab immediately
-    const proposalUrl = chrome.runtime.getURL(`ai-proposal.html?respectGroups=${respectParam}`);
-    const proposalTab = await chrome.tabs.create({ url: proposalUrl, active: true });
-    proposalTabId = proposalTab.id;
-    reply({ success: true, action: 'proposal' });
-
-    // Wait for this proposal tab to signal it's ready (with optional instructions)
-    const userInstructions = await new Promise(resolve => {
-      aiPendingRuns.set(proposalTabId, resolve);
-    });
-    // The proposal tab was closed before the user started the run.
-    if (userInstructions === null) return;
+    // The page's picker overrides the default for this run only.
+    const model = (typeof start.model === 'string' && start.model.trim())
+      || config.model
+      || DEFAULT_MODEL;
 
     // Gather tabs
     send({ type: 'ai-status', text: 'Gathering tabs...' });
-    const currentWindow = await chrome.windows.getCurrent();
-    const tabs = await getTabsWithGroupInfo(currentWindow.id);
+    const targetWindowId = typeof windowId === 'number'
+      ? windowId
+      : (await chrome.windows.getCurrent()).id;
+    const tabs = await getTabsWithGroupInfo(targetWindowId);
 
     // Groups mode: only organize ungrouped tabs. Flat mode: all tabs.
     const unpinnedTabs = tabs.filter(t => {
-      if (t.pinned || t.id === proposalTabId) return false;
+      if (t.pinned || t.id === tabId) return false;
       if (respectGroups && t.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) return false;
       return true;
     });
@@ -704,14 +766,14 @@ async function handleAiGroupTabs(message, sendResponse) {
     }
 
     // Build prompt and send debug info
-    const messages = buildAiPrompt(unpinnedTabs, userInstructions);
-    const modelName = await resolveModelDisplayName(config.model);
-    const useJsonSchema = await modelSupportsStructuredOutputs(config.model);
+    const messages = buildAiPrompt(unpinnedTabs, start.instructions || '');
+    const modelName = await resolveModelDisplayName(model);
+    const useJsonSchema = await modelSupportsStructuredOutputs(model);
     const tabIds = unpinnedTabs.map((t) => t.id);
     const jsonSchema = useJsonSchema ? buildTabGroupsJsonSchema(tabIds) : null;
     send({
       type: 'ai-debug',
-      model: config.model,
+      model,
       modelName,
       messages,
       respectGroups,
@@ -728,7 +790,7 @@ async function handleAiGroupTabs(message, sendResponse) {
     const apiKey = decodeKey(config.key);
     const responseText = await callOpenRouter(
       apiKey,
-      config.model,
+      model,
       messages,
       (chunk) => {
         send({ type: 'ai-chunk', text: chunk });
@@ -758,15 +820,12 @@ async function handleAiGroupTabs(message, sendResponse) {
       groups: result.groups,
       ungroupedTabIds: result.ungroupedTabIds,
       tabs: tabMeta,
-      windowId: currentWindow.id,
+      windowId: targetWindowId,
     });
   } catch (error) {
-    console.error('[Tab Organizer] Error in AI group tabs:', error);
-    reply({ success: false, error: error.message });
+    console.error('[Tab Organizer] Error in AI organize run:', error);
     // The proposal tab may already be closed; send() swallows that.
-    if (proposalTabId !== null) {
-      send({ type: 'ai-error', error: error.message });
-    }
+    send({ type: 'ai-error', error: error.message });
   }
 }
 
@@ -1018,9 +1077,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const resolve = aiPendingRuns.get(tabId);
     if (resolve) {
       aiPendingRuns.delete(tabId);
-      resolve(message.instructions || '');
+      resolve({
+        instructions: message.instructions || '',
+        model: typeof message.model === 'string' ? message.model : null,
+      });
     }
     sendResponse({ success: true, pending: !!resolve });
+  } else if (message.action === 'aiRestartRun') {
+    // Run again from the organize page: a new run in the same tab, which the
+    // page then starts with 'aiProposalReady' like the first one.
+    const tab = _sender.tab;
+    if (!tab || typeof tab.id !== 'number') {
+      sendResponse({ success: false, error: 'Run again only works from the organize page' });
+    } else {
+      runAiOrganizeInTab(tab.id, message.respectGroups !== false, tab.windowId);
+      sendResponse({ success: true });
+    }
   } else if (message.action === 'applyAiProposal') {
     handleApplyAiProposal(message, _sender, sendResponse);
     return true;
@@ -1043,6 +1115,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           config,
           models: catalog.models,
           expiryPresets: EXPIRY_PRESETS,
+          defaultModel: DEFAULT_MODEL,
           modelsMeta: {
             fetchedAt: catalog.fetchedAt,
             fromCache: catalog.fromCache,
@@ -1053,31 +1126,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         });
       }
     ).catch((err) => {
+      // error says the config could not be read, so config: null is not
+      // "no key on file".
       sendResponse({
         config: null,
+        error: err.message,
         models: curatedModelsAsPickerEntries(),
         expiryPresets: EXPIRY_PRESETS,
+        defaultModel: DEFAULT_MODEL,
         modelsMeta: { fetchedAt: null, fromCache: false, fallback: true, error: err.message },
       });
     });
     return true;
-  } else if (message.action === 'loadAiStatus') {
-    // The popup only needs the cog state and a model label. Deliberately does
-    // not touch the catalog: loadAiConfig can fire a network fetch on a cold
-    // cache, which would stall the popup's first paint once every TTL.
-    loadAiConfig().then(async (config) => {
-      const model = config && config.model;
-      sendResponse({
-        config,
-        modelName: model ? await resolveModelDisplayName(model) : null,
-      });
-    }).catch((err) => {
-      console.error('[Tab Organizer] loadAiStatus failed:', err);
-      sendResponse({ config: null, modelName: null });
-    });
-    return true;
   } else if (message.action === 'refreshOpenRouterModels') {
-    // Always respond with a models array so the setup page never gets an empty
+    // Always respond with a models array so a model picker never gets an empty
     // message (which used to surface as the opaque "Refresh failed").
     getOpenRouterModels({ forceRefresh: true })
       .then((catalog) => {
@@ -1111,13 +1173,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         });
       });
     return true;
-  } else if (message.action === 'openAiSettings') {
-    const url = chrome.runtime.getURL('ai-setup.html?mode=edit');
-    chrome.tabs.create({ url, active: true });
-    sendResponse({ success: true });
-  } else if (message.action === 'deleteAiConfig') {
-    chrome.storage.local.remove('aiConfig').then(() => {
-      sendResponse({ success: true });
+  } else if (message.action === 'saveAiDefaultModel') {
+    saveAiDefaultModel(message.model).then((saved) => {
+      sendResponse({ success: true, config: saved });
+    }).catch((err) => {
+      sendResponse({ success: false, error: err.message });
+    });
+    return true;
+  } else if (message.action === 'deleteAiKey') {
+    deleteAiKey().then((saved) => {
+      sendResponse({ success: true, config: saved });
+    }).catch((err) => {
+      sendResponse({ success: false, error: err.message });
     });
     return true;
   } else if (message.action === 'getSnoozePresets') {

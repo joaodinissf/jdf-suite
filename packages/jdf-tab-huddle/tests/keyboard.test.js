@@ -33,10 +33,7 @@ function buildPopupDom({ respectGroups = true, singleWindow = false, groupDisabl
           <button id="compactWindow" class="btn" data-action="compactWindow">Compact</button>
           <button id="expandWindow" class="btn" data-action="expandWindow">Expand</button>
         </div>
-        <div class="ai-row">
-          <button id="aiOrganize" class="btn primary" data-action="aiGroupTabs">Organize with AI</button>
-          <button id="aiSettings" class="btn ai-cog-btn" data-action="openAiSettings" style="display: none">cog</button>
-        </div>
+        <button id="aiOrganize" class="btn primary wide" data-action="aiGroupTabs">Organize with AI</button>
       </div>
 
       <div class="grp multi-window-section"${mw}>
@@ -186,11 +183,10 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
       expect(map.get('t')?.id).toBe('snoozeTab');
     });
 
-    test('ignores buttons hidden via inline display:none (AI cog, multi-window)', () => {
+    test('ignores buttons hidden via inline display:none (multi-window)', () => {
       document.body.innerHTML = buildPopupDom({ singleWindow: true });
       const map = buildHotkeyMap();
       const boundIds = [...map.values()].map((el) => el.id);
-      expect(boundIds).not.toContain('aiSettings');
       expect(boundIds).not.toContain('sortAllWindows');
       expect(boundIds).not.toContain('moveAllToSingleWindow');
       expect(boundIds).not.toContain('removeDuplicatesGlobally');
@@ -208,10 +204,11 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
       assertNoDuplicateKeys(map);
     });
 
-    test('binds the AI cog when it is shown', () => {
-      document.getElementById('aiSettings').style.display = 'flex';
+    test('Organize with AI binds to O, and K is free (no AI settings cog)', () => {
       const map = buildHotkeyMap();
-      expect(map.get('k')?.id).toBe('aiSettings');
+      expect(map.get('o')?.id).toBe('aiOrganize');
+      expect(map.has('k')).toBe(false);
+      expect([...map.values()].some((el) => el.dataset.action === 'openAiSettings')).toBe(false);
     });
 
     test('binds the Expand link when the sleeping section is shown', () => {
@@ -297,7 +294,9 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
     test('false for [hidden] ancestors and inline display:none; true otherwise', () => {
       expect(isHotkeyVisible(document.getElementById('snoozePreset-tonight'))).toBe(false); // inside hidden picker
       expect(isHotkeyVisible(document.getElementById('expandSleeping'))).toBe(false); // inside hidden sleeping section
-      expect(isHotkeyVisible(document.getElementById('aiSettings'))).toBe(false); // display:none
+      document.getElementById('sortCurrentWindow').style.display = 'none';
+      expect(isHotkeyVisible(document.getElementById('sortCurrentWindow'))).toBe(false); // display:none
+      document.getElementById('sortCurrentWindow').style.display = '';
       expect(isHotkeyVisible(document.getElementById('sortCurrentWindow'))).toBe(true);
     });
   });

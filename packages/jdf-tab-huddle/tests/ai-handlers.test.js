@@ -7,10 +7,10 @@
 // is normally sent by ai-proposal.js; here we simulate it by driving the same
 // chrome.runtime.onMessage listener background.js itself registered, from the
 // tab id the tabs.create mock handed out. Returns the reply callback.
-function triggerAiProposalReady(instructions = '', tabId = 10) {
+function triggerAiProposalReady(instructions = '', tabId = 10, model = undefined) {
   const reply = vi.fn();
   chrome.runtime.onMessage.callListeners(
-    { action: 'aiProposalReady', instructions },
+    { action: 'aiProposalReady', instructions, model },
     { tab: { id: tabId } },
     reply
   );
@@ -23,26 +23,32 @@ function flushMicrotasks() {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe('handleAiGroupTabs - setup / expiry routing', () => {
-  test('missing key routes to ai-setup.html?mode=setup and makes no network call', async () => {
+describe('handleAiGroupTabs - opening the organize page', () => {
+  test('missing key opens the organize page asking for a key, with no network call', async () => {
     chrome.storage.local.get.mockResolvedValue({});
     chrome.tabs.create.mockResolvedValue({ id: 100 });
     global.fetch = vi.fn();
 
     const sendResponse = vi.fn();
-    await handleAiGroupTabs({ respectGroups: true }, sendResponse);
+    const promise = handleAiGroupTabs({ respectGroups: true }, sendResponse);
+    await flushMicrotasks();
 
     expect(chrome.tabs.create).toHaveBeenCalledTimes(1);
     expect(chrome.tabs.create).toHaveBeenCalledWith({
-      url: 'chrome-extension://test-id/ai-setup.html?mode=setup&respectGroups=true',
+      url: 'chrome-extension://test-id/ai-proposal.html?respectGroups=true&key=missing',
       active: true,
     });
+    expect(chrome.tabs.create.mock.calls[0][0].url).not.toContain('ai-setup');
     expect(sendResponse).toHaveBeenCalledWith({ success: true, action: 'setup' });
     expect(chrome.windows.getCurrent).not.toHaveBeenCalled();
     expect(global.fetch).not.toHaveBeenCalled();
+
+    // The run waits for the page; closing it ends the run.
+    chrome.tabs.onRemoved.callListeners(100, {});
+    await promise;
   });
 
-  test('expired key routes to ai-setup.html?mode=expired and makes no network call', async () => {
+  test('expired key opens the organize page in its expired state', async () => {
     chrome.storage.local.get.mockResolvedValue({
       aiConfig: { key: 'abc', expiresAt: Date.now() - 1000, model: 'anthropic/claude-haiku-4.5' },
     });
@@ -50,28 +56,81 @@ describe('handleAiGroupTabs - setup / expiry routing', () => {
     global.fetch = vi.fn();
 
     const sendResponse = vi.fn();
-    await handleAiGroupTabs({ respectGroups: true }, sendResponse);
+    const promise = handleAiGroupTabs({ respectGroups: true }, sendResponse);
+    await flushMicrotasks();
 
-    expect(chrome.tabs.create).toHaveBeenCalledTimes(1);
     expect(chrome.tabs.create).toHaveBeenCalledWith({
-      url: 'chrome-extension://test-id/ai-setup.html?mode=expired&respectGroups=true',
+      url: 'chrome-extension://test-id/ai-proposal.html?respectGroups=true&key=expired',
       active: true,
     });
     expect(sendResponse).toHaveBeenCalledWith({ success: true, action: 'setup' });
-    expect(chrome.windows.getCurrent).not.toHaveBeenCalled();
     expect(global.fetch).not.toHaveBeenCalled();
+
+    chrome.tabs.onRemoved.callListeners(101, {});
+    await promise;
   });
 
-  test('the Flat choice is carried into the setup page URL', async () => {
+  test('the Flat choice is carried into the organize page URL', async () => {
     chrome.storage.local.get.mockResolvedValue({});
     chrome.tabs.create.mockResolvedValue({ id: 100 });
 
-    await handleAiGroupTabs({ respectGroups: false }, vi.fn());
+    const promise = handleAiGroupTabs({ respectGroups: false }, vi.fn());
+    await flushMicrotasks();
 
     expect(chrome.tabs.create).toHaveBeenCalledWith({
-      url: 'chrome-extension://test-id/ai-setup.html?mode=setup&respectGroups=false',
+      url: 'chrome-extension://test-id/ai-proposal.html?respectGroups=false&key=missing',
       active: true,
     });
+    chrome.tabs.onRemoved.callListeners(100, {});
+    await promise;
+  });
+
+  test('a key saved on the page before it starts the run is used for that run', async () => {
+    // No key when the popup asked; the page's inline form saves one.
+    chrome.storage.local.get.mockResolvedValueOnce({});
+    chrome.storage.local.get.mockResolvedValue({
+      aiConfig: { key: btoa('sk-or-new'), expiresAt: null, model: 'anthropic/claude-haiku-4.5' },
+    });
+    chrome.tabs.create.mockResolvedValue({ id: 10 });
+    chrome.tabs.sendMessage.mockResolvedValue({});
+    chrome.windows.getCurrent.mockResolvedValue({ id: 1 });
+    chrome.tabGroups.query.mockResolvedValue([]);
+    chrome.tabs.query.mockResolvedValue([{ id: 20, url: 'https://x.com', title: 'X', pinned: false, groupId: -1 }]);
+    const content = JSON.stringify({ groups: [{ name: 'G', color: 'blue', tabIds: [20] }] });
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ choices: [{ message: { content } }] }),
+    });
+
+    const promise = handleAiGroupTabs({ respectGroups: true }, vi.fn());
+    await flushMicrotasks();
+    triggerAiProposalReady('');
+    await promise;
+
+    const [, init] = global.fetch.mock.calls[0];
+    expect(init.headers.Authorization).toBe('Bearer sk-or-new');
+    const types = chrome.tabs.sendMessage.mock.calls.map((call) => call[1].type);
+    expect(types).toContain('ai-proposal');
+  });
+
+  test('a run started while the key is still missing tells the page it needs one', async () => {
+    chrome.storage.local.get.mockResolvedValue({});
+    chrome.tabs.create.mockResolvedValue({ id: 10 });
+    chrome.tabs.sendMessage.mockResolvedValue({});
+    global.fetch = vi.fn();
+
+    const promise = handleAiGroupTabs({ respectGroups: true }, vi.fn());
+    await flushMicrotasks();
+    triggerAiProposalReady('');
+    await promise;
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(10, expect.objectContaining({
+      type: 'ai-error',
+      needsKey: 'missing',
+    }));
   });
 
   test('a failure before any tab opens still answers the popup with the reason', async () => {
@@ -473,5 +532,145 @@ describe('handleApplyAiProposal', () => {
     );
 
     expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'group failed' });
+  });
+});
+
+describe('the model for one run, and Run again in the same tab', () => {
+  const okResponse = (tabIds) => {
+    const content = JSON.stringify({ groups: [{ name: 'G', color: 'blue', tabIds }] });
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => ({ choices: [{ message: { content } }] }),
+    };
+  };
+
+  beforeEach(() => {
+    chrome.storage.local.get.mockResolvedValue({
+      aiConfig: { key: btoa('sk-or-k'), expiresAt: null, model: 'anthropic/claude-haiku-4.5' },
+    });
+    chrome.storage.local.set.mockResolvedValue();
+    chrome.tabs.create.mockResolvedValue({ id: 10 });
+    chrome.tabs.sendMessage.mockResolvedValue({});
+    chrome.windows.getCurrent.mockResolvedValue({ id: 1 });
+    chrome.tabGroups.query.mockResolvedValue([]);
+    chrome.tabs.query.mockResolvedValue([{ id: 20, url: 'https://x.com', title: 'X', pinned: false, groupId: -1 }]);
+    global.fetch = vi.fn().mockResolvedValue(okResponse([20]));
+  });
+
+  const requestedModel = () => JSON.parse(global.fetch.mock.calls[0][1].body).model;
+
+  test('the page\'s model applies to the run without changing the saved default', async () => {
+    const promise = handleAiGroupTabs({ respectGroups: true }, vi.fn());
+    await flushMicrotasks();
+    triggerAiProposalReady('', 10, 'qwen/qwen3.5-flash-20260224');
+    await promise;
+
+    expect(requestedModel()).toBe('qwen/qwen3.5-flash-20260224');
+    const debug = chrome.tabs.sendMessage.mock.calls.find((call) => call[1].type === 'ai-debug');
+    expect(debug[1].model).toBe('qwen/qwen3.5-flash-20260224');
+    // Nothing was written: the default stays what it was.
+    expect(chrome.storage.local.set).not.toHaveBeenCalledWith(
+      expect.objectContaining({ aiConfig: expect.anything() })
+    );
+  });
+
+  test('no model from the page means the saved default', async () => {
+    const promise = handleAiGroupTabs({ respectGroups: true }, vi.fn());
+    await flushMicrotasks();
+    triggerAiProposalReady('', 10, null);
+    await promise;
+
+    expect(requestedModel()).toBe('anthropic/claude-haiku-4.5');
+  });
+
+  test('aiRestartRun parks a new run for the sender tab, in that tab\'s window', async () => {
+    const reply = vi.fn();
+    chrome.runtime.onMessage.callListeners(
+      { action: 'aiRestartRun', respectGroups: false },
+      { tab: { id: 77, windowId: 3 } },
+      reply
+    );
+    expect(reply).toHaveBeenCalledWith({ success: true });
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+
+    const ready = triggerAiProposalReady('by topic', 77, 'google/gemini-3.1-flash-lite-preview-20260303');
+    expect(ready).toHaveBeenCalledWith({ success: true, pending: true });
+    await vi.waitFor(() => {
+      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(77, expect.objectContaining({ type: 'ai-proposal', windowId: 3 }));
+    });
+    expect(chrome.tabs.query).toHaveBeenCalledWith({ windowId: 3 });
+    expect(chrome.windows.getCurrent).not.toHaveBeenCalled();
+    expect(requestedModel()).toBe('google/gemini-3.1-flash-lite-preview-20260303');
+  });
+
+  test('aiRestartRun from outside a tab is refused', () => {
+    const reply = vi.fn();
+    chrome.runtime.onMessage.callListeners({ action: 'aiRestartRun' }, {}, reply);
+    expect(reply).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+  });
+
+  test('a second restart drops the run the tab was still waiting on', async () => {
+    const first = runAiOrganizeInTab(88, true, 1);
+    runAiOrganizeInTab(88, true, 1);
+    await expect(first).resolves.toBeUndefined();
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+    // Only one run is left to start.
+    expect(triggerAiProposalReady('', 88)).toHaveBeenCalledWith({ success: true, pending: true });
+    expect(triggerAiProposalReady('', 88)).toHaveBeenCalledWith({ success: true, pending: false });
+  });
+});
+
+describe('default model and key storage', () => {
+  let stored;
+  beforeEach(() => {
+    stored = null;
+    chrome.storage.local.get.mockImplementation(async () => (stored ? { aiConfig: stored } : {}));
+    chrome.storage.local.set.mockImplementation(async (items) => { stored = items.aiConfig; });
+  });
+
+  test('saveAiDefaultModel changes only the model, keeping the key and its deadline', async () => {
+    stored = { key: btoa('sk-or-k'), model: 'a/one', expiresAt: 12345, expiryDuration: 3600000, setupComplete: true };
+    const saved = await saveAiDefaultModel('b/two');
+    expect(saved).toMatchObject({ key: btoa('sk-or-k'), model: 'b/two', expiresAt: 12345, expiryDuration: 3600000 });
+  });
+
+  test('saveAiDefaultModel works before any key is on file', async () => {
+    const saved = await saveAiDefaultModel('b/two');
+    expect(saved.model).toBe('b/two');
+    expect(saved.key).toBeNull();
+    expect(isKeyExpired(saved)).toBe(true);
+  });
+
+  test('saveAiDefaultModel refuses an empty model', async () => {
+    await expect(saveAiDefaultModel('  ')).rejects.toThrow(/model/i);
+  });
+
+  test('deleteAiKey drops the key but keeps the default model', async () => {
+    stored = { key: btoa('sk-or-k'), model: 'b/two', expiresAt: null, expiryDuration: null, setupComplete: true };
+    const saved = await deleteAiKey();
+    expect(saved.key).toBeNull();
+    expect(saved.model).toBe('b/two');
+  });
+
+  test('saving a key without a model keeps the saved default model', async () => {
+    stored = { key: null, model: 'b/two', expiresAt: null, expiryDuration: 86400000, setupComplete: false };
+    const saved = await saveAiConfig({ key: 'sk-or-new', expiryDuration: 86400000 });
+    expect(saved.model).toBe('b/two');
+    expect(saved.key).toBe(btoa('sk-or-new'));
+  });
+
+  test('the saveAiDefaultModel and deleteAiKey messages answer with the new config', async () => {
+    stored = { key: btoa('sk-or-k'), model: 'a/one', expiresAt: null, expiryDuration: null, setupComplete: true };
+    const saveReply = vi.fn();
+    chrome.runtime.onMessage.callListeners({ action: 'saveAiDefaultModel', model: 'c/three' }, {}, saveReply);
+    await vi.waitFor(() => expect(saveReply).toHaveBeenCalled());
+    expect(saveReply).toHaveBeenCalledWith({ success: true, config: expect.objectContaining({ model: 'c/three' }) });
+
+    const deleteReply = vi.fn();
+    chrome.runtime.onMessage.callListeners({ action: 'deleteAiKey' }, {}, deleteReply);
+    await vi.waitFor(() => expect(deleteReply).toHaveBeenCalled());
+    expect(deleteReply).toHaveBeenCalledWith({ success: true, config: expect.objectContaining({ key: null, model: 'c/three' }) });
   });
 });
