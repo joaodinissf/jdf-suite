@@ -42,6 +42,21 @@ describe('saveAiConfig key expiry', () => {
     expect(saved.expiresAt).toBe(expiresAt);
   });
 
+  test('re-entering the same key after it expired restarts the countdown', async () => {
+    withStored({
+      key: encodeKey('sk-same'),
+      model: 'm',
+      expiresAt: Date.now() - HOUR, // expired an hour ago
+      expiryDuration: DAY,
+      setupComplete: true,
+    });
+
+    const saved = await saveAiConfig({ key: 'sk-same', model: 'm', expiryDuration: DAY });
+
+    expect(isKeyExpired(saved)).toBe(false);
+    expect(saved.expiresAt).toBeGreaterThan(Date.now() + DAY - 5000);
+  });
+
   test('a new key restarts the countdown', async () => {
     withStored({
       key: encodeKey('sk-old'),
