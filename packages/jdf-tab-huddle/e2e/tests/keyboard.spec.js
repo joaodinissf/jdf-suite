@@ -76,3 +76,20 @@ test('kbd 3: "t" opens the snooze picker (modal set) and Escape closes it', asyn
 
   await popup.close();
 });
+
+test('kbd 4: D deduplicates this window', async ({ sw, context, extensionId }) => {
+  await createTabs(sw, [URLS.EXAMPLE_A, URLS.EXAMPLE_A, URLS.TEST_A]);
+  await sleep(300);
+  const countExample = () => sw.evaluate(async (url) =>
+    (await chrome.tabs.query({})).filter((t) => (t.pendingUrl || t.url) === url).length, URLS.EXAMPLE_A);
+
+  const popup = await openPopup(context, extensionId);
+  await sleep(300);
+  await expect(popup.locator('#removeDuplicatesWindow')).toHaveAttribute('aria-keyshortcuts', 'D');
+  expect(await countExample()).toBe(2);
+
+  await popup.keyboard.press('d');
+  await expect.poll(countExample, { timeout: 10000 }).toBe(1);
+
+  await popup.close();
+});

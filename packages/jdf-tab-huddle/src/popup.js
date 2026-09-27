@@ -21,6 +21,9 @@ document.addEventListener('DOMContentLoaded', function () {
   // Wire up single-key keyboard shortcuts and render their hints
   initKeyboardShortcuts();
 
+  // Show the shortcut that opens Huddle (whatever the user bound it to)
+  showOpenShortcut();
+
   // Wire up the Settings link to open the options page
   const settingsLink = document.getElementById('openOptions');
   if (settingsLink) {
@@ -681,8 +684,13 @@ function formatWakeTime(wakeAt, now = Date.now()) {
 //
 // The redesigned single-panel DOM exposes each control by a stable id (no more
 // -groups/-individual suffixes and no mode panels), so the preference key is
-// simply the element id; sleeping-list rows (which have no id) key off their
-// data-action as "row:<action>".
+// simply the element id.
+//
+// Sleeping-list rows never take letters. Their Wake now buttons get the
+// digits 1–9 in list order, which stay stable as the rest of the popup
+// changes; Discard never gets a key at all.
+//
+// Map keys are single characters: a letter like 'd', or a row digit like '1'.
 
 // Preferred mnemonic letters per control, resolved greedily (first free wins).
 const HOTKEY_PREFERENCES = {
@@ -714,8 +722,6 @@ const HOTKEY_PREFERENCES = {
   snoozeGroup: ['r'],                 // gRoup
   // Sleeping preview
   expandSleeping: ['n'],              // Nap room
-  // Sleeping-list row actions (assigned last; may fall back if letters run out)
-  'row:wake': ['w'],
   // Undo the last Discard (Discard itself never gets a hotkey)
   discardUndo: ['z'],
   // Snooze picker (modal set while the panel is open)
@@ -729,6 +735,8 @@ const HOTKEY_PREFERENCES = {
 };
 
 const HOTKEY_FALLBACK_LETTERS = 'abcdefghijklmnopqrstuvwxyz';
+
+const MAX_ROW_HOTKEYS = 9;
 
 // The current key -> button element map for the visible state.
 let activeHotkeys = new Map();
@@ -799,13 +807,25 @@ function collectHotkeyTargets() {
   return targets.filter((el) => !el.disabled && isHotkeyVisible(el) && el.getAttribute('data-action') !== 'discard');
 }
 
-// Build a fresh { letter -> element } map for the current visible state.
+function isSleepingRowWake(el) {
+  return el.getAttribute('data-action') === 'wake' && !!el.closest('.snoozed-item');
+}
+
+// Build a fresh { key -> element } map for the current visible state.
 function buildHotkeyMap() {
   const targets = collectHotkeyTargets();
   const map = new Map();
   const used = new Set();
 
-  for (const el of targets) {
+  // Sleeping rows: Wake now takes 1–9 in list order and never a letter.
+  let rowNumber = 0;
+  for (const el of targets.filter(isSleepingRowWake)) {
+    if (rowNumber >= MAX_ROW_HOTKEYS) break;
+    rowNumber++;
+    map.set(String(rowNumber), el);
+  }
+
+  for (const el of targets.filter((t) => !isSleepingRowWake(t))) {
     let chosen = null;
     const prefs = HOTKEY_PREFERENCES[hotkeyPreferenceKey(el)] || [];
     for (const c of prefs) {
@@ -832,7 +852,8 @@ function buildHotkeyMap() {
   return map;
 }
 
-// Draw a small key-badge on each mapped button.
+// Draw a small key-badge on each mapped button, and expose the same binding to
+// assistive tech (the badge itself is aria-hidden).
 function renderHotkeyHints(map) {
   for (const [key, el] of map) {
     const badge = document.createElement('span');
@@ -840,6 +861,7 @@ function renderHotkeyHints(map) {
     badge.textContent = key.toUpperCase();
     badge.setAttribute('aria-hidden', 'true');
     el.appendChild(badge);
+    el.setAttribute('aria-keyshortcuts', key.toUpperCase());
   }
 }
 
@@ -848,6 +870,7 @@ function renderHotkeyHints(map) {
 function refreshHotkeys() {
   if (typeof document === 'undefined' || !document.querySelectorAll) return;
   document.querySelectorAll('.hotkey-hint').forEach((s) => s.remove());
+  document.querySelectorAll('[aria-keyshortcuts]').forEach((el) => el.removeAttribute('aria-keyshortcuts'));
   activeHotkeys = buildHotkeyMap();
   renderHotkeyHints(activeHotkeys);
 }
@@ -881,6 +904,19 @@ function handleHotkeyKeydown(event) {
     event.preventDefault();
     el.click();
   }
+}
+
+// Show the browser shortcut that opens this popup ("⌥⇧U to open"), read from
+// chrome.commands so it reflects any rebinding at chrome://extensions/shortcuts.
+function showOpenShortcut() {
+  const el = document.getElementById('openShortcut');
+  if (!el || !chrome.commands || !chrome.commands.getAll) return;
+  chrome.commands.getAll((commands) => {
+    const open = (commands || []).find((c) => c.name === '_execute_action');
+    if (!open || !open.shortcut) return;
+    el.textContent = `${open.shortcut} to open`;
+    el.hidden = false;
+  });
 }
 
 // Register the listener and compute the initial map.
