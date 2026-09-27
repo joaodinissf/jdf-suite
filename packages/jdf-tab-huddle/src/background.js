@@ -433,15 +433,53 @@ async function readOpenRouterResponse(response, onChunk) {
   return fullText;
 }
 
-function mapOpenRouterHttpError(status) {
-  const error = status === 401
-    ? new Error('Invalid API key. Please check your OpenRouter key.')
-    : status === 429
-      ? new Error('Rate limited. Please try again in a moment.')
-      : status === 402
-        ? new Error('Insufficient credits. Please add credits on OpenRouter.')
-        : new Error(`OpenRouter API error (${status})`);
+// Read an error response's body: OpenRouter sends
+// { error: { code, message, metadata: { provider_name, raw, ... } } }.
+// Never throws; resolves null when there is no readable body.
+async function readOpenRouterErrorBody(response) {
+  try {
+    const text = await response.text();
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch (_e) {
+      return { error: { message: text.slice(0, 500) } };
+    }
+  } catch (_e) {
+    return null;
+  }
+}
+
+// OpenRouter's own explanation, e.g. `No auth credentials found`, plus the
+// upstream provider when it names one. Empty when the body says nothing.
+function describeOpenRouterErrorBody(body) {
+  const detail = body && body.error;
+  if (!detail || typeof detail.message !== 'string' || !detail.message.trim()) return '';
+  const provider = detail.metadata && detail.metadata.provider_name;
+  return provider ? `${detail.message.trim()} (provider: ${provider})` : detail.message.trim();
+}
+
+// Map a failed response to a user-facing error. The status alone only guesses:
+// OpenRouter returns 401 for more than a bad key, so when the body explains the
+// failure, that explanation is what the user sees.
+function mapOpenRouterHttpError(status, body = null) {
+  const said = describeOpenRouterErrorBody(body);
+  let message;
+  if (status === 401) {
+    message = said
+      ? `OpenRouter refused the request (401): ${said}`
+      : 'Invalid API key. Please check your OpenRouter key.';
+  } else if (status === 429) {
+    message = 'Rate limited. Please try again in a moment.';
+  } else if (status === 402) {
+    message = 'Insufficient credits. Please add credits on OpenRouter.';
+  } else {
+    message = `OpenRouter API error (${status})`;
+  }
+  if (said && status !== 401) message += `: ${said}`;
+  const error = new Error(message);
   error.status = status;
+  error.openRouterError = body && body.error ? body.error : null;
   return error;
 }
 
@@ -468,7 +506,14 @@ async function callOpenRouter(apiKey, model, messages, onChunk, options = {}) {
     });
 
     if (!response.ok) {
-      throw mapOpenRouterHttpError(response.status);
+      const body = await readOpenRouterErrorBody(response);
+      console.error('[Tab Organizer] OpenRouter request failed:', {
+        status: response.status,
+        model,
+        responseFormat: opts.useJsonSchema ? 'json_schema' : 'json_object',
+        body,
+      });
+      throw mapOpenRouterHttpError(response.status, body);
     }
     return response;
   };
