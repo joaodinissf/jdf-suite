@@ -150,12 +150,11 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
       expect(map.get('r')?.id).toBe('snoozeGroup');
     });
 
-    test('no duplicate letters and every letter is a single lowercase char', () => {
+    test('keys are single letters or row digits, and none is bound twice', () => {
       const map = buildHotkeyMap();
       assertNoDuplicateKeys(map);
       for (const key of map.keys()) {
-        expect(key).toHaveLength(1);
-        expect(key).toBe(key.toLowerCase());
+        expect(key).toMatch(/^[a-z]$|^[1-9]$/);
       }
     });
 
@@ -249,15 +248,25 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
   });
 
   describe('buildHotkeyMap — sleeping list rows', () => {
-    test('binds Wake now but never Discard, which must not fire on a stray key', () => {
+    test('binds Wake now to a digit, never a letter, and never binds Discard', () => {
       addSleepingRow('rec-1');
       const map = buildHotkeyMap();
       const boundEls = [...map.values()];
       const wake = document.querySelector('.snoozed-item[data-id="rec-1"] .snoozed-wake');
       const discard = document.querySelector('.snoozed-item[data-id="rec-1"] .snoozed-discard');
-      expect(boundEls).toContain(wake);
+      expect(map.get('1')).toBe(wake);
       expect(boundEls).not.toContain(discard);
       assertNoDuplicateKeys(map);
+    });
+
+    test('row digits follow list order and are capped at 9', () => {
+      for (let i = 1; i <= 11; i++) addSleepingRow(`rec-${i}`);
+      const map = buildHotkeyMap();
+      for (let i = 1; i <= 9; i++) {
+        expect(map.get(String(i))).toBe(document.querySelector(`.snoozed-item[data-id="rec-${i}"] .snoozed-wake`));
+      }
+      const bound = new Set(map.values());
+      expect(bound.has(document.querySelector('.snoozed-item[data-id="rec-10"] .snoozed-wake'))).toBe(false);
     });
 
     test('a visible Undo notice binds Z', () => {
@@ -320,6 +329,27 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
       };
     }
 
+    test('a bare D deduplicates this window', () => {
+      refreshHotkeys();
+      const btn = document.getElementById('removeDuplicatesWindow');
+      const spy = vi.fn();
+      btn.addEventListener('click', spy);
+
+      handleHotkeyKeydown(keyEvent('d'));
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    test('Shift does not block an action', () => {
+      refreshHotkeys();
+      const btn = document.getElementById('sortCurrentWindow');
+      const spy = vi.fn();
+      btn.addEventListener('click', spy);
+      const ev = keyEvent('S');
+      ev.shiftKey = true;
+      handleHotkeyKeydown(ev);
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
     test('pressing a mapped key clicks the corresponding button', () => {
       refreshHotkeys();
       const btn = document.getElementById('sortCurrentWindow');
@@ -372,6 +402,16 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
   });
 
   describe('refreshHotkeys — hint rendering', () => {
+    test('badges show the bare letter, and every binding is exposed as aria-keyshortcuts', () => {
+      refreshHotkeys();
+      const dedupe = document.getElementById('removeDuplicatesWindow');
+      expect(dedupe.querySelector('.hotkey-hint').textContent).toBe('D');
+      expect(dedupe.getAttribute('aria-keyshortcuts')).toBe('D');
+      const sort = document.getElementById('sortCurrentWindow');
+      expect(sort.querySelector('.hotkey-hint').textContent).toBe('S');
+      expect(sort.getAttribute('aria-keyshortcuts')).toBe('S');
+    });
+
     test('renders one badge per bound button and is idempotent', () => {
       refreshHotkeys();
       const first = document.querySelectorAll('.hotkey-hint').length;
