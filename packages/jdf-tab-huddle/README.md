@@ -64,7 +64,7 @@ The link-clumping feature is inspired by [linkclump](https://github.com/benblack
 ### For Developers
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (387 tests)
+pnpm test              # Run unit tests (612 tests)
 pnpm test:e2e          # Run E2E tests (96 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
@@ -95,7 +95,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Confirmation dialog for large operations
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (387 tests)
+├── tests/                         # Vitest unit tests (612 tests)
 │   ├── setup.js                   # Test setup with jest-chrome mocks
 │   ├── background.test.js         # Background script logic tests
 │   ├── popup.test.js              # Popup UI tests
@@ -171,6 +171,7 @@ CI lives at the monorepo root: [`.github/workflows/jdf-tab-huddle-ci.yml`](../..
 
 ## Version History
 
+- **v0.6.0**: **Tab-group identity** — every page (popup, nap room, settings, organize, confirmation) shares one design system: Chrome's tab-group colours as section chips, light and dark following the system, WCAG AA contrast, a new drawn mark, and a popup that fits Chrome's 600 px cap with a modal snooze picker. **AI setup moves out of the popup** — the organize page picks the model for each run (with Make default) and takes a missing or expired key inline; Settings holds the key, its expiry and the default model; the separate setup page is gone. The key is checked with OpenRouter on save, the picker lists only models Huddle can use, and errors carry OpenRouter's own explanation instead of a guessed "invalid key". **Every run ends visibly** — errors reach the organize page with Retry and Settings, a refresh or worker restart shows "This run has ended" instead of hanging, and Apply reports failures. **The popup says what each action did**, including failures, and an action can't run twice from a held key. **Discard with Undo** replaces Cancel on sleeping tabs, whose Wake now keys are the digits 1–9; Wake now, Discard and the nap room report what really happened. **Split Views survive** sort, dedup, AI organize, extract and merge. Huddle opens with ⌥⇧U by default. Link clumping accepts Shift+digit and Option combos. The release workflow publishes a GitHub Release with the zip for each tag. Known issue: on the organize page, Run again and Retry can fail with "message port closed", and "(batch)" models can still appear; a fix is in progress. 612 unit tests, 100 e2e tests.
 - **v0.5.0**: **Split View Compact and Expand** — Compact pairs neighbouring tabs in the current window into Split Views without moving any tab, restarting at pinned and group boundaries and skipping tabs already split; Expand separates every Split View in the window. Both use Chrome's Split View write API (`tabs.createSplit` / `tabs.unsplit`, Chrome 155) and appear only where it exists. Hotkeys V and J. 374 unit tests.
 - **v0.4.1**: **Leaner popup startup** — the popup reads windows, tabs and groups once, in one parallel batch, instead of five partly chained queries, and refreshes its hotkeys once for the result. Internal cleanups with no behavior change: the copy message action is renamed `copyTabs`, the current window is resolved without a discarded full tab query, and an unused group-map field is removed. Headless e2e suite with a CI job; dependency advisories resolved. 354 unit tests.
 - **v0.4.0**: **Split View awareness** — sorting keeps a Split View pair together as one unit, positioned by its left tab; deduplication keeps the Split View copy of a duplicated URL instead of closing a page that is on screen (pinned still beats everything). Preservation is best-effort: Chrome's extension API is read-only for splits, so a dissolved split cannot be recreated. Feature-detected — Chrome versions without Split View behave exactly as before. All other operations deliberately treat split tabs as plain tabs. 349 unit tests.
