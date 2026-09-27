@@ -66,7 +66,7 @@
       padding: 12px 14px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
     }
 
     /* header */
@@ -150,7 +150,7 @@
       letter-spacing: .14em;
       font-weight: 600;
       color: var(--tx-dim);
-      margin: 0 0 6px;
+      margin: 0 0 4px;
       display: flex;
       align-items: center;
       gap: 7px;
@@ -277,12 +277,16 @@
       justify-content: center;
     }
 
+    /* Sits in the AI row, beside the button; the full model id is its title. */
     .ai-model-line {
-      margin-top: 4px;
+      flex: 0 1 auto;
+      max-width: 42%;
+      align-self: center;
       font-size: 10.5px;
-      color: var(--mu);
-      line-height: 1.35;
-      word-break: break-word;
+      color: var(--tx-dim);
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
     }
 
     .ai-model-line[hidden] {
@@ -337,10 +341,10 @@
 
     .chip {
       display: flex;
-      flex-direction: column;
       align-items: center;
+      justify-content: center;
       gap: 4px;
-      padding: 6px 4px 5px;
+      padding: 7px 4px;
       background: var(--comp);
       border: 1px solid var(--bd-control);
       border-radius: 7px;
@@ -363,6 +367,11 @@
       color: var(--ac-txt);
     }
 
+    body.picking .grp:not(#snoozeSection),
+    body.picking .foot {
+      display: none !important;
+    }
+
     #snoozePickerPanel {
       display: flex;
       flex-direction: column;
@@ -372,13 +381,16 @@
       border-top: 1px dashed var(--bd);
     }
 
-    .presets-row {
-      display: flex;
+    .presets {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
       gap: 4px;
     }
 
     .preset {
-      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
       font-family: var(--ui);
       font-size: 10.5px;
       font-weight: 600;
@@ -440,7 +452,6 @@
       background: var(--ac-soft);
     }
 
-    .copy-feedback,
     #snoozeFeedback {
       font-size: 10.5px;
       color: var(--ac-txt);
@@ -450,9 +461,18 @@
       height: 14px;
     }
 
-    .copy-feedback.visible,
     #snoozeFeedback.visible {
       opacity: 1;
+    }
+
+    .copy-feedback {
+      display: none;
+      font-size: 11px;
+      color: var(--ac-txt);
+    }
+
+    .copy-feedback.visible {
+      display: block;
     }
 
     /* sleeping preview */
@@ -596,11 +616,31 @@
       cursor: pointer;
     }
 
+    .toasts {
+      position: fixed;
+      left: 14px;
+      right: 14px;
+      bottom: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .toasts > * {
+      pointer-events: auto;
+      background: var(--panel);
+      border: 1px solid var(--bd-control);
+      border-radius: 9px;
+      padding: 8px 10px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .55);
+    }
+
     /* What the last action did. One line, announced politely. */
     .action-result {
       font-size: 11px;
       color: var(--ac-txt);
-      background: var(--ac-soft);
       border-radius: 7px;
       padding: 6px 10px;
       overflow: hidden;
@@ -682,7 +722,6 @@
       </div>
     </div>
 
-    <div id="actionResult" class="action-result" role="status" aria-live="polite" hidden></div>
 
     <div class="grp">
       <div class="eyebrow">This window<span class="rule"></span></div>
@@ -704,10 +743,11 @@
       <div class="ai-row">
         <button id="aiOrganize" class="btn primary" data-action="aiGroupTabs"
           title="Use AI to organize tabs into groups">Organize with AI</button>
+        <!-- Beside the button rather than on its own line: keeps the popup under 600px. -->
+        <span id="aiModelLine" class="ai-model-line" hidden></span>
         <button id="aiSettings" class="btn ai-cog-btn" data-action="openAiSettings" style="display: none"
           title="AI settings">&#9881;</button>
       </div>
-      <div id="aiModelLine" class="ai-model-line" hidden></div>
     </div>
 
     <div class="grp">
@@ -722,7 +762,6 @@
         <button id="copyAllWindows" class="btn mini" data-action="copyAllWindows"
           title="Copy all tab URLs across every window to the clipboard">Copy all windows</button>
       </div>
-      <div id="copyFeedback" class="copy-feedback">Copied!</div>
     </div>
 
     <div class="grp" id="snoozeSection">
@@ -738,11 +777,9 @@
           title="Snooze the active tab's group">Group</button>
       </div>
       <div id="snoozePickerPanel" hidden>
-        <div class="presets-row">
+        <div class="presets">
           <button id="snoozePreset-laterToday" class="preset"></button>
           <button id="snoozePreset-tonight" class="preset"></button>
-        </div>
-        <div class="presets-row">
           <button id="snoozePreset-tomorrow" class="preset"></button>
           <button id="snoozePreset-weekend" class="preset"></button>
           <button id="snoozePreset-nextWeek" class="preset"></button>
@@ -770,13 +807,6 @@
       </div>
     </div>
 
-    <!-- Before #sleepingSection so Undo claims its Z hotkey ahead of the rows,
-         and outside it because discarding the last item hides that section. -->
-    <div id="discardNotice" class="undo-notice" role="status" aria-live="polite" hidden>
-      <span id="discardNoticeText"></span>
-      <button id="discardUndo" data-action="undoDiscard">Undo</button>
-    </div>
-
     <div class="grp" id="sleepingSection" hidden>
       <div class="eyebrow">Sleeping <span id="sleepingCount" class="count-pill">0</span><span class="rule"></span>
         <button id="expandSleeping" class="expand-link" data-action="openNapRoom"
@@ -796,6 +826,16 @@
       <div class="foot-right">
         <a href="#" id="openOptions" class="gear">&#9881; Settings</a>
         <span id="openShortcut" class="open-shortcut" hidden></span>
+      </div>
+    </div>
+
+    <!-- Feedback floats over the bottom edge instead of adding height. -->
+    <div class="toasts">
+      <div id="actionResult" class="action-result" role="status" aria-live="polite" hidden></div>
+      <div id="copyFeedback" class="copy-feedback" role="status" aria-live="polite">Copied!</div>
+      <div id="discardNotice" class="undo-notice" role="status" aria-live="polite" hidden>
+        <span id="discardNoticeText"></span>
+        <button id="discardUndo" data-action="undoDiscard">Undo</button>
       </div>
     </div>
 
