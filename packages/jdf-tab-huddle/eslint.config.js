@@ -116,6 +116,8 @@ export default [
         handleRemoveDuplicatesWindow: 'readonly',
         handleExtractDomain: 'readonly',
         handleExtractAllDomains: 'readonly',
+        handleExtractAllDomainsConfirmation: 'readonly',
+        splitConfirmWaiters: 'readonly',
         handleMoveAllToSingleWindow: 'readonly',
         moveTabsWithGroups: 'readonly',
         initModeToggle: 'readonly',

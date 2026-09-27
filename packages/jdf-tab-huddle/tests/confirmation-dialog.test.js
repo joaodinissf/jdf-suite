@@ -45,9 +45,12 @@ describe('Confirmation Dialog', () => {
     document.body.innerHTML = `
       <div id="windowCount">Loading...</div>
       <ul id="operationList"></ul>
+      <p id="dialogError" hidden></p>
       <button id="confirmButton">Confirm</button>
       <button id="cancelButton">Cancel</button>
     `;
+    // A real close would tear down jsdom's window for the rest of the file.
+    window.close = vi.fn();
 
     // Mock URL parameters BEFORE re-evaluating the source, so the module-level
     // extractableCount/singleTabCount/totalWindows constants pick this up.
@@ -66,20 +69,65 @@ describe('Confirmation Dialog', () => {
       expect(() => setupEventListeners()).not.toThrow();
     });
 
-    test('respond function should send Chrome messages', () => {
+    test('respond function should send Chrome messages', async () => {
       expect(typeof respond).toBe('function');
+      chrome.runtime.sendMessage.mockResolvedValue({ success: true });
 
-      respond(true);
+      await respond(true);
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
         action: 'extractAllDomainsConfirmation',
         confirmed: true,
       });
 
-      respond(false);
+      await respond(false);
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
         action: 'extractAllDomainsConfirmation',
         confirmed: false,
       });
+    });
+  });
+
+  describe('Answers the background could not act on', () => {
+    test('a Confirm the background no longer knows about says so and leaves only Close', async () => {
+      chrome.runtime.sendMessage.mockResolvedValue({
+        success: false, expired: true, error: 'This split request has ended.',
+      });
+
+      await respond(true);
+
+      const errorEl = document.getElementById('dialogError');
+      expect(errorEl.hidden).toBe(false);
+      expect(errorEl.textContent).toBe('This split request has ended.');
+      expect(document.getElementById('confirmButton').disabled).toBe(true);
+      const cancelBtn = document.getElementById('cancelButton');
+      expect(cancelBtn.disabled).toBe(false);
+      expect(cancelBtn.textContent).toBe('Close');
+      expect(window.close).not.toHaveBeenCalled();
+    });
+
+    test('a Confirm nobody answers says so instead of doing nothing', async () => {
+      chrome.runtime.sendMessage.mockResolvedValue(undefined);
+
+      await respond(true);
+
+      expect(document.getElementById('dialogError').hidden).toBe(false);
+      expect(document.getElementById('dialogError').textContent).toContain('run Split domains again');
+    });
+
+    test('a Cancel the background could not handle still closes the tab', async () => {
+      chrome.runtime.sendMessage.mockRejectedValue(new Error('Could not establish connection.'));
+
+      await respond(false);
+
+      expect(window.close).toHaveBeenCalled();
+    });
+
+    test('an answered Cancel leaves closing the tab to the background', async () => {
+      chrome.runtime.sendMessage.mockResolvedValue({ success: true, cancelled: true });
+
+      await respond(false);
+
+      expect(window.close).not.toHaveBeenCalled();
     });
   });
 
@@ -173,15 +221,13 @@ describe('Confirmation Dialog', () => {
   });
 
   describe('Error Handling', () => {
-    test('respond should handle Chrome API errors gracefully', () => {
+    test('respond should handle Chrome API errors gracefully', async () => {
       chrome.runtime.sendMessage.mockImplementation(() => {
         throw new Error('Chrome API error');
       });
 
-      window.close = vi.fn();
-
-      expect(() => respond(true)).not.toThrow();
-      expect(window.close).toHaveBeenCalled();
+      await expect(respond(true)).resolves.toBeUndefined();
+      expect(document.getElementById('dialogError').hidden).toBe(false);
     });
   });
 });

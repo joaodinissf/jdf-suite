@@ -7,6 +7,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const messageListeners = [];
 const tabRemovedListeners = [];
+// chrome.storage.session keeps real values, so a test can drop the worker's
+// in-memory state and check what survives. Emptied before each test.
+const sessionStore = {};
+const pickKeys = (keys) => {
+  if (keys == null) return { ...sessionStore };
+  const list = typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys);
+  return Object.fromEntries(list.filter((k) => k in sessionStore).map((k) => [k, sessionStore[k]]));
+};
 
 global.chrome = {
   runtime: {
@@ -81,6 +89,13 @@ global.chrome = {
       set: vi.fn(),
       remove: vi.fn(),
     },
+    session: {
+      get: vi.fn(async (keys) => pickKeys(keys)),
+      set: vi.fn(async (items) => { Object.assign(sessionStore, items); }),
+      remove: vi.fn(async (keys) => {
+        for (const k of typeof keys === 'string' ? [keys] : keys) delete sessionStore[k];
+      }),
+    },
     sync: {
       get: vi.fn(),
       set: vi.fn(),
@@ -125,6 +140,8 @@ const backgroundWrapper = `
   if (typeof handleRemoveDuplicatesGlobally !== 'undefined') global.handleRemoveDuplicatesGlobally = handleRemoveDuplicatesGlobally;
   if (typeof handleExtractDomain !== 'undefined') global.handleExtractDomain = handleExtractDomain;
   if (typeof handleExtractAllDomains !== 'undefined') global.handleExtractAllDomains = handleExtractAllDomains;
+  if (typeof handleExtractAllDomainsConfirmation !== 'undefined') global.handleExtractAllDomainsConfirmation = handleExtractAllDomainsConfirmation;
+  if (typeof splitConfirmWaiters !== 'undefined') global.splitConfirmWaiters = splitConfirmWaiters;
   if (typeof handleMoveAllToSingleWindow !== 'undefined') global.handleMoveAllToSingleWindow = handleMoveAllToSingleWindow;
   if (typeof formatTabsAsText !== 'undefined') global.formatTabsAsText = formatTabsAsText;
   if (typeof handleCopyTabs !== 'undefined') global.handleCopyTabs = handleCopyTabs;
@@ -392,4 +409,5 @@ beforeEach(() => {
   vi.clearAllMocks();
   messageListeners.length = 0;
   messageListeners.push(...baseListeners);
+  for (const k of Object.keys(sessionStore)) delete sessionStore[k];
 });

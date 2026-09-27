@@ -455,3 +455,143 @@ describe('Results say what actually happened (moves and follow-up sorts)', () =>
     expect(chrome.windows.create).not.toHaveBeenCalled();
   });
 });
+
+describe('Split domains confirmation survives a worker restart', () => {
+  const DIALOG_TAB = 900;
+  const KEY = `splitConfirm:${DIALOG_TAB}`;
+  const domains = ['a', 'b', 'c', 'd', 'e', 'f'];
+  // Six domains with two tabs each: six windows, so the dialog is needed.
+  const allTabs = domains.flatMap((d, i) => [1, 2].map((n) => ({
+    id: i * 10 + n, url: `https://${d}.test/${n}`, pinned: false, groupId: -1, windowId: 1, index: i * 2 + n,
+  })));
+  const dialogSender = { tab: { id: DIALOG_TAB } };
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  // Opens the dialog through the real handler; returns the popup's sendResponse.
+  async function openDialog(respectGroups) {
+    const popupResponse = vi.fn();
+    handleExtractAllDomains(respectGroups, popupResponse);
+    await vi.waitFor(() => expect(chrome.storage.session.set).toHaveBeenCalled());
+    return popupResponse;
+  }
+
+  // What a restarted worker has: the listeners, none of the in-memory waiters.
+  const restartWorker = () => splitConfirmWaiters.clear();
+
+  beforeEach(() => {
+    splitConfirmWaiters.clear();
+    chrome.tabs.query.mockReset().mockImplementation(async (q) =>
+      allTabs.filter((t) => q.windowId === undefined || t.windowId === q.windowId));
+    chrome.tabs.move.mockReset().mockResolvedValue([]);
+    chrome.tabs.remove.mockReset().mockResolvedValue(undefined);
+    chrome.tabs.create.mockReset().mockResolvedValue({ id: DIALOG_TAB });
+    chrome.tabGroups.query.mockReset().mockResolvedValue([]);
+    let nextWindow = 100;
+    chrome.windows.create.mockReset().mockImplementation(async () => ({ id: nextWindow++ }));
+    chrome.windows.getAll.mockReset().mockResolvedValue([]);
+  });
+
+  test('the request is saved in storage.session under the dialog tab', async () => {
+    await openDialog(false);
+    expect(chrome.tabs.create).toHaveBeenCalledWith(expect.objectContaining({
+      url: expect.stringContaining('confirmation-dialog.html'),
+    }));
+    expect(await chrome.storage.session.get(KEY)).toEqual({ [KEY]: { respectGroups: false } });
+  });
+
+  test('Confirm before any restart still splits and answers the popup', async () => {
+    const popupResponse = await openDialog(true);
+    const dialogResponse = vi.fn();
+    chrome.runtime.onMessage.callListeners(
+      { action: 'extractAllDomainsConfirmation', confirmed: true }, dialogSender, dialogResponse);
+
+    await vi.waitFor(() => expect(popupResponse).toHaveBeenCalled(), { timeout: 2000 });
+    expect(popupResponse).toHaveBeenCalledWith({ success: true, windows: 6, notMoved: 0, sortFailed: false });
+    expect(dialogResponse).toHaveBeenCalledWith({ success: true });
+    expect(chrome.tabs.remove).toHaveBeenCalledWith(DIALOG_TAB);
+    expect(await chrome.storage.session.get(KEY)).toEqual({});
+  });
+
+  test('Confirm after a restart splits with the saved setting and closes the dialog', async () => {
+    await openDialog(false);
+    restartWorker();
+    const dialogResponse = vi.fn();
+    chrome.runtime.onMessage.callListeners(
+      { action: 'extractAllDomainsConfirmation', confirmed: true }, dialogSender, dialogResponse);
+
+    await vi.waitFor(() => expect(dialogResponse).toHaveBeenCalled(), { timeout: 2000 });
+    expect(dialogResponse).toHaveBeenCalledWith({ success: true, windows: 6, notMoved: 0, sortFailed: false });
+    expect(chrome.windows.create).toHaveBeenCalledTimes(6);
+    // respectGroups false moves plain tab-id lists, not group by group.
+    expect(chrome.tabs.move).toHaveBeenCalledWith([2], { windowId: 100, index: -1 });
+    expect(chrome.tabs.remove).toHaveBeenCalledWith(DIALOG_TAB);
+    expect(await chrome.storage.session.get(KEY)).toEqual({});
+  });
+
+  test('Confirm after a restart leaves the open dialog tab out of the split', async () => {
+    await openDialog(false);
+    restartWorker();
+    // The restarted worker analyses afresh, and the dialog's tab is open then.
+    const dialogTab = {
+      id: DIALOG_TAB, url: 'chrome-extension://huddle/confirmation-dialog.html',
+      pinned: false, groupId: -1, windowId: 1, index: 99,
+    };
+    chrome.tabs.query.mockImplementation(async (q) =>
+      [...allTabs, dialogTab].filter((t) => q.windowId === undefined || t.windowId === q.windowId));
+    const dialogResponse = vi.fn();
+    chrome.runtime.onMessage.callListeners(
+      { action: 'extractAllDomainsConfirmation', confirmed: true }, dialogSender, dialogResponse);
+
+    await vi.waitFor(() => expect(dialogResponse).toHaveBeenCalled(), { timeout: 2000 });
+    // Six domain windows, and no Miscellaneous window holding only the dialog.
+    expect(dialogResponse).toHaveBeenCalledWith({ success: true, windows: 6, notMoved: 0, sortFailed: false });
+    expect(chrome.windows.create).toHaveBeenCalledTimes(6);
+    for (const [arg] of chrome.windows.create.mock.calls) {
+      expect(arg && arg.tabId).not.toBe(DIALOG_TAB);
+    }
+    for (const [ids] of chrome.tabs.move.mock.calls) {
+      expect([].concat(ids)).not.toContain(DIALOG_TAB);
+    }
+  });
+
+  test('Cancel after a restart closes the dialog and splits nothing', async () => {
+    await openDialog(true);
+    restartWorker();
+    const dialogResponse = vi.fn();
+    await handleExtractAllDomainsConfirmation({ confirmed: false }, dialogSender, dialogResponse);
+
+    expect(dialogResponse).toHaveBeenCalledWith({ success: true, cancelled: true });
+    expect(chrome.tabs.remove).toHaveBeenCalledWith(DIALOG_TAB);
+    expect(chrome.windows.create).not.toHaveBeenCalled();
+    expect(await chrome.storage.session.get(KEY)).toEqual({});
+  });
+
+  test('Confirm with the request gone says so and splits nothing', async () => {
+    const dialogResponse = vi.fn();
+    await handleExtractAllDomainsConfirmation({ confirmed: true }, dialogSender, dialogResponse);
+
+    expect(dialogResponse).toHaveBeenCalledWith(expect.objectContaining({ success: false, expired: true }));
+    expect(dialogResponse.mock.calls[0][0].error).toContain('run Split domains again');
+    expect(chrome.windows.create).not.toHaveBeenCalled();
+    // The tab stays open so the message can be read; Close then removes it.
+    expect(chrome.tabs.remove).not.toHaveBeenCalled();
+  });
+
+  test('Cancel with the request gone still closes the dialog', async () => {
+    const dialogResponse = vi.fn();
+    await handleExtractAllDomainsConfirmation({ confirmed: false }, dialogSender, dialogResponse);
+
+    expect(dialogResponse).toHaveBeenCalledWith({ success: true, cancelled: true });
+    expect(chrome.tabs.remove).toHaveBeenCalledWith(DIALOG_TAB);
+  });
+
+  test("closing the dialog with its tab's X cancels and forgets the request", async () => {
+    const popupResponse = await openDialog(true);
+    chrome.tabs.onRemoved.callListeners(DIALOG_TAB, { windowId: 1, isWindowClosing: false });
+    await flush();
+
+    expect(popupResponse).toHaveBeenCalledWith({ success: true, cancelled: true });
+    expect(await chrome.storage.session.get(KEY)).toEqual({});
+    expect(splitConfirmWaiters.has(DIALOG_TAB)).toBe(false);
+  });
+});

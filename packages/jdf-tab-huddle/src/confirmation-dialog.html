@@ -112,6 +112,27 @@
       transition: background .12s, border-color .12s;
     }
 
+    .btn:disabled {
+      opacity: .55;
+      cursor: default;
+    }
+
+    /* The request could not be carried out (see respond()). */
+    .error-msg {
+      margin: 24px 0 0;
+      padding: 10px 14px;
+      background: var(--danger-soft);
+      border: 1px solid var(--danger);
+      border-radius: 8px;
+      color: var(--danger);
+      font-size: 13.5px;
+      font-weight: 600;
+    }
+
+    .error-msg[hidden] {
+      display: none;
+    }
+
     .btn:hover {
       background: var(--comp-hi);
       border-color: var(--bd-control-hi);
@@ -149,6 +170,8 @@
       <ul id="operationList">
       </ul>
     </section>
+
+    <p id="dialogError" class="error-msg" role="alert" hidden></p>
 
     <div class="actions">
       <button class="btn primary confirm" id="confirmButton">Proceed</button>
