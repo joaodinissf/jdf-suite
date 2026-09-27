@@ -264,8 +264,10 @@
       flex: 0 0 auto;
     }
 
-    /* The origin group, drawn as its Chrome group chip. */
+    /* The origin group, drawn as its Chrome group chip. inline-block, not the
+       chip's inline-flex, so a long name ends in an ellipsis. */
     .group-badge {
+      display: inline-block;
       flex: 0 1 auto;
       max-width: 180px;
       overflow: hidden;
