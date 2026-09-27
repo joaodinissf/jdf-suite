@@ -97,6 +97,8 @@ export default [
         tabSplitViewId: 'readonly',
         splitWriteSupported: 'readonly',
         planCompactPairs: 'readonly',
+        captureSplitPairs: 'readonly',
+        restoreSplitPairs: 'readonly',
         handleCompactWindow: 'readonly',
         handleExpandWindow: 'readonly',
         analyzeDomainDistribution: 'readonly',

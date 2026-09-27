@@ -28,7 +28,7 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 - **Compact** (Chrome 155+): pairs neighbouring tabs in the current window into Split Views — (1,2), (3,4), … — without moving any tab. Chrome only splits two adjacent tabs with the same pinned state and tab group, so pairing restarts at every pinned or group boundary and at every tab already in a split; an odd tab left at the end of a run stays as it is.
 - **Expand** (Chrome 155+): separates every Split View in the current window, including ones you made yourself.
 - Compact and Expand appear only where Chrome can create Split Views (`chrome.tabs.createSplit` / `unsplit`); elsewhere the popup is unchanged.
-- Sorting keeps a Split View pair together, positioned by its left tab; deduplication keeps the Split View copy of a duplicated URL rather than closing a page that is on screen — a page split with itself is still deduplicated. Preservation is best-effort: if Chrome dissolves a split while moving tabs, sort and dedup do not re-pair it yet. On Chrome versions without Split View, behavior is unchanged.
+- Sorting keeps a Split View pair together, positioned by its left tab; deduplication keeps the Split View copy of a duplicated URL rather than closing a page that is on screen — a page split with itself is still deduplicated. Chrome dissolves a split whenever one of its tabs is moved, so on Chrome 155+ Huddle records the pairs before sorting, deduplicating, organizing with AI, extracting, splitting domains or merging windows, and splits them again afterwards. A pair is restored only when both tabs are still open, adjacent, and share window, pinned state and group; Huddle never moves tabs to make that possible. On older Chrome, pairs are kept adjacent but not re-split, and on Chrome without Split View, behavior is unchanged.
 
 ### Smart Features
 - Respects pinned tabs (never moves or removes them)
@@ -61,8 +61,8 @@ The link-clumping feature is inspired by [linkclump](https://github.com/benblack
 ### For Developers
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (374 tests)
-pnpm test:e2e          # Run E2E tests (91 tests, requires Chromium)
+pnpm test              # Run unit tests (387 tests)
+pnpm test:e2e          # Run E2E tests (96 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
 pnpm run package       # Create extension zip
@@ -92,14 +92,14 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Confirmation dialog for large operations
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (374 tests)
+├── tests/                         # Vitest unit tests (387 tests)
 │   ├── setup.js                   # Test setup with jest-chrome mocks
 │   ├── background.test.js         # Background script logic tests
 │   ├── popup.test.js              # Popup UI tests
 │   ├── focused.test.js            # Core functionality tests
 │   ├── confirmation-dialog.test.js
 │   └── simple.test.js             # Framework verification
-├── e2e/                           # Playwright E2E tests (91 tests)
+├── e2e/                           # Playwright E2E tests (96 tests)
 │   ├── playwright.config.js       # Playwright configuration
 │   ├── fixtures/extension.js      # Custom fixture loading extension into Chromium
 │   ├── helpers/                   # Tab management, popup interaction, assertions
@@ -120,7 +120,7 @@ pnpm run test:coverage   # With coverage report
 ```
 
 ### E2E Tests (Playwright + real Chromium)
-91 tests across 15 spec files that load the extension into a real browser:
+96 tests across 16 spec files that load the extension into a real browser:
 
 | Spec File | Tests | Coverage |
 |---|---|---|
@@ -137,6 +137,7 @@ pnpm run test:coverage   # With coverage report
 | confirmation-dialog | 4 | Confirm/cancel flow |
 | flatten-window | 3 | Ungrouping, pinned immunity |
 | split-view-compact | 2 | Compact then Expand; pinned/group runs, existing splits, no tab moves (skips below Chrome 155) |
+| split-view-repair | 5 | Splits survive sort (both modes), merge and extract; a separated pair is not forced back together (skips below Chrome 155) |
 | keyboard | 3 | Popup hotkey dispatch |
 | snooze | 11 | Tab/window/group snooze, wake, alarms, edge cases |
 
