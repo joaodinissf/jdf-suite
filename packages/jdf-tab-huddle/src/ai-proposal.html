@@ -63,6 +63,33 @@
       font-weight: 600;
     }
 
+    .apply-error {
+      margin: 0 0 20px;
+    }
+
+    .apply-error[hidden] {
+      display: none;
+    }
+
+    /* Shown when no run is waiting for this page (showRunEnded) */
+    .ended-msg {
+      padding: 12px 16px;
+      background: var(--panel);
+      border: 1px solid var(--bd);
+      border-radius: 8px;
+      color: var(--tx-dim);
+    }
+
+    .ended-msg p {
+      margin: 0;
+    }
+
+    .ended-msg .ended-title {
+      margin-bottom: 4px;
+      color: var(--tx);
+      font-weight: 600;
+    }
+
     /* Instructions step (rendered by showInstructionsInput) */
     .mode-hint {
       margin: 0 0 20px;
@@ -303,6 +330,10 @@
       cursor: pointer;
     }
 
+    .debug-toggle[hidden] {
+      display: none;
+    }
+
     .debug-toggle:hover {
       color: var(--tx);
       text-decoration: underline;
@@ -360,7 +391,7 @@
     <div id="content">
       <div class="loading">Loading proposal…</div>
     </div>
-    <button class="debug-toggle" id="debugToggle">Show the model's raw output</button>
+    <button class="debug-toggle" id="debugToggle" hidden>Show the model's raw output</button>
     <div class="debug-section" id="debugSection"></div>
   </main>
   <script src="ai-proposal.js"></script>

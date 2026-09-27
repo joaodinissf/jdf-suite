@@ -311,8 +311,20 @@ async function loadAiConfig() {
   return result.aiConfig || null;
 }
 
-// Resolves when the proposal tab signals it is ready to receive messages
-let aiProposalReadyResolve = null;
+// Runs waiting for their proposal tab to send 'aiProposalReady', keyed by
+// that tab's id. In memory only: if the service worker is stopped, the map
+// comes back empty and the page is told its run has ended.
+const aiPendingRuns = new Map();
+
+// A proposal tab closed before it sent 'aiProposalReady' ends its run, so
+// the waiting promise settles and its config is not held until shutdown.
+chrome.tabs.onRemoved.addListener((tabId) => {
+  const resolve = aiPendingRuns.get(tabId);
+  if (resolve) {
+    aiPendingRuns.delete(tabId);
+    resolve(null);
+  }
+});
 
 // ============================================================
 // AI Tab Grouping — Prompt Building and Response Parsing
@@ -602,40 +614,55 @@ function parseAiResponse(responseText, originalTabs) {
 // ============================================================
 
 async function handleAiGroupTabs(message, sendResponse) {
+  // The popup waits on exactly one reply, including when something fails
+  // before the proposal tab exists.
+  let responded = false;
+  const reply = (response) => {
+    if (responded) return;
+    responded = true;
+    sendResponse(response);
+  };
+  // Set once the proposal tab is open, so the catch below can reach it.
+  let proposalTabId = null;
+  const send = (msg) => {
+    chrome.tabs.sendMessage(proposalTabId, msg).catch(() => {});
+  };
+
   try {
+    const respectGroups = message.respectGroups !== undefined ? message.respectGroups : true;
+    const respectParam = respectGroups ? 'true' : 'false';
     const config = await loadAiConfig();
 
-    // No key or expired → open setup page
+    // No key or expired → open setup page (carrying the Groups/Flat choice)
     if (!config || !config.key || isKeyExpired(config)) {
       const mode = config && config.key ? 'expired' : 'setup';
-      const url = chrome.runtime.getURL(`ai-setup.html?mode=${mode}`);
+      const url = chrome.runtime.getURL(`ai-setup.html?mode=${mode}&respectGroups=${respectParam}`);
       await chrome.tabs.create({ url, active: true });
-      sendResponse({ success: true, action: 'setup' });
+      reply({ success: true, action: 'setup' });
       return;
     }
 
     // Open proposal tab immediately
-    const respectParam = (message.respectGroups !== undefined ? message.respectGroups : true) ? 'true' : 'false';
     const proposalUrl = chrome.runtime.getURL(`ai-proposal.html?respectGroups=${respectParam}`);
     const proposalTab = await chrome.tabs.create({ url: proposalUrl, active: true });
-    sendResponse({ success: true, action: 'proposal' });
+    proposalTabId = proposalTab.id;
+    reply({ success: true, action: 'proposal' });
 
-    // Wait for the proposal page to signal it's ready (with optional instructions)
-    const userInstructions = await new Promise(resolve => { aiProposalReadyResolve = resolve; });
-
-    const send = (msg) => {
-      chrome.tabs.sendMessage(proposalTab.id, msg).catch(() => {});
-    };
+    // Wait for this proposal tab to signal it's ready (with optional instructions)
+    const userInstructions = await new Promise(resolve => {
+      aiPendingRuns.set(proposalTabId, resolve);
+    });
+    // The proposal tab was closed before the user started the run.
+    if (userInstructions === null) return;
 
     // Gather tabs
     send({ type: 'ai-status', text: 'Gathering tabs...' });
-    const respectGroups = message.respectGroups !== undefined ? message.respectGroups : true;
     const currentWindow = await chrome.windows.getCurrent();
     const tabs = await getTabsWithGroupInfo(currentWindow.id);
 
     // Groups mode: only organize ungrouped tabs. Flat mode: all tabs.
     const unpinnedTabs = tabs.filter(t => {
-      if (t.pinned || t.id === proposalTab.id) return false;
+      if (t.pinned || t.id === proposalTabId) return false;
       if (respectGroups && t.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) return false;
       return true;
     });
@@ -707,37 +734,47 @@ async function handleAiGroupTabs(message, sendResponse) {
     });
   } catch (error) {
     console.error('[Tab Organizer] Error in AI group tabs:', error);
-    // Try to send error to proposal tab if it's open
-    try {
-      const tabs = await chrome.tabs.query({ url: chrome.runtime.getURL('ai-proposal.html') });
-      if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { type: 'ai-error', error: error.message });
-      }
-    } catch (_e) {
-      // proposal tab may not exist
+    reply({ success: false, error: error.message });
+    // The proposal tab may already be closed; send() swallows that.
+    if (proposalTabId !== null) {
+      send({ type: 'ai-error', error: error.message });
     }
   }
 }
 
+// The proposal tab stays open until this finishes, so a failure can be shown
+// there; it is closed only once the groups are in place.
 async function handleApplyAiProposal(message, sender, sendResponse) {
   try {
-    // Close the proposal tab first to reduce the number of tabs Chrome is managing
-    if (sender.tab) {
-      await chrome.tabs.remove(sender.tab.id);
-    }
-
     const { groups, windowId } = message;
 
     // Grouping can pull a split's halves apart; record the pairs first. The
     // sort below records and restores again for the moves it makes.
     const splitPairs = await captureSplitPairs([windowId]);
 
+    // Tabs closed or moved away since the proposal was made would make
+    // chrome.tabs.group reject, so only the ones still in the window are used.
+    const windowTabs = await chrome.tabs.query({ windowId });
+    const stillHere = new Map(windowTabs.map(t => [t.id, t]));
+
+    // Flat mode: tabs left in (or moved to) Ungrouped leave their old groups.
+    if (message.respectGroups === false && Array.isArray(message.ungroupedTabIds)) {
+      const toUngroup = message.ungroupedTabIds.filter(id => {
+        const tab = stillHere.get(id);
+        return tab && tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE;
+      });
+      if (toUngroup.length > 0) {
+        await chrome.tabs.ungroup(toUngroup);
+      }
+    }
+
     // Apply groups with a small delay between each to avoid overwhelming Chrome
     for (const group of groups) {
-      if (!group.tabIds || group.tabIds.length === 0) continue;
+      const tabIds = (group.tabIds || []).filter(id => stillHere.has(id));
+      if (tabIds.length === 0) continue;
 
       const groupId = await chrome.tabs.group({
-        tabIds: group.tabIds,
+        tabIds,
         createProperties: { windowId },
       });
 
@@ -756,6 +793,13 @@ async function handleApplyAiProposal(message, sender, sendResponse) {
     await sortWindowTabs(windowId, true);
 
     sendResponse({ success: true });
+    if (sender.tab) {
+      try {
+        await chrome.tabs.remove(sender.tab.id);
+      } catch (_e) {
+        // the user may have closed it already
+      }
+    }
   } catch (error) {
     console.error('[Tab Organizer] Error applying AI proposal:', error);
     sendResponse({ success: false, error: error.message });
@@ -946,11 +990,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     handleAiGroupTabs(message, sendResponse);
     return true;
   } else if (message.action === 'aiProposalReady') {
-    if (aiProposalReadyResolve) {
-      aiProposalReadyResolve(message.instructions || '');
-      aiProposalReadyResolve = null;
+    // pending:false means no run is waiting for this tab (it was refreshed,
+    // its run already started, or the service worker restarted).
+    const tabId = _sender.tab ? _sender.tab.id : null;
+    const resolve = aiPendingRuns.get(tabId);
+    if (resolve) {
+      aiPendingRuns.delete(tabId);
+      resolve(message.instructions || '');
     }
-    sendResponse({ success: true });
+    sendResponse({ success: true, pending: !!resolve });
   } else if (message.action === 'applyAiProposal') {
     handleApplyAiProposal(message, _sender, sendResponse);
     return true;

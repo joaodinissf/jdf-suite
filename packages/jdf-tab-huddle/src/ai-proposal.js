@@ -23,13 +23,98 @@ function tabCountLabel(n) {
 let proposal = null; // { groups, ungroupedTabIds, tabs, windowId }
 let tabMap = {};      // id → tab metadata
 
+// Groups (true) or Flat (false), as chosen in the popup.
+const respectGroups = new URLSearchParams(window.location.search).get('respectGroups') !== 'false';
+
+// Why a sendMessage reply was not a success, as a short phrase.
+function replyFailure(response) {
+  if (chrome.runtime.lastError) return chrome.runtime.lastError.message;
+  return (response && response.error) || 'no reply from Huddle';
+}
+
+function buildButton(label, className, onClick) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = className;
+  button.textContent = label;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function buildFormActions(...buttons) {
+  const actions = document.createElement('div');
+  actions.className = 'form-actions';
+  actions.append(...buttons);
+  return actions;
+}
+
+// Starts a fresh organize run (it opens its own proposal tab), then closes
+// this one. If the run cannot start, the reason is shown here instead.
+function runAgain() {
+  chrome.runtime.sendMessage({ action: 'aiGroupTabs', respectGroups }, (response) => {
+    if (!chrome.runtime.lastError && response && response.success) {
+      window.close();
+      return;
+    }
+    showError(`Couldn't start a new run: ${replyFailure(response)}`);
+  });
+}
+
+function openAiSettings() {
+  chrome.runtime.sendMessage({ action: 'openAiSettings' });
+}
+
 // The error text can come from the network, so it is set as text, never HTML.
 function showError(msg) {
   const content = document.getElementById('content');
+  document.getElementById('actionsContainer').style.display = 'none';
   const el = document.createElement('div');
   el.className = 'error-msg';
+  el.setAttribute('role', 'alert');
   el.textContent = msg;
-  content.replaceChildren(el);
+  content.replaceChildren(el, buildFormActions(
+    buildButton('Retry', 'btn primary confirm', runAgain),
+    buildButton('Open AI settings', 'btn', openAiSettings),
+  ));
+}
+
+// No run is waiting for this page: it was refreshed, opened on its own, or
+// Chrome stopped Huddle's background worker while the page sat idle.
+function showRunEnded() {
+  const content = document.getElementById('content');
+  document.getElementById('actionsContainer').style.display = 'none';
+  const el = document.createElement('div');
+  el.className = 'ended-msg';
+  el.setAttribute('role', 'status');
+  const heading = document.createElement('p');
+  heading.className = 'ended-title';
+  heading.textContent = 'This run has ended';
+  const detail = document.createElement('p');
+  detail.textContent = 'Huddle is no longer working on this page. Run it again to get a fresh proposal.';
+  el.append(heading, detail);
+  content.replaceChildren(el, buildFormActions(
+    buildButton('Run again', 'btn primary confirm', runAgain),
+  ));
+}
+
+// Shown above the proposal so it can be adjusted and applied again.
+function showApplyError(msg) {
+  let el = document.getElementById('applyError');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'applyError';
+    el.className = 'error-msg apply-error';
+    el.setAttribute('role', 'alert');
+    const content = document.getElementById('content');
+    content.parentNode.insertBefore(el, content);
+  }
+  el.textContent = msg;
+  el.hidden = false;
+}
+
+function hideApplyError() {
+  const el = document.getElementById('applyError');
+  if (el) el.hidden = true;
 }
 
 function getTabMeta(tabId) {
@@ -284,9 +369,9 @@ function initDebugSection(model, messages) {
       <pre id="rawResponsePre"></pre>
     </div>`;
 
-  // Show debug section during streaming
-  section.classList.add('visible');
-  document.getElementById('debugToggle').textContent = 'Hide the model\'s raw output';
+  // Stays closed until the first chunk: a run that fails before any output
+  // must not leave an uncollapsible prompt dump under the error.
+  section.classList.remove('visible');
 }
 
 function appendChunk(text) {
@@ -294,6 +379,14 @@ function appendChunk(text) {
   if (pre) {
     pre.textContent += text;
     pre.scrollTop = pre.scrollHeight;
+  }
+  // The toggle has nothing to show until the model has said something; the
+  // first output opens the section (shown during streaming) with its toggle.
+  const toggle = document.getElementById('debugToggle');
+  if (text && toggle.hidden) {
+    toggle.hidden = false;
+    document.getElementById('debugSection').classList.add('visible');
+    toggle.textContent = 'Hide the model\'s raw output';
   }
 }
 
@@ -307,15 +400,30 @@ function setupDebugToggle() {
 }
 
 function setupActionButtons() {
-  document.getElementById('applyButton').addEventListener('click', () => {
+  const applyButton = document.getElementById('applyButton');
+  applyButton.addEventListener('click', () => {
     const groupsToApply = proposal.groups
       .filter(g => g.tabIds.length > 0)
       .map(g => ({ name: g.name, color: g.color, tabIds: g.tabIds }));
 
+    const label = applyButton.textContent;
+    applyButton.disabled = true;
+    applyButton.textContent = 'Applying...';
+    hideApplyError();
+
+    // On success the background closes this tab; on failure it stays open
+    // and says why.
     chrome.runtime.sendMessage({
       action: 'applyAiProposal',
       groups: groupsToApply,
+      ungroupedTabIds: [...proposal.ungroupedTabIds],
+      respectGroups,
       windowId: proposal.windowId,
+    }, (response) => {
+      if (!chrome.runtime.lastError && response && response.success) return;
+      applyButton.disabled = false;
+      applyButton.textContent = label;
+      showApplyError(`Couldn't apply the groups: ${replyFailure(response)}`);
     });
   });
 
@@ -349,8 +457,6 @@ function handleMessage(msg) {
 }
 
 function showInstructionsInput() {
-  const params = new URLSearchParams(window.location.search);
-  const respectGroups = params.get('respectGroups') !== 'false';
   const modeHint = respectGroups
     ? 'Organizing <strong>ungrouped tabs only</strong> (Groups)'
     : 'Reorganizing <strong>all tabs</strong> (Flat)';
@@ -371,15 +477,17 @@ function showInstructionsInput() {
     const instructions = document.getElementById('userInstructions').value.trim();
     showStatus('Starting...');
 
-    // Show debug section by default
-    document.getElementById('debugSection').classList.add('visible');
-    document.getElementById('debugToggle').textContent = 'Hide the model\'s raw output';
-
     // Listen for pushed messages from background
     chrome.runtime.onMessage.addListener(handleMessage);
 
-    // Tell background we're ready, with optional instructions
-    chrome.runtime.sendMessage({ action: 'aiProposalReady', instructions });
+    // Tell background we're ready, with optional instructions. If no run is
+    // waiting for this tab (or the background can't answer), say so rather
+    // than sit on 'Starting...'.
+    chrome.runtime.sendMessage({ action: 'aiProposalReady', instructions }, (response) => {
+      if (!chrome.runtime.lastError && response && response.pending) return;
+      chrome.runtime.onMessage.removeListener(handleMessage);
+      showRunEnded();
+    });
   });
 
   document.getElementById('cancelOrganize').addEventListener('click', () => {
@@ -390,10 +498,24 @@ function showInstructionsInput() {
   document.getElementById('userInstructions').focus();
 }
 
+// A refresh drops the page's link to its run, so it cannot pick it up again.
+function wasReloaded() {
+  try {
+    const [nav] = window.performance.getEntriesByType('navigation');
+    return !!nav && nav.type === 'reload';
+  } catch (_e) {
+    return false;
+  }
+}
+
 function init() {
   setupDebugToggle();
   setupActionButtons();
-  showInstructionsInput();
+  if (wasReloaded()) {
+    showRunEnded();
+  } else {
+    showInstructionsInput();
+  }
 }
 
 if (document.readyState === 'loading') {

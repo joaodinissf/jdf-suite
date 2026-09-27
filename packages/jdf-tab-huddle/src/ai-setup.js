@@ -1,5 +1,7 @@
 const urlParams = new URLSearchParams(window.location.search);
 const pageMode = urlParams.get('mode') || 'setup'; // 'setup', 'edit', or 'expired'
+// The popup's Groups/Flat choice, carried through to the run "Save & organize" starts.
+const respectGroups = urlParams.get('respectGroups') !== 'false';
 
 let models = [];
 let expiryPresets = [];
@@ -444,7 +446,7 @@ function setupEventListeners() {
 
     if (!isEdit) {
       // First-time setup → trigger AI grouping immediately
-      chrome.runtime.sendMessage({ action: 'aiGroupTabs' });
+      chrome.runtime.sendMessage({ action: 'aiGroupTabs', respectGroups });
     }
 
     // Close this tab
