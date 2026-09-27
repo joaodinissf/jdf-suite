@@ -20,6 +20,13 @@
       --ac-line: rgba(255, 255, 255, .16);
       --ac-soft: rgba(58, 160, 255, .15);
       --ac-txt: #7cc0ff;
+
+      /* Contrast (UI review F3): text on the accent fill, and control edges
+         that reach 3:1 against every surface (WCAG 1.4.11). --bd stays for
+         dividers and panels, which are decoration. */
+      --on-ac: #06121f;
+      --bd-control: #63656e;
+      --bd-control-hi: #8b8d97;
       --sleep: #e0b64b;
       --sleep-soft: rgba(224, 182, 75, .15);
       --danger: #ff8585;
@@ -83,7 +90,7 @@
       background: var(--ac);
       display: grid;
       place-items: center;
-      color: #fff;
+      color: var(--on-ac);
       box-shadow: 0 0 0 1px var(--ac-line) inset;
       font-size: 12px;
       flex: 0 0 auto;
@@ -108,7 +115,7 @@
     .seg {
       display: inline-flex;
       background: var(--comp);
-      border: 1px solid var(--bd);
+      border: 1px solid var(--bd-control);
       border-radius: 8px;
       padding: 2px;
       flex: 0 0 auto;
@@ -132,7 +139,7 @@
 
     .seg button[aria-pressed="true"] {
       background: var(--ac);
-      color: #fff;
+      color: var(--on-ac);
       box-shadow: 0 1px 2px rgba(0, 0, 0, .35);
     }
 
@@ -195,7 +202,7 @@
       font-weight: 550;
       color: var(--tx);
       background: var(--comp);
-      border: 1px solid var(--bd);
+      border: 1px solid var(--bd-control);
       border-radius: 7px;
       padding: 7px 8px;
       cursor: pointer;
@@ -207,7 +214,7 @@
 
     .btn:hover {
       background: var(--comp-hi);
-      border-color: var(--bd-hi);
+      border-color: var(--bd-control-hi);
     }
 
     .btn:active {
@@ -221,7 +228,7 @@
     .btn.primary {
       background: var(--ac);
       border-color: var(--ac);
-      color: #fff;
+      color: var(--on-ac);
       font-weight: 600;
       justify-content: center;
     }
@@ -302,6 +309,15 @@
       background: rgba(0, 0, 0, .25);
     }
 
+    /* Badges on the accent fill follow its dark text, at full opacity: the
+       base badge's .8 opacity would dilute the contrast. */
+    .btn.primary .hotkey-hint,
+    .seg button[aria-pressed="true"] .hotkey-hint {
+      background: rgba(6, 18, 31, .16);
+      color: var(--on-ac);
+      opacity: 1;
+    }
+
     .chip .hotkey-hint,
     .preset .hotkey-hint {
       margin-left: 3px;
@@ -326,7 +342,7 @@
       gap: 4px;
       padding: 6px 4px 5px;
       background: var(--comp);
-      border: 1px solid var(--bd);
+      border: 1px solid var(--bd-control);
       border-radius: 7px;
       cursor: pointer;
       color: var(--tx);
@@ -338,7 +354,7 @@
 
     .chip:hover {
       background: var(--comp-hi);
-      border-color: var(--bd-hi);
+      border-color: var(--bd-control-hi);
     }
 
     .chip.selected {
@@ -368,7 +384,7 @@
       font-weight: 600;
       color: var(--tx-dim);
       background: transparent;
-      border: 1px solid var(--bd);
+      border: 1px solid var(--bd-control);
       border-radius: 6px;
       padding: 6px 4px;
       cursor: pointer;
@@ -391,7 +407,7 @@
       flex: 1;
       background: var(--comp);
       color: var(--tx);
-      border: 1px solid var(--bd);
+      border: 1px solid var(--bd-control);
       border-radius: 7px;
       padding: 6px 8px;
       font-size: 11px;
@@ -411,7 +427,7 @@
       font-size: 10.5px;
       font-weight: 600;
       border-radius: 6px;
-      border: 1px solid var(--bd);
+      border: 1px solid var(--bd-control);
       background: var(--comp);
       color: var(--tx);
       cursor: pointer;
@@ -451,7 +467,7 @@
       letter-spacing: .04em;
       color: var(--ac-txt);
       background: transparent;
-      border: 1px solid var(--bd);
+      border: 1px solid var(--bd-control);
       border-radius: 6px;
       padding: 3px 7px;
       cursor: pointer;
@@ -524,7 +540,7 @@
       font-weight: 600;
       color: var(--tx-dim);
       background: transparent;
-      border: 1px solid var(--bd);
+      border: 1px solid var(--bd-control);
       border-radius: 6px;
       padding: 4px 7px;
       cursor: pointer;
