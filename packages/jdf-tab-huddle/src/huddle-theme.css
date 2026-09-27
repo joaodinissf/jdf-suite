@@ -206,6 +206,12 @@ textarea {
   white-space: nowrap;
 }
 
+/* The global selection ink fails on the pastel chip fills; invert the chip. */
+.group-chip::selection {
+  background: var(--chip-ink, var(--g-grey-ink));
+  color: var(--chip, var(--g-grey));
+}
+
 /* The group line: Chrome underlines a group's tabs in the group's colour. */
 .group-line {
   flex: 1;

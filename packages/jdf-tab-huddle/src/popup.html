@@ -181,12 +181,13 @@
       text-overflow: ellipsis;
     }
 
-    .btn:hover {
+    /* :where keeps these at .btn:hover weight, so .btn.primary keeps its accent border. */
+    .btn:hover:where(:not(:disabled)) {
       background: var(--comp-hi);
       border-color: var(--bd-control-hi);
     }
 
-    .btn:active {
+    .btn:active:where(:not(:disabled)) {
       transform: translateY(1px);
     }
 
@@ -216,12 +217,6 @@
     .chip:disabled {
       opacity: .4;
       cursor: not-allowed;
-    }
-
-    .btn:disabled:hover {
-      background: var(--comp);
-      border-color: var(--bd);
-      transform: none;
     }
 
     .icon {
@@ -322,7 +317,8 @@
       transition: background .12s, border-color .12s;
     }
 
-    .chip:hover {
+    /* :where keeps this below .chip.selected, so a selected chip keeps its look. */
+    .chip:hover:where(:not(:disabled)) {
       background: var(--comp-hi);
       border-color: var(--bd-control-hi);
     }
@@ -407,13 +403,6 @@
 
     #snoozeCustomTime::-webkit-calendar-picker-indicator {
       cursor: pointer;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      #snoozeCustomTime::-webkit-calendar-picker-indicator {
-        filter: invert(1) brightness(1.4);
-        opacity: 1;
-      }
     }
 
     #snoozeCustomConfirm,
