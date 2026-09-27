@@ -90,7 +90,7 @@ describe('handleAiGroupTabs - gathering tabs', () => {
     );
     expect(errorCall[1]).toEqual({
       type: 'ai-error',
-      error: 'No ungrouped tabs to organize. Switch to Individual Mode to reorganize all tabs.',
+      error: 'No ungrouped tabs to organize. Switch to Flat to reorganize all tabs.',
     });
   });
 

@@ -34,7 +34,7 @@ function updateContent() {
   // Update confirm button text
   const confirmButton = document.getElementById('confirmButton');
   if (confirmButton) {
-    confirmButton.textContent = `🚀 Create ${totalWindows} Window${totalWindows === 1 ? '' : 's'}`;
+    confirmButton.textContent = `Create ${totalWindows} window${totalWindows === 1 ? '' : 's'}`;
   }
 }
 

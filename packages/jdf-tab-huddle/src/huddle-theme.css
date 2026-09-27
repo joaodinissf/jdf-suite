@@ -1,0 +1,234 @@
+/*
+ * Huddle's shared visual system, linked by every extension page.
+ *
+ * The world is Chrome's own tab strip. Tabs gather into groups, and a group
+ * shows as a coloured label chip with a line in the same colour under its
+ * tabs. So Huddle's sections are tab groups: each one opens with a chip in one
+ * of Chrome's nine group colours and is underlined in it. Sleeping tabs keep
+ * the nap voice: amber, the moon, the nap room.
+ *
+ * Pages follow the system light/dark setting, as Chrome's own UI does. Every
+ * text pair meets WCAG AA (4.5:1) and every control edge 3:1, in both themes.
+ * The token names are shared by all pages, so page CSS only says what is
+ * specific to that page.
+ */
+
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(fonts/atkinson-hyperlegible-next-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Atkinson Hyperlegible Next';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(fonts/atkinson-hyperlegible-next-latin-ext.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'Atkinson Hyperlegible Mono';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(fonts/atkinson-hyperlegible-mono-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Atkinson Hyperlegible Mono';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(fonts/atkinson-hyperlegible-mono-latin-ext.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ---- Light (default) ---------------------------------------------------- */
+:root {
+  color-scheme: light dark;
+
+  --ui: 'Atkinson Hyperlegible Next', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono: 'Atkinson Hyperlegible Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  /* Grounds and ink */
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --comp: #ffffff;
+  --comp-hi: #eef1f6;
+  --tx: #1b1d22;
+  --tx-dim: #545a65;
+
+  /* Lines: --bd for dividers and panels (decoration), --bd-control for the
+     edge of anything you can press (3:1 on every surface). */
+  --bd: #dde1e8;
+  --bd-hi: #c5cad3;
+  --bd-control: #838995;
+  --bd-control-hi: #5b616c;
+
+  /* Action colour: Chrome's blue group. Fills keep Chrome's own blue; text
+     uses a darker blue, since the fill blue is only 4.2:1 on this ground. */
+  --ac: #1a73e8;
+  --ac-hi: #1765cc;
+  --ac-line: rgba(0, 0, 0, .08);
+  --ac-soft: rgba(26, 115, 232, .10);
+  --ac-txt: #0b57d0;
+  --on-ac: #ffffff;
+
+  /* The nap voice (snooze, sleeping, the nap room) and destructive actions */
+  --sleep: #8a5300;
+  --sleep-fill: #f9ab00;
+  --sleep-soft: rgba(249, 171, 0, .18);
+  --danger: #c5221f;
+  --danger-soft: rgba(197, 34, 31, .07);
+
+  /* Callouts: a 1px edge in the callout's hue and a soft tint of it (no
+     coloured side bar). Warnings use Chrome's orange group. */
+  --warn-edge: #b3541e;
+  --warn-soft: rgba(250, 144, 62, .12);
+
+  /* Hotkey badges */
+  --kbd-bg: #e6e9ef;
+  --kbd-tx: #3c4043;
+
+  /* Chrome's tab-group colours: chip fill and the ink that reads on it */
+  --g-grey: #5f6368;   --g-grey-ink: #ffffff;
+  --g-blue: #1a73e8;   --g-blue-ink: #ffffff;
+  --g-red: #d93025;    --g-red-ink: #ffffff;
+  --g-yellow: #f9ab00; --g-yellow-ink: #1f1600;
+  --g-green: #188038;  --g-green-ink: #ffffff;
+  --g-pink: #d01884;   --g-pink-ink: #ffffff;
+  --g-purple: #a142f4; --g-purple-ink: #ffffff;
+  --g-cyan: #007b83;   --g-cyan-ink: #ffffff;
+  --g-orange: #fa903e; --g-orange-ink: #231200;
+
+  --shadow: 0 6px 18px rgba(28, 36, 52, .18);
+  /* Floating layers (toasts): lift that reads against the ground. */
+  --shadow-float: 0 8px 22px rgba(28, 36, 52, .22), 0 1px 3px rgba(28, 36, 52, .12);
+}
+
+/* ---- Dark ---------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17181c;
+    --panel: #202227;
+    --comp: #25272d;
+    --comp-hi: #2d3036;
+    --tx: #eceef2;
+    --tx-dim: #a4aab4;
+
+    --bd: #31343b;
+    --bd-hi: #454952;
+    --bd-control: #7a7f89;
+    --bd-control-hi: #a4aab4;
+
+    --ac: #8ab4f8;
+    --ac-hi: #a8c7fa;
+    --ac-line: rgba(255, 255, 255, .12);
+    --ac-soft: rgba(138, 180, 248, .16);
+    --ac-txt: #a8c7fa;
+    --on-ac: #0b1a33;
+
+    --sleep: #fdd663;
+    --sleep-fill: #fdd663;
+    --sleep-soft: rgba(253, 214, 99, .16);
+    --danger: #f28b82;
+    --danger-soft: rgba(242, 139, 130, .12);
+
+    --warn-edge: #fcad70;
+    --warn-soft: rgba(252, 173, 112, .10);
+
+    --kbd-bg: rgba(255, 255, 255, .10);
+    --kbd-tx: #dfe2e7;
+
+    --g-grey: #dadce0;   --g-grey-ink: #15171b;
+    --g-blue: #8ab4f8;   --g-blue-ink: #0b1a33;
+    --g-red: #f28b82;    --g-red-ink: #2d0c09;
+    --g-yellow: #fdd663; --g-yellow-ink: #221a00;
+    --g-green: #81c995;  --g-green-ink: #062611;
+    --g-pink: #ff8bcb;   --g-pink-ink: #33081f;
+    --g-purple: #c58af9; --g-purple-ink: #200936;
+    --g-cyan: #78d9ec;   --g-cyan-ink: #04262c;
+    --g-orange: #fcad70; --g-orange-ink: #2b1400;
+
+    --shadow: 0 6px 18px rgba(0, 0, 0, .55);
+    --shadow-float: 0 10px 26px rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .07);
+  }
+}
+
+/* ---- Base ---------------------------------------------------------------- */
+html,
+body {
+  background: var(--bg);
+  color: var(--tx);
+}
+
+body {
+  font-family: var(--ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(26, 115, 232, .26);
+  color: var(--tx);
+}
+
+input,
+textarea {
+  caret-color: var(--ac);
+}
+
+* {
+  scrollbar-color: var(--bd-hi) transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ac);
+  outline-offset: 2px;
+}
+
+/* ---- Tab-group chip: a section heading drawn like Chrome's group label ---- */
+.group-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 700 10.5px/1.3 var(--ui);
+  letter-spacing: .01em;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--chip, var(--g-grey));
+  color: var(--chip-ink, var(--g-grey-ink));
+  white-space: nowrap;
+}
+
+/* The group line: Chrome underlines a group's tabs in the group's colour. */
+.group-line {
+  flex: 1;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--chip, var(--g-grey));
+  opacity: .55;
+}
+
+[data-group="grey"]   { --chip: var(--g-grey);   --chip-ink: var(--g-grey-ink); }
+[data-group="blue"]   { --chip: var(--g-blue);   --chip-ink: var(--g-blue-ink); }
+[data-group="red"]    { --chip: var(--g-red);    --chip-ink: var(--g-red-ink); }
+[data-group="yellow"] { --chip: var(--g-yellow); --chip-ink: var(--g-yellow-ink); }
+[data-group="green"]  { --chip: var(--g-green);  --chip-ink: var(--g-green-ink); }
+[data-group="pink"]   { --chip: var(--g-pink);   --chip-ink: var(--g-pink-ink); }
+[data-group="purple"] { --chip: var(--g-purple); --chip-ink: var(--g-purple-ink); }
+[data-group="cyan"]   { --chip: var(--g-cyan);   --chip-ink: var(--g-cyan-ink); }
+[data-group="orange"] { --chip: var(--g-orange); --chip-ink: var(--g-orange-ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+  }
+}

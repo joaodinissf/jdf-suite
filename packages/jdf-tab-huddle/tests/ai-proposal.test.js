@@ -12,7 +12,7 @@ describe('ai-proposal', () => {
         <button class="cancel" id="cancelButton">Cancel</button>
       </div>
       <div id="content"><div class="loading">Loading proposal...</div></div>
-      <button class="debug-toggle" id="debugToggle">Show raw model I/O</button>
+      <button class="debug-toggle" id="debugToggle">Show the model's raw output</button>
       <div class="debug-section" id="debugSection"></div>
     `;
   });
@@ -137,7 +137,7 @@ describe('ai-proposal', () => {
       const debugSection = document.getElementById('debugSection');
       const debugToggle = document.getElementById('debugToggle');
       expect(debugSection.classList.contains('visible')).toBe(true);
-      expect(debugToggle.textContent).toBe('Hide raw model I/O');
+      expect(debugToggle.textContent).toBe('Hide the model\'s raw output');
       expect(document.getElementById('rawResponsePre')).not.toBeNull();
 
       // 2. ai-chunk: appends streamed text into the raw response <pre>
@@ -155,7 +155,7 @@ describe('ai-proposal', () => {
       });
       expect(document.querySelectorAll('#content .group-card').length).toBe(1);
       expect(debugSection.classList.contains('visible')).toBe(false);
-      expect(debugToggle.textContent).toBe('Show raw model I/O');
+      expect(debugToggle.textContent).toBe('Show the model\'s raw output');
 
       // 4. ai-error: replaces content with an error message
       handleMessage({ type: 'ai-error', error: 'Something broke' });

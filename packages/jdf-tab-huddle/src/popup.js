@@ -551,7 +551,9 @@ function updateSnoozeButtonState(activeTab) {
 function markSelectedUnitButton(unit) {
   for (const [u, id] of Object.entries(SNOOZE_UNIT_TO_BUTTON_ID)) {
     const btn = document.getElementById(id);
-    if (btn) btn.classList.toggle('selected', u === unit);
+    if (!btn) continue;
+    btn.classList.toggle('selected', u === unit);
+    btn.setAttribute('aria-expanded', String(u === unit));
   }
 }
 
@@ -662,11 +664,12 @@ function renderSnoozedList() {
       wakeBtn.setAttribute('data-action', 'wake');
       wakeBtn.textContent = 'Wake';
       wakeBtn.title = 'Wake now: reopen these tabs';
+      wakeBtn.setAttribute('aria-label', `Wake ${item.summary} now`);
 
       const discardBtn = document.createElement('button');
       discardBtn.className = 'snoozed-discard';
       discardBtn.setAttribute('data-action', 'discard');
-      discardBtn.innerHTML = TRASH_ICON;
+      discardBtn.innerHTML = DISMISS_ICON;
       discardBtn.title = 'Discard these tabs without reopening them';
       discardBtn.setAttribute('aria-label', `Discard ${item.summary} without reopening`);
 
@@ -689,11 +692,12 @@ function wakeNow(id) {
   chrome.runtime.sendMessage({ action: 'wakeSnoozed', id }, () => {});
 }
 
-// Drawn (not an emoji) so it matches the popup's stroke weight; the button's
-// accessible name comes from its aria-label.
-const TRASH_ICON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">'
-  + '<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M7 7v4M9 7v4" fill="none" '
-  + 'stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+// A drawn close mark (not an emoji, and not a trash can: a sleeping item is
+// dismissed, in the nap voice). The button's accessible name comes from its
+// aria-label.
+const DISMISS_ICON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">'
+  + '<path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" '
+  + 'stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
 
 // Discarding drops the snoozed tabs for good (they were closed at snooze time),
 // so it is undoable for a few seconds instead of asking for confirmation.

@@ -586,7 +586,7 @@ async function handleAiGroupTabs(message, sendResponse) {
     const currentWindow = await chrome.windows.getCurrent();
     const tabs = await getTabsWithGroupInfo(currentWindow.id);
 
-    // In Tab Groups Mode: only organize ungrouped tabs. In Individual Mode: all tabs.
+    // Groups mode: only organize ungrouped tabs. Flat mode: all tabs.
     const unpinnedTabs = tabs.filter(t => {
       if (t.pinned || t.id === proposalTab.id) return false;
       if (respectGroups && t.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) return false;
@@ -595,7 +595,7 @@ async function handleAiGroupTabs(message, sendResponse) {
 
     if (unpinnedTabs.length === 0) {
       const errorMsg = respectGroups
-        ? 'No ungrouped tabs to organize. Switch to Individual Mode to reorganize all tabs.'
+        ? 'No ungrouped tabs to organize. Switch to Flat to reorganize all tabs.'
         : 'No unpinned tabs to organize.';
       send({ type: 'ai-error', error: errorMsg });
       return;
@@ -1908,11 +1908,11 @@ const SNOOZE_ALARM_PREFIX = 'snooze:';
 // Ordered list of the five presets. Times are computed on demand by
 // computePresetWakeTime — this array holds only key + label metadata.
 const SNOOZE_PRESETS = [
-  { key: 'laterToday', label: 'Later Today' },
+  { key: 'laterToday', label: 'Later today' },
   { key: 'tonight', label: 'Tonight' },
   { key: 'tomorrow', label: 'Tomorrow' },
-  { key: 'weekend', label: 'This Weekend' },
-  { key: 'nextWeek', label: 'Next Week' },
+  { key: 'weekend', label: 'This weekend' },
+  { key: 'nextWeek', label: 'Next week' },
 ];
 
 // Next occurrence of weekday `targetDow` (0=Sun..6=Sat) at `hour`:00 local time.
