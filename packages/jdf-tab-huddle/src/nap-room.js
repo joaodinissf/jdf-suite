@@ -2,7 +2,8 @@
 // Nap room — full-page view of every snoozed record.
 //
 // Opened from the popup's Sleeping section ("Expand"). Reuses the same
-// message API as the popup (listSnoozed / wakeSnoozed / cancelSnoozed) and
+// message API as the popup (listSnoozed / wakeSnoozed / cancelSnoozed /
+// restoreSnoozed) and
 // live-refreshes via chrome.storage.onChanged on the `snoozedItems` key.
 // ============================================================
 
@@ -145,12 +146,14 @@ function napBuildRow(record) {
   wakeBtn.className = 'textbtn wake';
   wakeBtn.setAttribute('data-action', 'wake');
   wakeBtn.textContent = 'Wake now';
-  const cancelBtn = document.createElement('button');
-  cancelBtn.className = 'textbtn cancel';
-  cancelBtn.setAttribute('data-action', 'cancel');
-  cancelBtn.textContent = 'Cancel';
+  const discardBtn = document.createElement('button');
+  discardBtn.className = 'textbtn discard';
+  discardBtn.setAttribute('data-action', 'discard');
+  discardBtn.textContent = 'Discard';
+  discardBtn.title = 'Discard these tabs without reopening them';
+  discardBtn.setAttribute('aria-label', `Discard ${record.summary} without reopening`);
   actions.appendChild(wakeBtn);
-  actions.appendChild(cancelBtn);
+  actions.appendChild(discardBtn);
   row.appendChild(actions);
 
   return row;
@@ -228,8 +231,41 @@ function napWakeNow(id) {
   });
 }
 
-function napCancel(id) {
-  chrome.runtime.sendMessage({ action: 'cancelSnoozed', id }, () => {
+// Discarding drops the snoozed tabs for good, so it is undoable for a few
+// seconds instead of asking for confirmation (same as the popup).
+const NAP_UNDO_MS = 10000;
+let napPendingDiscard = null; // { record, timer }
+
+function napDiscard(id) {
+  chrome.runtime.sendMessage({ action: 'cancelSnoozed', id }, (response) => {
+    napLoadAndRender();
+    if (chrome.runtime.lastError || !response || !response.success || !response.record) return;
+    napShowDiscardNotice(response.record);
+  });
+}
+
+function napShowDiscardNotice(record) {
+  const notice = document.getElementById('discardNotice');
+  const text = document.getElementById('discardNoticeText');
+  if (!notice || !text) return;
+  if (napPendingDiscard) clearTimeout(napPendingDiscard.timer);
+  napPendingDiscard = { record, timer: setTimeout(napHideDiscardNotice, NAP_UNDO_MS) };
+  text.textContent = `Discarded ${record.summary}.`;
+  notice.hidden = false;
+}
+
+function napHideDiscardNotice() {
+  if (napPendingDiscard) clearTimeout(napPendingDiscard.timer);
+  napPendingDiscard = null;
+  const notice = document.getElementById('discardNotice');
+  if (notice) notice.hidden = true;
+}
+
+function napUndoDiscard() {
+  if (!napPendingDiscard) return;
+  const { record } = napPendingDiscard;
+  napHideDiscardNotice();
+  chrome.runtime.sendMessage({ action: 'restoreSnoozed', record }, () => {
     napLoadAndRender();
   });
 }
@@ -263,12 +299,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const id = row.getAttribute('data-id');
       const action = btn.getAttribute('data-action');
       if (action === 'wake') napWakeNow(id);
-      else if (action === 'cancel') napCancel(id);
+      else if (action === 'discard') napDiscard(id);
     });
   }
 
   const wakeAllBtn = document.getElementById('wakeAll');
   if (wakeAllBtn) wakeAllBtn.addEventListener('click', () => napWakeAll());
+
+  const undoBtn = document.getElementById('discardUndo');
+  if (undoBtn) undoBtn.addEventListener('click', () => napUndoDiscard());
 
   const settingsBtn = document.getElementById('openSettings');
   if (settingsBtn) {

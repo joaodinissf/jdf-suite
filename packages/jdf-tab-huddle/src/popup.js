@@ -408,7 +408,7 @@ function initSnoozeUi() {
     labelSnoozePresetButtons();
   });
 
-  // Delegated wake/cancel clicks on the sleeping list.
+  // Delegated Wake now / Discard clicks on the sleeping list.
   const list = document.getElementById('snoozedList');
   if (list) {
     list.addEventListener('click', (event) => {
@@ -419,9 +419,12 @@ function initSnoozeUi() {
       const id = li.getAttribute('data-id');
       const action = btn.getAttribute('data-action');
       if (action === 'wake') wakeNow(id);
-      else if (action === 'cancel') cancelSnooze(id);
+      else if (action === 'discard') discardSnooze(id);
     });
   }
+
+  const undoBtn = document.getElementById('discardUndo');
+  if (undoBtn) undoBtn.addEventListener('click', () => undoDiscard());
 
   // Live-refresh the list when an alarm fires (or any snooze mutation happens).
   if (chrome.storage && chrome.storage.onChanged) {
@@ -578,20 +581,22 @@ function renderSnoozedList() {
       wakeBtn.setAttribute('data-action', 'wake');
       wakeBtn.textContent = 'Wake now';
 
-      const cancelBtn = document.createElement('button');
-      cancelBtn.className = 'snoozed-cancel';
-      cancelBtn.setAttribute('data-action', 'cancel');
-      cancelBtn.textContent = 'Cancel';
+      const discardBtn = document.createElement('button');
+      discardBtn.className = 'snoozed-discard';
+      discardBtn.setAttribute('data-action', 'discard');
+      discardBtn.textContent = 'Discard';
+      discardBtn.title = 'Discard these tabs without reopening them';
+      discardBtn.setAttribute('aria-label', `Discard ${item.summary} without reopening`);
 
       li.appendChild(summary);
       li.appendChild(time);
       li.appendChild(wakeBtn);
-      li.appendChild(cancelBtn);
+      li.appendChild(discardBtn);
       list.appendChild(li);
     }
     if (countEl) countEl.textContent = String(items.length);
     if (section) section.hidden = items.length === 0;
-    // The sleeping list (and its Wake/Cancel buttons) was rebuilt — recompute hotkeys.
+    // The sleeping list (and its Wake now/Discard buttons) was rebuilt — recompute hotkeys.
     refreshHotkeys();
   });
 }
@@ -602,8 +607,43 @@ function wakeNow(id) {
   chrome.runtime.sendMessage({ action: 'wakeSnoozed', id }, () => {});
 }
 
-function cancelSnooze(id) {
-  chrome.runtime.sendMessage({ action: 'cancelSnoozed', id }, () => {});
+// Discarding drops the snoozed tabs for good (they were closed at snooze time),
+// so it is undoable for a few seconds instead of asking for confirmation.
+const DISCARD_UNDO_MS = 10000;
+let pendingDiscard = null; // { record, timer }
+
+function discardSnooze(id) {
+  chrome.runtime.sendMessage({ action: 'cancelSnoozed', id }, (response) => {
+    if (chrome.runtime.lastError || !response || !response.success || !response.record) return;
+    showDiscardNotice(response.record);
+  });
+}
+
+function showDiscardNotice(record) {
+  const notice = document.getElementById('discardNotice');
+  const text = document.getElementById('discardNoticeText');
+  if (!notice || !text) return;
+  if (pendingDiscard) clearTimeout(pendingDiscard.timer);
+  pendingDiscard = { record, timer: setTimeout(hideDiscardNotice, DISCARD_UNDO_MS) };
+  text.textContent = `Discarded ${record.summary}.`;
+  notice.hidden = false;
+  refreshHotkeys();
+}
+
+function hideDiscardNotice() {
+  if (pendingDiscard) clearTimeout(pendingDiscard.timer);
+  pendingDiscard = null;
+  const notice = document.getElementById('discardNotice');
+  if (notice) notice.hidden = true;
+  refreshHotkeys();
+}
+
+function undoDiscard() {
+  if (!pendingDiscard) return;
+  const { record } = pendingDiscard;
+  hideDiscardNotice();
+  // The storage.onChanged listener re-renders the list once the record is back.
+  chrome.runtime.sendMessage({ action: 'restoreSnoozed', record }, () => {});
 }
 
 // Human-friendly wake time: "Today 18:00", "Tomorrow 09:00", "Sat 09:00",
@@ -676,7 +716,8 @@ const HOTKEY_PREFERENCES = {
   expandSleeping: ['n'],              // Nap room
   // Sleeping-list row actions (assigned last; may fall back if letters run out)
   'row:wake': ['w'],
-  'row:cancel': ['c'],
+  // Undo the last Discard (Discard itself never gets a hotkey)
+  discardUndo: ['z'],
   // Snooze picker (modal set while the panel is open)
   'snoozePreset-laterToday': ['l'],
   'snoozePreset-tonight': ['t'],
@@ -752,9 +793,10 @@ function collectHotkeyTargets() {
   // naturally excluded; the header toggle, action buttons, snooze units, the
   // Expand link and the sleeping-list rows come in DOM order, which also gives
   // the rows the lowest letter-assignment priority.
+  // Discard is left out on purpose: a single stray key must never drop tabs.
   const targets = [];
   document.querySelectorAll('button[data-action]').forEach((b) => targets.push(b));
-  return targets.filter((el) => !el.disabled && isHotkeyVisible(el));
+  return targets.filter((el) => !el.disabled && isHotkeyVisible(el) && el.getAttribute('data-action') !== 'discard');
 }
 
 // Build a fresh { letter -> element } map for the current visible state.

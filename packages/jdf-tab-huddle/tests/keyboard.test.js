@@ -104,7 +104,7 @@ function addSleepingRow(id, summary = 'Example') {
     <span class="snoozed-summary">${summary}</span>
     <span class="snoozed-time">Tomorrow 09:00</span>
     <button class="snoozed-wake" data-action="wake">Wake now</button>
-    <button class="snoozed-cancel" data-action="cancel">Cancel</button>
+    <button class="snoozed-discard" data-action="discard">Discard</button>
   `;
   document.getElementById('snoozedList').appendChild(li);
 }
@@ -249,14 +249,25 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
   });
 
   describe('buildHotkeyMap — sleeping list rows', () => {
-    test('binds visible Wake/Cancel actions without collisions', () => {
+    test('binds Wake now but never Discard, which must not fire on a stray key', () => {
       addSleepingRow('rec-1');
       const map = buildHotkeyMap();
       const boundEls = [...map.values()];
       const wake = document.querySelector('.snoozed-item[data-id="rec-1"] .snoozed-wake');
-      const cancel = document.querySelector('.snoozed-item[data-id="rec-1"] .snoozed-cancel');
+      const discard = document.querySelector('.snoozed-item[data-id="rec-1"] .snoozed-discard');
       expect(boundEls).toContain(wake);
-      expect(boundEls).toContain(cancel);
+      expect(boundEls).not.toContain(discard);
+      assertNoDuplicateKeys(map);
+    });
+
+    test('a visible Undo notice binds Z', () => {
+      addSleepingRow('rec-1');
+      const notice = document.createElement('div');
+      notice.id = 'discardNotice';
+      notice.innerHTML = '<span id="discardNoticeText">Discarded A.</span><button id="discardUndo" data-action="undoDiscard">Undo</button>';
+      document.getElementById('sleepingSection').before(notice);
+      const map = buildHotkeyMap();
+      expect(map.get('z')).toBe(document.getElementById('discardUndo'));
       assertNoDuplicateKeys(map);
     });
 
@@ -264,9 +275,11 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
       addSleepingRow('rec-1');
       addSleepingRow('rec-2');
       const map = buildHotkeyMap();
-      const rows = document.querySelectorAll('.snoozed-item button[data-action]');
+      const wakeButtons = document.querySelectorAll('.snoozed-item button[data-action="wake"]');
       const boundEls = new Set([...map.values()]);
-      rows.forEach((btn) => expect(boundEls.has(btn)).toBe(true));
+      wakeButtons.forEach((btn) => expect(boundEls.has(btn)).toBe(true));
+      document.querySelectorAll('.snoozed-item button[data-action="discard"]')
+        .forEach((btn) => expect(boundEls.has(btn)).toBe(false));
       assertNoDuplicateKeys(map);
     });
   });

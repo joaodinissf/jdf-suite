@@ -359,7 +359,56 @@ describe('Tab Snoozing', () => {
       expect(store.snoozedItems).toEqual([]);
       expect(chrome.alarms.clear).toHaveBeenCalledWith('snooze:abc');
       expect(chrome.tabs.create).not.toHaveBeenCalled();
+      // The removed record comes back so the UI can offer Undo.
+      expect(sendResponse).toHaveBeenCalledWith({ success: true, record });
+    });
+
+    test('reports failure without a record when the id is unknown', async () => {
+      useMemoryStore({ snoozedItems: [] });
+      const sendResponse = vi.fn();
+      await handleCancelSnooze({ id: 'missing' }, sendResponse);
+      expect(sendResponse).toHaveBeenCalledWith({ success: false, record: undefined });
+    });
+  });
+
+  describe('handleRestoreSnoozed (Undo a discard)', () => {
+    const record = {
+      id: 'abc', type: 'tab', summary: 'A', wakeAt: at(4, 9), preset: 'tomorrow',
+      windowId: 1, tabs: [{ url: 'https://x/', title: 'A', pinned: false, index: 0 }],
+    };
+
+    test('puts the record back and re-arms its alarm', async () => {
+      const store = useMemoryStore({ snoozedItems: [] });
+      const sendResponse = vi.fn();
+      await handleRestoreSnoozed({ record }, sendResponse);
+      expect(store.snoozedItems).toEqual([record]);
+      expect(chrome.alarms.create).toHaveBeenCalledWith('snooze:abc', { when: record.wakeAt });
       expect(sendResponse).toHaveBeenCalledWith({ success: true });
+    });
+
+    test('discard then undo round-trips to the original store', async () => {
+      const store = useMemoryStore({ snoozedItems: [record] });
+      const discarded = vi.fn();
+      await handleCancelSnooze({ id: 'abc' }, discarded);
+      await handleRestoreSnoozed({ record: discarded.mock.calls[0][0].record }, vi.fn());
+      expect(store.snoozedItems).toEqual([record]);
+    });
+
+    test('never duplicates a record that is already present', async () => {
+      const store = useMemoryStore({ snoozedItems: [record] });
+      const sendResponse = vi.fn();
+      await handleRestoreSnoozed({ record }, sendResponse);
+      expect(store.snoozedItems).toEqual([record]);
+      expect(chrome.alarms.create).not.toHaveBeenCalled();
+      expect(sendResponse).toHaveBeenCalledWith({ success: false });
+    });
+
+    test('rejects a malformed record without touching storage', async () => {
+      const store = useMemoryStore({ snoozedItems: [] });
+      const sendResponse = vi.fn();
+      await handleRestoreSnoozed({ record: { id: 'x' } }, sendResponse);
+      expect(store.snoozedItems).toEqual([]);
+      expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'Invalid snooze record' });
     });
   });
 

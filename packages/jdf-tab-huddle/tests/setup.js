@@ -158,6 +158,7 @@ const backgroundWrapper = `
   if (typeof handleListSnoozed !== 'undefined') global.handleListSnoozed = handleListSnoozed;
   if (typeof handleWakeNow !== 'undefined') global.handleWakeNow = handleWakeNow;
   if (typeof handleCancelSnooze !== 'undefined') global.handleCancelSnooze = handleCancelSnooze;
+  if (typeof handleRestoreSnoozed !== 'undefined') global.handleRestoreSnoozed = handleRestoreSnoozed;
   if (typeof handleSnoozeAlarm !== 'undefined') global.handleSnoozeAlarm = handleSnoozeAlarm;
   if (typeof wakeSnoozedRecord !== 'undefined') global.wakeSnoozedRecord = wakeSnoozedRecord;
   if (typeof restoreSnoozedRecord !== 'undefined') global.restoreSnoozedRecord = restoreSnoozedRecord;

@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add **tab snoozing**: hide the current tab, the highlighted tabs, a whole window, or a tab group *now*, and have Huddle automatically reopen ("wake") them at a chosen time. Waking recreates the tabs in the **background** of the current window (or recreates a whole window) and fires a Chrome notification summarizing what woke. A minimal "Sleeping" list in the popup shows everything currently snoozed, with per-item **Wake now** and **Cancel** actions.
+Add **tab snoozing**: hide the current tab, the highlighted tabs, a whole window, or a tab group *now*, and have Huddle automatically reopen ("wake") them at a chosen time. Waking recreates the tabs in the **background** of the current window (or recreates a whole window) and fires a Chrome notification summarizing what woke. A minimal "Sleeping" list in the popup shows everything currently snoozed, with per-item **Wake now** and **Discard** actions. Discard drops the sleeping tabs without reopening them, and offers **Undo** for 10 seconds (it was called Cancel until the 2026-09 UI review, which found that "cancel" read as "bring it back").
 
 Inspired by [snoozz](https://github.com/rohanb10/snoozz-tab-snoozing), but deliberately simpler: no recurring snoozes, no history, no time-editing of existing snoozes, no dedicated dashboard page.
 
@@ -51,7 +51,7 @@ Preset labels/times are fetched from the background on popup load via the `getSn
 Each list row (`<li class="snoozed-item" data-id="...">`) shows:
 - The record `summary` (truncated with `text-overflow: ellipsis`),
 - The wake time formatted by `formatWakeTime()` ("Today 18:00", "Tomorrow 09:00", "Sat 09:00", "12 Jul, 09:00"),
-- A **Wake now** button (`class="snoozed-wake"`, `data-action="wake"`) and a **Cancel** button (`class="snoozed-cancel"`, `data-action="cancel"`).
+- A **Wake now** button (`class="snoozed-wake"`, `data-action="wake"`) and a **Discard** button (`class="snoozed-discard"`, `data-action="discard"`). Discard never gets a hotkey. After a discard, a `role="status"` notice offers **Undo** (hotkey Z) for 10 seconds.
 
 Rows are sorted ascending by `wakeAt`. Clicks are handled by event delegation on `#snoozedList`. The section header shows a count: `Sleeping (<span id="sleepingCount">3</span>)`. The popup also subscribes to `chrome.storage.onChanged` for the `snoozedItems` key and re-renders the list, so an alarm firing while the popup is open updates the UI live.
 
@@ -294,7 +294,8 @@ Message handlers (registered in the `chrome.runtime.onMessage` dispatch, each `r
 - `snoozeTabs(type, tabs, extras, wakeAt, preset)` — shared core implementing steps 1–8 of the snooze flow; returns `{ success, record }` or `{ success: false, error }`.
 - `handleListSnoozed(sendResponse)` — responds `{ success: true, items }` sorted ascending by `wakeAt`.
 - `handleWakeNow(message, sendResponse)` — `wakeSnoozedRecord(message.id, { notify: false })`; responds `{ success }` (false + error if the id is unknown).
-- `handleCancelSnooze(message, sendResponse)` — removes the record under lock, `chrome.alarms.clear('snooze:' + id)`; responds `{ success }`.
+- `handleCancelSnooze(message, sendResponse)` — removes the record under lock, `chrome.alarms.clear('snooze:' + id)`; responds `{ success, record }` so the UI can offer Undo.
+- `handleRestoreSnoozed(message, sendResponse)` — Undo: re-adds `message.record` under lock (never duplicating an id) and re-arms its alarm; responds `{ success }`.
 
 Wake machinery:
 
