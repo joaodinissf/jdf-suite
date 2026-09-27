@@ -151,12 +151,6 @@
       gap: 6px;
     }
 
-    .grid3 {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 6px;
-    }
-
     button {
       font-family: var(--ui);
     }
@@ -189,10 +183,6 @@
 
     .btn:active:where(:not(:disabled)) {
       transform: translateY(1px);
-    }
-
-    .btn.wide {
-      width: 100%;
     }
 
     /* The AI action is a guest, not the hero: a soft blue action. */
@@ -684,23 +674,23 @@
 
     <div class="grp">
       <h3 class="section-head" data-group="blue"><span class="group-chip">This window</span><span class="group-line"></span></h3>
-      <div class="grid3" style="margin-bottom: 6px">
+      <div class="grid2">
         <button id="sortCurrentWindow" class="btn" data-action="sortCurrentWindow"
           title="Sort tabs alphabetically by URL">Sort</button>
         <button id="removeDuplicatesWindow" class="btn" data-action="removeDuplicatesWindow"
           title="Remove duplicate tabs in this window">Deduplicate</button>
         <button id="flattenWindow" class="btn" data-action="flattenWindow"
           title="Ungroup all tabs in this window">Ungroup</button>
+        <button id="aiOrganize" class="btn primary" data-action="aiGroupTabs"
+          title="Use AI to organize tabs into groups">Organize with AI</button>
       </div>
       <!-- Shown only where Chrome can create Split Views (Chrome 155+). -->
-      <div id="splitViewRow" class="grid2" style="margin-bottom: 6px" hidden>
+      <div id="splitViewRow" class="grid2" style="margin-top: 6px" hidden>
         <button id="compactWindow" class="btn" data-action="compactWindow"
           title="Pair adjacent tabs into Split Views">Compact</button>
         <button id="expandWindow" class="btn" data-action="expandWindow"
           title="Separate every Split View in this window">Expand</button>
       </div>
-      <button id="aiOrganize" class="btn primary wide" data-action="aiGroupTabs"
-        title="Use AI to organize tabs into groups">Organize with AI</button>
     </div>
 
     <div class="grp">

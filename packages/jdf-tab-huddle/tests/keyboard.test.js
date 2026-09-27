@@ -24,7 +24,7 @@ function buildPopupDom({ respectGroups = true, singleWindow = false, groupDisabl
       </div>
 
       <div class="grp">
-        <div class="grid3">
+        <div class="grid2">
           <button id="sortCurrentWindow" class="btn" data-action="sortCurrentWindow">Sort</button>
           <button id="removeDuplicatesWindow" class="btn" data-action="removeDuplicatesWindow">Deduplicate</button>
           <button id="flattenWindow" class="btn" data-action="flattenWindow">Ungroup</button>
@@ -33,7 +33,7 @@ function buildPopupDom({ respectGroups = true, singleWindow = false, groupDisabl
           <button id="compactWindow" class="btn" data-action="compactWindow">Compact</button>
           <button id="expandWindow" class="btn" data-action="expandWindow">Expand</button>
         </div>
-        <button id="aiOrganize" class="btn primary wide" data-action="aiGroupTabs">Organize with AI</button>
+        <button id="aiOrganize" class="btn primary" data-action="aiGroupTabs">Organize with AI</button>
       </div>
 
       <div class="grp multi-window-section"${mw}>
