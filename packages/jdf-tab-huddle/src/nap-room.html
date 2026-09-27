@@ -19,6 +19,13 @@
       --ac-hi: #59b1ff;
       --ac-soft: rgba(58, 160, 255, .15);
       --ac-txt: #7cc0ff;
+
+      /* Contrast (UI review F3): text on the accent fill, and control edges
+         that reach 3:1 against every surface (WCAG 1.4.11). --bd stays for
+         dividers and panels, which are decoration. */
+      --on-ac: #06121f;
+      --bd-control: #63656e;
+      --bd-control-hi: #8b8d97;
       --sleep: #e0b64b;
       --sleep-soft: rgba(224, 182, 75, .15);
       --danger: #ff8585;
@@ -101,7 +108,7 @@
       font-weight: 600;
       color: var(--tx-dim);
       background: transparent;
-      border: 1px solid var(--bd);
+      border: 1px solid var(--bd-control);
       border-radius: 6px;
       padding: 6px 11px;
       cursor: pointer;
