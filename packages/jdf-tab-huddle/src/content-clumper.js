@@ -72,8 +72,16 @@ function clumperPageY(event) {
   return cy + sy;
 }
 
+// Match the character first, so the labelled key works on any layout (on
+// AZERTY the key labelled A sends code KeyQ). Shift and Option change the
+// character (Shift+1 reports '!', macOS Option+Z reports 'Ω'), so only then
+// fall back to the physical key (event.code: KeyZ / Digit1).
 function clumperKeyMatches(event, key) {
-  return Boolean(event && event.key && key && event.key.toLowerCase() === key.toLowerCase());
+  if (!event || !key) return false;
+  const k = key.toLowerCase();
+  if (event.key && event.key.toLowerCase() === k) return true;
+  if (!event.code || !(event.shiftKey || event.altKey)) return false;
+  return event.code === (/^[0-9]$/.test(k) ? 'Digit' + k : 'Key' + k.toUpperCase());
 }
 
 function clumperModifierMatches(event, modifier) {

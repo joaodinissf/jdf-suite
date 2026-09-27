@@ -374,6 +374,8 @@ const optionsWrapper = `
   if (typeof populateKeyDropdown !== 'undefined') global.populateKeyDropdown = populateKeyDropdown;
   if (typeof readFormState !== 'undefined') global.readFormState = readFormState;
   if (typeof writeFormState !== 'undefined') global.writeFormState = writeFormState;
+  if (typeof showStatus !== 'undefined') global.showStatus = showStatus;
+  if (typeof handleFormChange !== 'undefined') global.handleFormChange = handleFormChange;
 })();
 `;
 eval(optionsWrapper);
