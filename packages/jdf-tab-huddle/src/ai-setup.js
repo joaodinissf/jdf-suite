@@ -305,7 +305,7 @@ async function init() {
 
   // Page title
   if (isEdit) {
-    document.getElementById('pageTitle').textContent = '⚙️ AI Settings';
+    document.getElementById('pageTitle').textContent = 'AI settings';
   }
 
   // Expired notice
@@ -369,9 +369,10 @@ async function init() {
 
 function setupEventListeners() {
   // Key visibility toggle
-  document.getElementById('keyToggle').addEventListener('click', () => {
+  document.getElementById('keyToggle').addEventListener('click', (event) => {
     const input = document.getElementById('apiKeyInput');
     input.type = input.type === 'password' ? 'text' : 'password';
+    event.currentTarget.setAttribute('aria-pressed', String(input.type === 'text'));
   });
 
   const filterEl = document.getElementById('modelFilter');

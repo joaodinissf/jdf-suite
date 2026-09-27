@@ -1,123 +1,160 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="UTF-8">
-  <title>Tab Organizer - Confirm Extract All Domains</title>
+  <title>Huddle — Extract all domains</title>
+  <link rel="stylesheet" href="huddle-theme.css">
   <style>
+    /* Tokens, fonts, light/dark and the tab-group chips live in
+       huddle-theme.css; this sheet is the dialog's layout only. */
+    * {
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .page {
       max-width: 600px;
-      margin: 50px auto;
-      padding: 30px;
-      background: #667eea;
-      color: white;
-      border-radius: 12px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-      min-height: 400px;
+      margin: 0 auto;
+      padding: 40px 24px 64px;
     }
 
-    h2 {
-      margin-top: 0;
-      margin-bottom: 20px;
-      text-align: center;
-      font-size: 24px;
+    .page-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
     }
 
+    .logo {
+      width: 36px;
+      height: 36px;
+      flex: 0 0 auto;
+      display: block;
+    }
+
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -.015em;
+      line-height: 1.25;
+    }
+
+    /* A caution, not an error: an orange edge (decoration) on a panel. */
     .warning {
-      background: rgba(255, 255, 255, 0.15);
-      padding: 18px;
-      border-radius: 8px;
-      margin: 20px 0;
-      border-left: 4px solid #ffc107;
+      background: var(--warn-soft);
+      border: 1px solid var(--warn-edge);
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin: 0 0 28px;
     }
 
-    .stats {
-      background: rgba(255, 255, 255, 0.15);
-      padding: 18px;
-      border-radius: 8px;
-      margin: 20px 0;
+    .warning strong {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 2px;
     }
 
-    .stats h3 {
-      margin-top: 0;
-      margin-bottom: 15px;
-      font-size: 18px;
+    #windowCount {
+      color: var(--tx-dim);
+    }
+
+    /* Sections are tab groups: a Chrome-style group chip and its group line
+       (see huddle-theme.css). */
+    .section-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 10px;
+      font-size: 12px;
+    }
+
+    .section-head .group-chip {
+      font-size: 12px;
+      padding: 2px 8px;
     }
 
     .stats ul {
       margin: 0;
       padding-left: 20px;
-      line-height: 1.6;
     }
 
     .stats li {
-      margin-bottom: 8px;
+      margin-bottom: 6px;
+    }
+
+    .stats li::marker {
+      color: var(--tx-dim);
     }
 
     .actions {
-      text-align: center;
-      margin-top: 30px;
+      margin-top: 32px;
       display: flex;
-      gap: 15px;
-      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
     }
 
-    button {
-      padding: 14px 28px;
-      border: none;
+    .btn {
+      font: 600 14px/1.2 var(--ui);
+      color: var(--tx);
+      background: var(--comp);
+      border: 1px solid var(--bd-control);
       border-radius: 8px;
+      padding: 10px 18px;
       cursor: pointer;
-      font-size: 16px;
-      font-weight: 600;
-      min-width: 150px;
-      transition: all 0.2s ease;
+      transition: background .12s, border-color .12s;
     }
 
-    .confirm {
-      background: #28a745;
-      color: white;
-      box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+    .btn:hover {
+      background: var(--comp-hi);
+      border-color: var(--bd-control-hi);
     }
 
-    .cancel {
-      background: #6c757d;
-      color: white;
-      box-shadow: 0 2px 8px rgba(108, 117, 125, 0.3);
+    .btn.primary {
+      background: var(--ac);
+      border-color: var(--ac);
+      color: var(--on-ac);
     }
 
-    .confirm:hover {
-      background: #218838;
-      transform: translateY(-2px);
-      box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4);
-    }
-
-    .cancel:hover {
-      background: #5a6268;
-      transform: translateY(-2px);
-      box-shadow: 0 4px 15px rgba(108, 117, 125, 0.4);
+    .btn.primary:hover {
+      background: var(--ac-hi);
+      border-color: var(--ac-hi);
     }
   </style>
 </head>
 
 <body>
-  <h2>🌐 Extract All Domains</h2>
+  <main class="page">
+    <header class="page-head">
+      <img class="logo" src="icons/huddle-mark.svg" alt="Huddle">
+      <div>
+        <h1>Extract all domains</h1>
+      </div>
+    </header>
 
-  <div class="warning">
-    <strong>⚠️ Many Windows Will Be Created</strong><br>
-    <span id="windowCount"></span>
-  </div>
+    <div class="warning">
+      <strong>Many windows will be created</strong>
+      <span id="windowCount"></span>
+    </div>
 
-  <div class="stats">
-    <h3>📊 Operation Summary:</h3>
-    <ul id="operationList">
-    </ul>
-  </div>
+    <section class="stats">
+      <h2 class="section-head" data-group="grey"><span class="group-chip">Summary</span><span class="group-line"></span></h2>
+      <ul id="operationList">
+      </ul>
+    </section>
 
-  <div class="actions">
-    <button class="confirm" id="confirmButton">🚀 Proceed</button>
-    <button class="cancel" id="cancelButton">✋🏼 Cancel</button>
-  </div>
+    <div class="actions">
+      <button class="btn primary confirm" id="confirmButton">Proceed</button>
+      <button class="btn cancel" id="cancelButton">Cancel</button>
+    </div>
+  </main>
 
   <script src="confirmation-dialog.js"></script>
 </body>

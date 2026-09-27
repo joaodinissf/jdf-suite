@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Huddle">
+  <!-- Three tabs huddled into one group: Chrome blue, with the group line in nap amber.
+       Tabs are 6 units wide with 2-unit gaps, so they stay apart at 16px. -->
+  <rect width="32" height="32" rx="8" fill="#1a73e8"/>
+  <path d="M5 21V14q0-2 2-2h2q2 0 2 2v7Z" fill="#ffffff"/>
+  <path d="M13 21V11q0-2 2-2h2q2 0 2 2v10Z" fill="#ffffff"/>
+  <path d="M21 21V14q0-2 2-2h2q2 0 2 2v7Z" fill="#ffffff"/>
+  <rect x="5" y="23.5" width="22" height="3" rx="1.5" fill="#fdd663"/>
+</svg>
