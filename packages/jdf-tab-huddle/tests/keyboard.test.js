@@ -33,7 +33,7 @@ function buildPopupDom({ respectGroups = true, singleWindow = false, groupDisabl
           <button id="compactWindow" class="btn" data-action="compactWindow">Compact</button>
           <button id="expandWindow" class="btn" data-action="expandWindow">Expand</button>
         </div>
-        <button id="aiOrganize" class="btn primary" data-action="aiGroupTabs">Organize with AI</button>
+        <button id="aiOrganize" class="btn" data-action="aiGroupTabs">Organize with AI</button>
       </div>
 
       <div class="grp multi-window-section"${mw}>

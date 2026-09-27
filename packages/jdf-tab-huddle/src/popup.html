@@ -175,7 +175,7 @@
       text-overflow: ellipsis;
     }
 
-    /* :where keeps these at .btn:hover weight, so .btn.primary keeps its accent border. */
+    /* :where keeps these at .btn:hover weight. */
     .btn:hover:where(:not(:disabled)) {
       background: var(--comp-hi);
       border-color: var(--bd-control-hi);
@@ -183,19 +183,6 @@
 
     .btn:active:where(:not(:disabled)) {
       transform: translateY(1px);
-    }
-
-    /* The AI action is a guest, not the hero: a soft blue action. */
-    .btn.primary {
-      background: var(--ac-soft);
-      border-color: var(--ac);
-      color: var(--ac-txt);
-      font-weight: 700;
-      justify-content: center;
-    }
-
-    .btn.primary:hover {
-      background: var(--comp-hi);
     }
 
     .btn.mini {
@@ -681,8 +668,7 @@
           title="Remove duplicate tabs in this window">Deduplicate</button>
         <button id="flattenWindow" class="btn" data-action="flattenWindow"
           title="Ungroup all tabs in this window">Ungroup</button>
-        <button id="aiOrganize" class="btn primary" data-action="aiGroupTabs"
-          title="Use AI to organize tabs into groups">Organize with AI</button>
+        <button id="aiOrganize" class="btn" data-action="aiGroupTabs">Organize with AI</button>
       </div>
       <!-- Shown only where Chrome can create Split Views (Chrome 155+). -->
       <div id="splitViewRow" class="grid2" style="margin-top: 6px" hidden>
