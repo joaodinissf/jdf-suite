@@ -44,12 +44,23 @@ document.addEventListener('DOMContentLoaded', function () {
 // with chrome.storage.local under the 'respectGroups' key.
 let currentRespectGroups = true;
 
+// Counts the user's own toggle choices (clicks and the G/F keys, which click
+// the buttons). The saved preference loads asynchronously; a choice made
+// before it arrives must win over it.
+let modeChoiceCount = 0;
+
 // Wire the two segmented-toggle buttons.
 function initModeToggle() {
   const groupsBtn = document.getElementById('modeGroups');
   const flatBtn = document.getElementById('modeFlat');
-  if (groupsBtn) groupsBtn.addEventListener('click', () => setRespectGroups(true));
-  if (flatBtn) flatBtn.addEventListener('click', () => setRespectGroups(false));
+  if (groupsBtn) groupsBtn.addEventListener('click', () => chooseRespectGroups(true));
+  if (flatBtn) flatBtn.addEventListener('click', () => chooseRespectGroups(false));
+}
+
+// The user picked a mode.
+function chooseRespectGroups(value) {
+  modeChoiceCount++;
+  setRespectGroups(value);
 }
 
 // Apply a respectGroups value to the toggle UI and (optionally) persist it.
@@ -80,7 +91,10 @@ function getRespectGroups() {
 // 'individual') string preference to the new boolean `respectGroups` key
 // the first time it runs, then persists under the new key going forward.
 function loadUserPreferences() {
+  const choicesBefore = modeChoiceCount;
   chrome.storage.local.get(['respectGroups', 'selectedMode'], (result) => {
+    // The user already chose (and that choice was saved) — keep it.
+    if (modeChoiceCount !== choicesBefore) return;
     let value;
     let migrating;
     if (typeof result.respectGroups === 'boolean') {

@@ -296,3 +296,46 @@ describe('Background Script', () => {
     });
   });
 });
+describe('sortWindowTabs when a tab closes mid-sort', () => {
+  const tab = (id, url) => ({ id, url, pinned: false, groupId: -1, windowId: 101 });
+
+  beforeEach(() => {
+    chrome.tabs.query.mockReset();
+    chrome.tabs.move.mockReset();
+  });
+
+  test('re-queries and retries once, without the closed tab', async () => {
+    chrome.tabs.query
+      .mockResolvedValueOnce([tab(1, 'https://c.test'), tab(2, 'https://a.test'), tab(3, 'https://b.test')])
+      .mockResolvedValueOnce([tab(1, 'https://c.test'), tab(3, 'https://b.test')]);
+    chrome.tabs.move
+      .mockRejectedValueOnce(new Error('No tab with id: 2.'))
+      .mockResolvedValue([]);
+
+    await expect(sortWindowTabs(101, false)).resolves.toBe(true);
+
+    expect(chrome.tabs.query).toHaveBeenCalledTimes(2);
+    expect(chrome.tabs.move).toHaveBeenLastCalledWith([3, 1], { index: 0 });
+  });
+
+  test('resolves false after a second failure', async () => {
+    chrome.tabs.query.mockResolvedValue([tab(1, 'https://c.test'), tab(2, 'https://a.test')]);
+    chrome.tabs.move.mockRejectedValue(new Error('Tabs cannot be edited right now.'));
+
+    await expect(sortWindowTabs(101, false)).resolves.toBe(false);
+    expect(chrome.tabs.move).toHaveBeenCalledTimes(2);
+  });
+
+  test('Sort this window reports the failure instead of success', async () => {
+    chrome.tabs.query.mockResolvedValue([tab(1, 'https://c.test'), tab(2, 'https://a.test')]);
+    chrome.tabs.move.mockRejectedValue(new Error('Tabs cannot be edited right now.'));
+    const sendResponse = vi.fn();
+
+    await handleSortCurrentWindow(false, sendResponse);
+
+    expect(sendResponse).toHaveBeenCalledWith({
+      success: false,
+      error: "The window couldn't be sorted. Try again.",
+    });
+  });
+});
