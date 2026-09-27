@@ -22,6 +22,7 @@
       --ac-txt: #7cc0ff;
       --sleep: #e0b64b;
       --sleep-soft: rgba(224, 182, 75, .15);
+      --danger: #ff8585;
       --ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
       --mono: ui-monospace, 'Cascadia Code', 'Segoe UI Mono', 'SFMono-Regular', Consolas, monospace;
     }
@@ -534,9 +535,49 @@
       border-color: var(--ac);
     }
 
-    .snoozed-cancel:hover {
-      color: #ff8585;
-      border-color: #ff858555;
+    /* Discard drops the tabs for good, so it is set apart from Wake now and
+       only turns red when you reach for it. */
+    .snoozed-item button.snoozed-discard {
+      border-color: transparent;
+    }
+
+    .snoozed-item button.snoozed-discard:hover,
+    .snoozed-item button.snoozed-discard:focus-visible {
+      color: var(--danger);
+      border-color: var(--danger);
+    }
+
+    .undo-notice {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border: 1px solid var(--bd);
+      border-radius: 9px;
+      background: var(--panel);
+      font-size: 11px;
+      color: var(--tx);
+    }
+
+    .undo-notice span {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .undo-notice button {
+      flex: 0 0 auto;
+      font-family: var(--ui);
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--ac-txt);
+      background: var(--ac-soft);
+      border: 1px solid var(--ac);
+      border-radius: 6px;
+      padding: 4px 9px;
+      cursor: pointer;
     }
 
     /* footer */
@@ -680,6 +721,13 @@
       </div>
     </div>
 
+    <!-- Before #sleepingSection so Undo claims its Z hotkey ahead of the rows,
+         and outside it because discarding the last item hides that section. -->
+    <div id="discardNotice" class="undo-notice" role="status" aria-live="polite" hidden>
+      <span id="discardNoticeText"></span>
+      <button id="discardUndo" data-action="undoDiscard">Undo</button>
+    </div>
+
     <div class="grp" id="sleepingSection" hidden>
       <div class="eyebrow">Sleeping <span id="sleepingCount" class="count-pill">0</span><span class="rule"></span>
         <button id="expandSleeping" class="expand-link" data-action="openNapRoom"
@@ -689,6 +737,7 @@
         <ul id="snoozedList"></ul>
       </div>
     </div>
+
 
     <div class="foot">
       <div class="stat">

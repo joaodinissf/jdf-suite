@@ -112,7 +112,7 @@ test('2: Wake now reopens the tab in the background and clears the record', asyn
   await popup.close();
 });
 
-test('3: Cancel removes the record and clears the alarm without reopening', async ({ sw, context, extensionId }) => {
+test('3: Discard removes the record and clears the alarm without reopening', async ({ sw, context, extensionId }) => {
   const [tabId] = await createTabs(sw, [URLS.EXAMPLE_A, URLS.GITHUB_A]);
   await sleep(300);
   const record = await snoozeActiveTabViaSw(sw, tabId);
@@ -120,7 +120,7 @@ test('3: Cancel removes the record and clears the alarm without reopening', asyn
 
   const popup = await openPopup(context, extensionId);
   await popup.waitForSelector(`.snoozed-item[data-id="${record.id}"]`);
-  await popup.click(`.snoozed-item[data-id="${record.id}"] .snoozed-cancel`);
+  await popup.click(`.snoozed-item[data-id="${record.id}"] .snoozed-discard`);
   await sleep(600);
 
   // Storage empty.
@@ -131,6 +131,33 @@ test('3: Cancel removes the record and clears the alarm without reopening', asyn
   expect(alarms.some((a) => a.name === 'snooze:' + record.id)).toBe(false);
 
   // The tab was NOT reopened.
+  expect(await findTabByUrl(sw, URLS.EXAMPLE_A)).toBeNull();
+
+  // The Undo offer is shown, naming what was discarded.
+  await expect(popup.locator('#discardNotice')).toBeVisible();
+  await expect(popup.locator('#discardNoticeText')).toContainText(record.summary);
+
+  await popup.close();
+});
+
+test('3b: Undo after Discard restores the record and its alarm', async ({ sw, context, extensionId }) => {
+  const [tabId] = await createTabs(sw, [URLS.EXAMPLE_A, URLS.GITHUB_A]);
+  await sleep(300);
+  const record = await snoozeActiveTabViaSw(sw, tabId);
+  await sleep(500);
+
+  const popup = await openPopup(context, extensionId);
+  await popup.waitForSelector(`.snoozed-item[data-id="${record.id}"]`);
+  await popup.click(`.snoozed-item[data-id="${record.id}"] .snoozed-discard`);
+  await expect(popup.locator('#discardNotice')).toBeVisible();
+  // Z is Undo's hotkey (Discard has none).
+  await popup.keyboard.press('z');
+
+  // The record, its alarm and its row come back; the tab stays asleep.
+  await expect.poll(async () => (await getSnoozedItems(sw)).map((r) => r.id)).toEqual([record.id]);
+  await expect.poll(async () => (await getAllAlarms(sw)).some((a) => a.name === 'snooze:' + record.id)).toBe(true);
+  await expect(popup.locator(`.snoozed-item[data-id="${record.id}"]`)).toBeVisible();
+  await expect(popup.locator('#discardNotice')).toBeHidden();
   expect(await findTabByUrl(sw, URLS.EXAMPLE_A)).toBeNull();
 
   await popup.close();
