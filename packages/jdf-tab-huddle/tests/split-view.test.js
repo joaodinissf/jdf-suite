@@ -311,3 +311,105 @@ describe('Compact / Expand handlers', () => {
     expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'unsupported' });
   });
 });
+
+describe('Re-pairing dissolved Split Views (#46)', () => {
+  const tab = (id, extra = {}) => ({ id, index: id, windowId: 1, pinned: false, groupId: -1, splitViewId: -1, ...extra });
+  let byId;
+
+  beforeEach(() => {
+    chrome.tabs.query.mockReset();
+    chrome.tabs.move.mockReset();
+    chrome.tabs.move.mockResolvedValue([]);
+    byId = new Map();
+    chrome.tabs.get = vi.fn(async (id) => {
+      if (!byId.has(id)) throw new Error(`No tab with id: ${id}`);
+      return byId.get(id);
+    });
+    chrome.tabs.createSplit = vi.fn().mockResolvedValue(99);
+    chrome.tabs.unsplit = vi.fn().mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    delete chrome.tabs.get;
+    delete chrome.tabs.createSplit;
+    delete chrome.tabs.unsplit;
+  });
+
+  const setTabs = (...tabs) => { for (const t of tabs) byId.set(t.id, t); };
+
+  test('capture records nothing (and queries nothing) without the write API', async () => {
+    delete chrome.tabs.createSplit;
+    expect(await captureSplitPairs([1])).toEqual([]);
+    expect(chrome.tabs.query).not.toHaveBeenCalled();
+  });
+
+  test('capture pairs tabs by splitViewId in strip order, per window', async () => {
+    chrome.tabs.query.mockResolvedValue([
+      tab(3, { splitViewId: 7 }),
+      tab(0),
+      tab(2, { splitViewId: 7 }),
+      tab(5, { splitViewId: 8, windowId: 2, index: 1 }),
+      tab(6, { splitViewId: 8, windowId: 2, index: 0 }),
+    ]);
+    expect(await captureSplitPairs()).toEqual([[2, 3], [6, 5]]);
+    expect(chrome.tabs.query).toHaveBeenCalledWith({});
+  });
+
+  test('restore re-splits a dissolved pair that is still adjacent', async () => {
+    setTabs(tab(4), tab(5));
+    expect(await restoreSplitPairs([[4, 5]])).toBe(1);
+    expect(chrome.tabs.createSplit).toHaveBeenCalledWith([4, 5]);
+  });
+
+  test('restore passes the pair in strip order even if it was recorded reversed', async () => {
+    setTabs(tab(4), tab(5));
+    await restoreSplitPairs([[5, 4]]);
+    expect(chrome.tabs.createSplit).toHaveBeenCalledWith([4, 5]);
+  });
+
+  test.each([
+    ['a half was closed', () => setTabs(tab(4))],
+    ['the pair survived and is still split', () => setTabs(tab(4, { splitViewId: 7 }), tab(5, { splitViewId: 7 }))],
+    ['the halves ended up in different windows', () => setTabs(tab(4), tab(5, { windowId: 2 }))],
+    ['the halves differ in pinned state', () => setTabs(tab(4, { pinned: true }), tab(5))],
+    ['the halves ended up in different groups', () => setTabs(tab(4, { groupId: 10 }), tab(5, { groupId: 11 }))],
+    ['the halves are no longer adjacent', () => setTabs(tab(4), tab(6, { id: 5, index: 6 }))],
+  ])('restore leaves a pair alone when %s', async (_why, arrange) => {
+    arrange();
+    expect(await restoreSplitPairs([[4, 5]])).toBe(0);
+    expect(chrome.tabs.createSplit).not.toHaveBeenCalled();
+  });
+
+  test('restore does nothing without the write API', async () => {
+    delete chrome.tabs.createSplit;
+    setTabs(tab(4), tab(5));
+    expect(await restoreSplitPairs([[4, 5]])).toBe(0);
+    expect(chrome.tabs.get).not.toHaveBeenCalled();
+  });
+
+  test('one pair failing to split does not stop the rest', async () => {
+    setTabs(tab(0), tab(1), tab(2), tab(3));
+    chrome.tabs.createSplit.mockRejectedValueOnce(new Error('rejected')).mockResolvedValueOnce(99);
+    expect(await restoreSplitPairs([[0, 1], [2, 3]])).toBe(1);
+    expect(chrome.tabs.createSplit).toHaveBeenCalledTimes(2);
+  });
+
+  test('sortWindowTabs records the window\'s pairs, moves, then re-splits them', async () => {
+    const before = [
+      tab(1, { url: 'https://c.test', splitViewId: 7 }),
+      tab(2, { url: 'https://z.test', splitViewId: 7 }),
+      tab(0, { url: 'https://d.test', index: 3 }),
+    ];
+    chrome.tabs.query.mockResolvedValue(before);
+    // After the batch move Chrome has dissolved the split; the pair is adjacent.
+    setTabs(tab(1, { index: 0 }), tab(2, { index: 1 }));
+
+    await sortWindowTabs(101, false);
+
+    expect(chrome.tabs.query).toHaveBeenCalledWith({ windowId: 101 });
+    expect(chrome.tabs.move).toHaveBeenCalledWith([1, 2, 0], { index: 0 });
+    expect(chrome.tabs.createSplit).toHaveBeenCalledWith([1, 2]);
+    expect(chrome.tabs.move.mock.invocationCallOrder[0])
+      .toBeLessThan(chrome.tabs.createSplit.mock.invocationCallOrder[0]);
+  });
+});

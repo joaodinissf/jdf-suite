@@ -106,6 +106,8 @@ const backgroundWrapper = `
   if (typeof tabSplitViewId !== 'undefined') global.tabSplitViewId = tabSplitViewId;
   if (typeof splitWriteSupported !== 'undefined') global.splitWriteSupported = splitWriteSupported;
   if (typeof planCompactPairs !== 'undefined') global.planCompactPairs = planCompactPairs;
+  if (typeof captureSplitPairs !== 'undefined') global.captureSplitPairs = captureSplitPairs;
+  if (typeof restoreSplitPairs !== 'undefined') global.restoreSplitPairs = restoreSplitPairs;
   if (typeof handleCompactWindow !== 'undefined') global.handleCompactWindow = handleCompactWindow;
   if (typeof handleExpandWindow !== 'undefined') global.handleExpandWindow = handleExpandWindow;
   if (typeof handleSortAllWindows !== 'undefined') global.handleSortAllWindows = handleSortAllWindows;

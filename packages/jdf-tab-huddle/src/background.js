@@ -681,6 +681,10 @@ async function handleApplyAiProposal(message, sender, sendResponse) {
 
     const { groups, windowId } = message;
 
+    // Grouping can pull a split's halves apart; record the pairs first. The
+    // sort below records and restores again for the moves it makes.
+    const splitPairs = await captureSplitPairs([windowId]);
+
     // Apply groups with a small delay between each to avoid overwhelming Chrome
     for (const group of groups) {
       if (!group.tabIds || group.tabIds.length === 0) continue;
@@ -698,6 +702,8 @@ async function handleApplyAiProposal(message, sender, sendResponse) {
       // Let Chrome settle between group operations
       await new Promise(r => setTimeout(r, 50));
     }
+
+    await restoreSplitPairs(splitPairs);
 
     // Sort after all groups are created
     await sortWindowTabs(windowId, true);
@@ -1092,6 +1098,9 @@ async function handleExtractDomain(message, sendResponse) {
     const respectGroups = message.respectGroups !== undefined ? message.respectGroups : true;
     console.log('[Tab Organizer] Extracting domain:', targetDomain, respectGroups ? '(preserving groups)' : '(individual tabs)');
 
+    // Moving tabs to the new window dissolves their splits; record them first.
+    const splitPairs = await captureSplitPairs();
+
     // Create a window with the active tab in it
     const newWindow = await chrome.windows.create({
       tabId: message.tabId,
@@ -1121,6 +1130,7 @@ async function handleExtractDomain(message, sendResponse) {
       }
       console.log('[Tab Organizer] Moved', tabsToMove.length, 'tabs to new window');
     }
+    await restoreSplitPairs(splitPairs);
 
     // Wait a moment for tabs to settle, then sort
     setTimeout(async () => {
@@ -1432,6 +1442,9 @@ async function performExtractAllDomains(domainAnalysis, respectGroups = true) {
   try {
     console.log('[Tab Organizer] Performing extraction for', domainAnalysis.extractableDomains.length, 'domains', respectGroups ? '(preserving groups)' : '(individual tabs)');
 
+    // Moving tabs between windows dissolves their splits; record them first.
+    const splitPairs = await captureSplitPairs();
+
     // Phase 1: Create one window per domain with ≥2 tabs
     for (const domain of domainAnalysis.extractableDomains) {
       const domainTabs = domainAnalysis.domainTabs.get(domain);
@@ -1494,6 +1507,8 @@ async function performExtractAllDomains(domainAnalysis, respectGroups = true) {
       console.log('[Tab Organizer] Created miscellaneous window with', domainAnalysis.singleTabDomains.length, 'single-tab domains');
     }
 
+    await restoreSplitPairs(splitPairs);
+
     console.log('[Tab Organizer] Extract All Domains extraction phase completed');
 
   } catch (error) {
@@ -1544,8 +1559,16 @@ function sortTabsAsUnits(tabs) {
   return units.flat();
 }
 
-// Helper function to sort tabs within a specific window
+// Sort a window's tabs. The batch move dissolves every Split View it touches,
+// so the pairs are recorded first and split again afterwards; this covers every
+// operation that ends in a sort (sort, dedup, AI organize, extract, merge).
 async function sortWindowTabs(windowId, respectGroups = true) {
+  const splitPairs = await captureSplitPairs([windowId]);
+  await moveTabsIntoSortedOrder(windowId, respectGroups);
+  await restoreSplitPairs(splitPairs);
+}
+
+async function moveTabsIntoSortedOrder(windowId, respectGroups = true) {
   try {
     const tabsWithGroups = respectGroups ? await getTabsWithGroupInfo(windowId) : await chrome.tabs.query({ windowId });
     
@@ -1784,6 +1807,62 @@ async function handleExpandWindow(sendResponse) {
   }
 }
 
+// Re-pairing dissolved Split Views (#46). Chrome dissolves a split whenever one
+// of its tabs is moved, even by a batch move that leaves the pair adjacent and
+// in order, so operations that move tabs record the pairs beforehand and split
+// them again afterwards. Only pairs that existed before are restored, and only
+// where Chrome's rules allow it; tabs are never moved to make a pair possible.
+
+// The [leftId, rightId] pairs currently split in the given windows (every
+// window when windowIds is null). Empty where the write API is missing, since
+// nothing could be restored there.
+async function captureSplitPairs(windowIds = null) {
+  if (!splitWriteSupported()) return [];
+  try {
+    const tabs = windowIds
+      ? (await Promise.all(windowIds.map(windowId => chrome.tabs.query({ windowId })))).flat()
+      : await chrome.tabs.query({});
+    const bySplit = new Map();
+    for (const tab of [...tabs].sort((a, b) => a.windowId - b.windowId || a.index - b.index)) {
+      const splitId = tabSplitViewId(tab);
+      if (splitId === null) continue;
+      if (!bySplit.has(splitId)) bySplit.set(splitId, []);
+      bySplit.get(splitId).push(tab.id);
+    }
+    return [...bySplit.values()].filter(ids => ids.length === 2);
+  } catch (error) {
+    console.error('[Tab Organizer] Could not record split pairs:', error);
+    return [];
+  }
+}
+
+// Split each recorded pair again when both tabs are still open, unsplit,
+// adjacent, and share window, pinned state and group. Returns how many were
+// restored; pairs that no longer qualify are left as they are.
+async function restoreSplitPairs(pairs) {
+  let restored = 0;
+  if (!splitWriteSupported()) return restored;
+  for (const pair of pairs) {
+    let tabs;
+    try {
+      tabs = await Promise.all(pair.map(id => chrome.tabs.get(id)));
+    } catch (_e) {
+      continue; // a half was closed
+    }
+    const [left, right] = tabs.sort((a, b) => a.index - b.index);
+    if (tabSplitViewId(left) !== null || tabSplitViewId(right) !== null) continue;
+    if (left.windowId !== right.windowId || left.pinned !== right.pinned || left.groupId !== right.groupId) continue;
+    if (right.index !== left.index + 1) continue;
+    try {
+      await chrome.tabs.createSplit([left.id, right.id]);
+      restored++;
+    } catch (error) {
+      console.error('[Tab Organizer] Could not restore split', [left.id, right.id], error);
+    }
+  }
+  return restored;
+}
+
 async function handleCopyTabs(respectGroups = true, sendResponse, scope = 'all') {
   try {
     const scopeLabel = scope === 'window' ? 'current window' : 'all windows';
@@ -1857,6 +1936,9 @@ async function handleMoveAllToSingleWindow(message, sendResponse) {
       return;
     }
 
+    // Moving tabs between windows dissolves their splits; record them first.
+    const splitPairs = await captureSplitPairs();
+
     // Move tabs based on mode
     const respectGroups = message.respectGroups !== undefined ? message.respectGroups : true;
     if (respectGroups) {
@@ -1865,6 +1947,7 @@ async function handleMoveAllToSingleWindow(message, sendResponse) {
       const tabIds = tabsToMove.map(tab => tab.id);
       await chrome.tabs.move(tabIds, { windowId: targetWindow.id, index: -1 });
     }
+    await restoreSplitPairs(splitPairs);
 
     console.log('[Tab Organizer] Moved', tabsToMove.length, 'unpinned tabs to single window');
 
