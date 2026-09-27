@@ -57,6 +57,7 @@ global.chrome = {
     update: vi.fn(),
     getCurrent: vi.fn(),
     getLastFocused: vi.fn(),
+    remove: vi.fn(),
   },
   alarms: {
     create: vi.fn().mockResolvedValue(undefined),
@@ -230,6 +231,12 @@ const popupWrapper = `
   if (typeof formatWakeTime !== 'undefined') global.formatWakeTime = formatWakeTime;
   if (typeof renderSnoozedList !== 'undefined') global.renderSnoozedList = renderSnoozedList;
   if (typeof updateSnoozeButtonState !== 'undefined') global.updateSnoozeButtonState = updateSnoozeButtonState;
+  if (typeof initSnoozeUi !== 'undefined') global.initSnoozeUi = initSnoozeUi;
+  if (typeof snoozePresetLabel !== 'undefined') global.snoozePresetLabel = snoozePresetLabel;
+  if (typeof wakeNow !== 'undefined') global.wakeNow = wakeNow;
+  if (typeof discardSnooze !== 'undefined') global.discardSnooze = discardSnooze;
+  if (typeof showDiscardNotice !== 'undefined') global.showDiscardNotice = showDiscardNotice;
+  if (typeof undoDiscard !== 'undefined') global.undoDiscard = undoDiscard;
 
   // Keyboard shortcut exposures
   if (typeof buildHotkeyMap !== 'undefined') global.buildHotkeyMap = buildHotkeyMap;
@@ -367,6 +374,13 @@ const napRoomWrapper = `
   if (typeof napRowUrl !== 'undefined') global.napRowUrl = napRowUrl;
   if (typeof napGroupBadge !== 'undefined') global.napGroupBadge = napGroupBadge;
   if (typeof napGroupByDay !== 'undefined') global.napGroupByDay = napGroupByDay;
+  if (typeof napRenderAll !== 'undefined') global.napRenderAll = napRenderAll;
+  if (typeof napScheduleMidnightRefresh !== 'undefined') global.napScheduleMidnightRefresh = napScheduleMidnightRefresh;
+  if (typeof napWakeNow !== 'undefined') global.napWakeNow = napWakeNow;
+  if (typeof napWakeAll !== 'undefined') global.napWakeAll = napWakeAll;
+  if (typeof napDiscard !== 'undefined') global.napDiscard = napDiscard;
+  if (typeof napShowDiscardNotice !== 'undefined') global.napShowDiscardNotice = napShowDiscardNotice;
+  if (typeof napUndoDiscard !== 'undefined') global.napUndoDiscard = napUndoDiscard;
 })();
 `;
 eval(napRoomWrapper);

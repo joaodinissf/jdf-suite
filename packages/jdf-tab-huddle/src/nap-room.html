@@ -154,6 +154,26 @@
       min-width: 0;
     }
 
+    /* What Wake now / Wake all / Discard / Undo did. */
+    .nap-status {
+      margin-top: 18px;
+      padding: 9px 12px;
+      border: 1px solid var(--bd);
+      border-radius: 9px;
+      background: var(--panel);
+      font-size: 13.5px;
+      overflow-wrap: anywhere;
+    }
+
+    .nap-status[hidden] {
+      display: none;
+    }
+
+    .nap-status.error {
+      color: var(--danger);
+      border-color: var(--danger);
+    }
+
     .day {
       margin-top: 28px;
     }
@@ -306,6 +326,8 @@
         <span id="discardNoticeText"></span>
         <button id="discardUndo" class="textbtn wake">Undo</button>
       </div>
+
+      <div id="napStatus" class="nap-status" role="status" aria-live="polite" hidden></div>
 
       <div id="napDays"></div>
       <div id="napEmpty" class="empty-state" hidden>Nothing is sleeping right now. Snooze a tab from the popup to see it here.</div>

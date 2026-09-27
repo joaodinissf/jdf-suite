@@ -2243,6 +2243,11 @@ function generateSnoozeId() {
   });
 }
 
+// "1 tab" / "3 tabs".
+function plural(n, noun) {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
+}
+
 // The `summary` string shown in the sleeping list (captured at snooze time).
 function buildSnoozeSummary(type, tabs, groupInfo) {
   const n = tabs.length;
@@ -2253,15 +2258,15 @@ function buildSnoozeSummary(type, tabs, groupInfo) {
       return truncateSnoozeTitle(title);
     }
     case 'tabs':
-      return `${n} selected tabs`;
+      return `${plural(n, 'selected tab')}`;
     case 'group': {
       const title = groupInfo && groupInfo.title ? groupInfo.title : '(unnamed)';
-      return `Group "${title}" (${n} tabs)`;
+      return `Group "${title}" (${plural(n, 'tab')})`;
     }
     case 'window':
-      return `Window (${n} tabs)`;
+      return `Window (${plural(n, 'tab')})`;
     default:
-      return `${n} tabs`;
+      return plural(n, 'tab');
   }
 }
 
@@ -2678,17 +2683,48 @@ async function restoreSnoozedRecord(record) {
 
   if (record.type === 'window') {
     const urls = record.tabs.map((t) => t.url);
+    // createdTabs[i] is the tab reopened from record.tabs[i], or null when
+    // that one could not be reopened; pinning and groups follow this mapping.
+    let createdTabs;
     let win;
     try {
       win = await chrome.windows.create({ url: urls, focused: false });
+      windowId = win && win.id;
+      createdTabs = record.tabs.map((_t, i) => (win && win.tabs && win.tabs[i]) || null);
     } catch (_e) {
+      // Chrome refuses the whole list when it refuses one URL (a file:// page
+      // without file access, say). Open an empty window and reopen the tabs
+      // one by one instead, so every other tab still comes back.
       win = await chrome.windows.create({ focused: false });
+      windowId = win && win.id;
+      const placeholder = win && win.tabs && win.tabs[0];
+      createdTabs = [];
+      for (const t of record.tabs) {
+        try {
+          createdTabs.push(await chrome.tabs.create({ windowId, url: t.url, active: false }));
+        } catch (e) {
+          createdTabs.push(null);
+          console.warn('[Tab Organizer] Failed to restore snoozed tab:', t.url, e && e.message);
+        }
+      }
+      const opened = createdTabs.some(Boolean);
+      try {
+        if (opened && placeholder) {
+          // The window's New Tab is not one of the snoozed tabs.
+          await chrome.tabs.remove(placeholder.id);
+        } else if (!opened && windowId !== undefined) {
+          // Nothing came back: do not leave an empty window behind.
+          await chrome.windows.remove(windowId);
+          windowId = undefined;
+        }
+      } catch (_e) {
+        // best effort
+      }
     }
-    windowId = win && win.id;
-    const createdTabs = (win && win.tabs) || [];
-    createdCount = createdTabs.length;
-    failedCount = Math.max(0, record.tabs.length - createdCount);
-    if (createdTabs[0]) firstTabId = createdTabs[0].id;
+    createdCount = createdTabs.filter(Boolean).length;
+    failedCount = record.tabs.length - createdCount;
+    const firstCreated = createdTabs.find(Boolean);
+    if (firstCreated) firstTabId = firstCreated.id;
 
     // Re-pin tabs whose stored entry was pinned.
     for (let i = 0; i < record.tabs.length; i++) {
@@ -2779,30 +2815,51 @@ function notifyWake(record, createdCount, failedCount, location = {}) {
   // record.tabs.length — otherwise a partial-failure wake reports a number of
   // "back" tabs that's inconsistent with the "N could not be reopened" suffix.
   const n = typeof createdCount === 'number' ? createdCount : (record.tabs ? record.tabs.length : 0);
-  const title = n === 1 ? 'Huddle — tab woke up' : 'Huddle — tabs woke up';
+  const t = (record.tabs && record.tabs[0] && record.tabs[0].title) || '';
+  const gt = record.group && record.group.title ? record.group.title : '(unnamed)';
+  let title;
   let message;
-  switch (record.type) {
-    case 'tab': {
-      const t = (record.tabs && record.tabs[0] && record.tabs[0].title) || '';
-      message = `"${t}" is back`;
-      break;
+  if (n === 0 && failedCount > 0) {
+    // Nothing reopened: say so, and that the record was kept (restorePoppedRecord).
+    title = 'Huddle — tabs could not wake';
+    switch (record.type) {
+      case 'tab':
+        message = `"${t}" could not be reopened`;
+        break;
+      case 'group':
+        message = `Group "${gt}" could not be reopened`;
+        break;
+      case 'window':
+        message = 'The window could not be reopened';
+        break;
+      default:
+        message = `${plural(failedCount, 'tab')} could not be reopened`;
     }
-    case 'tabs':
-      message = `${n} tabs are back`;
-      break;
-    case 'group': {
-      const gt = record.group && record.group.title ? record.group.title : '(unnamed)';
-      message = `Group "${gt}" (${n} tabs) is back`;
-      break;
+    // "they are" when the sentence's subject is several tabs.
+    const pronoun = record.type === 'tab' || record.type === 'group' || record.type === 'window' || failedCount === 1
+      ? 'it is' : 'they are';
+    message += ` — ${pronoun} still in the nap room`;
+  } else {
+    title = n === 1 ? 'Huddle — tab woke up' : 'Huddle — tabs woke up';
+    switch (record.type) {
+      case 'tab':
+        message = `"${t}" is back`;
+        break;
+      case 'tabs':
+        message = `${plural(n, 'tab')} ${n === 1 ? 'is' : 'are'} back`;
+        break;
+      case 'group':
+        message = `Group "${gt}" (${plural(n, 'tab')}) is back`;
+        break;
+      case 'window':
+        message = `Window restored (${plural(n, 'tab')})`;
+        break;
+      default:
+        message = `${plural(n, 'tab')} ${n === 1 ? 'is' : 'are'} back`;
     }
-    case 'window':
-      message = `Window restored (${n} tabs)`;
-      break;
-    default:
-      message = `${n} tabs are back`;
-  }
-  if (failedCount > 0) {
-    message += ` — ${failedCount} could not be reopened`;
+    if (failedCount > 0) {
+      message += ` — ${failedCount} could not be reopened`;
+    }
   }
 
   const notificationId = 'snooze-wake:' + record.id;
@@ -2859,6 +2916,21 @@ async function restorePoppedRecord(record, options = {}) {
     return { record, requeued: true };
   }
 
+  // Not one tab reopened although there were tabs to reopen: they now exist
+  // only in this record, so put it back instead of dropping it. No retry
+  // alarm: a URL Chrome refuses now (a file:// page without file access, a
+  // removed extension's page) is refused again a minute later. The record
+  // waits in the nap room, overdue, to be woken again or discarded.
+  let kept = false;
+  if (restoreResult.createdCount === 0 && restoreResult.failedCount > 0) {
+    await withSnoozeLock(async () => {
+      const items = await loadSnoozedItems();
+      if (!items.some((r) => r.id === record.id)) items.push(record);
+      await saveSnoozedItems(items);
+    });
+    kept = true;
+  }
+
   if (notify) {
     notifyWake(record, restoreResult.createdCount, restoreResult.failedCount, {
       windowId: restoreResult.windowId,
@@ -2866,7 +2938,7 @@ async function restorePoppedRecord(record, options = {}) {
     });
   }
 
-  return { record, ...restoreResult };
+  return { record, ...restoreResult, kept };
 }
 
 // Atomically pop the record, clear its alarm, restore it, optionally notify.
@@ -2905,7 +2977,18 @@ async function handleWakeNow(message, sendResponse) {
       sendResponse({ success: false, error: 'Could not restore right now — will retry automatically' });
       return;
     }
-    sendResponse({ success: true });
+    const { createdCount, failedCount } = result;
+    if (result.kept) {
+      sendResponse({
+        success: false,
+        error: `Could not reopen ${plural(failedCount, 'tab')} — kept in the nap room`,
+        createdCount,
+        failedCount,
+      });
+      return;
+    }
+    // A partial wake is still a wake; the counts let the page say what failed.
+    sendResponse({ success: true, createdCount, failedCount });
   } catch (error) {
     console.error('[Tab Organizer] Error in wakeSnoozed:', error);
     sendResponse({ success: false, error: error.message });
