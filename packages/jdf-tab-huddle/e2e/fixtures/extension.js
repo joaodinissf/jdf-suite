@@ -12,7 +12,10 @@ const __dirname = path.dirname(__filename);
  * Provides `context`, `extensionId`, and `sw` (service worker) to each test.
  */
 export const test = base.extend({
-  context: async ({}, use) => {
+  // Extra Chrome flags a spec needs (test.use({ extraArgs: [...] })).
+  extraArgs: [[], { option: true }],
+
+  context: async ({ extraArgs }, use) => {
     const pathToExtension = path.resolve(__dirname, '../../src');
     const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-ext-'));
     const context = await chromium.launchPersistentContext(userDataDir, {
@@ -37,6 +40,7 @@ export const test = base.extend({
         `--load-extension=${pathToExtension}`,
         '--no-first-run',
         '--no-default-browser-check',
+        ...extraArgs,
       ],
     });
     await use(context);

@@ -134,11 +134,23 @@ describe('formatModelCost', () => {
     expect(formatModelCost({ prompt: 'nope' })).toBe('price unknown');
   });
 
-  test('free and normal rates', () => {
+  test('free means input and output both cost nothing', () => {
     expect(formatModelCost({ prompt: '0' })).toBe('free');
-    expect(formatModelCost({ prompt: '0.0000008' })).toBe('$0.800/M in');
-    expect(formatModelCost({ prompt: '0.000001' })).toBe('$1.00/M in');
-    expect(formatModelCost({ prompt: '0.000000001' })).toBe('$0.0010/M in');
+    expect(formatModelCost({ prompt: '0', completion: '0' })).toBe('free');
+    // Paid output is not free, even with free input.
+    expect(formatModelCost({ prompt: '0', completion: '0.00002' })).toBe('$0.00 in · $20.00 out per M');
+  });
+
+  test('shows input and output with consistent precision', () => {
+    expect(formatModelCost({ prompt: '0.0000008', completion: '0.000004' })).toBe('$0.80 in · $4.00 out per M');
+    expect(formatModelCost({ prompt: '0.00000075' })).toBe('$0.75 in per M');
+    expect(formatModelCost({ prompt: '0.000000065', completion: '0.0000003' })).toBe('$0.07 in · $0.30 out per M');
+    expect(formatModelCost({ prompt: '0.000000004' })).toBe('$0.0040 in per M');
+    expect(formatModelCost({ prompt: '0.00000002' })).toBe('$0.02 in per M');
+  });
+
+  test('a negative price (a router) reads as variable, never as $-1000000', () => {
+    expect(formatModelCost({ prompt: '-1', completion: '-1' })).toBe('variable price');
   });
 });
 
@@ -161,10 +173,22 @@ describe('normalizeOpenRouterModel', () => {
     expect(m).toEqual({
       id: 'acme/model',
       name: 'Acme Model',
-      cost: '$1.00/M in',
+      provider: 'Acme',
+      cost: '$1.00 in per M',
       supportsStructuredOutputs: true,
       curated: false,
     });
+  });
+
+  test('splits the provider prefix off the name', () => {
+    const m = normalizeOpenRouterModel({
+      id: 'openai/gpt-6-luna',
+      name: 'OpenAI: GPT-6 Luna',
+      architecture: TEXT_OUT,
+      supported_parameters: ['response_format'],
+    });
+    expect(m.name).toBe('GPT-6 Luna');
+    expect(m.provider).toBe('OpenAI');
   });
 
   test('structured_outputs false when only response_format is listed', () => {
@@ -208,9 +232,14 @@ describe('normalizeOpenRouterModel', () => {
     })).toBeNull();
   });
 
-  test('drops batch-only ids', () => {
+  test.each([
+    ['an id ending in :batch', 'acme/model:batch', 'Acme: Model (batch)'],
+    ['an id ending in -batch', 'openai/gpt-6-luna-batch', 'GPT-6 Luna'],
+    ['only the name saying (batch)', 'openai/gpt-5.6-luna-pro-b', 'GPT-5.6 Luna Pro (batch)'],
+  ])('drops batch models: %s', (_label, id, name) => {
     expect(normalizeOpenRouterModel({
-      id: 'acme/model:batch',
+      id,
+      name,
       architecture: TEXT_OUT,
       supported_parameters: ['response_format', 'structured_outputs'],
     })).toBeNull();
@@ -255,13 +284,20 @@ describe('mergeModelsForPicker', () => {
     expect(ids).not.toContain('acme/model:batch');
   });
 
-  test('curated models stay when the catalog filtered them out', () => {
+  test('with a live catalog, a curated model it does not list is not recommended', () => {
     const merged = mergeModelsForPicker([
+      { id: AI_MODELS[0].id, name: 'Haiku', cost: 'free', supportsStructuredOutputs: true, curated: false },
       { id: 'other/model', name: 'Other', cost: 'free', supportsStructuredOutputs: false, curated: false },
     ]);
-    for (const c of AI_MODELS) {
-      expect(merged.find((m) => m.id === c.id)).toMatchObject({ curated: true });
-    }
+    expect(merged.map((m) => m.id)).toEqual([AI_MODELS[0].id, 'other/model']);
+  });
+
+  test('leaves out name-only batch variants from a cache', () => {
+    const merged = mergeModelsForPicker([
+      { id: 'openai/gpt-6-luna', name: 'GPT-6 Luna', cost: 'free' },
+      { id: 'openai/gpt-6-luna-x', name: 'GPT-6 Luna (batch)', cost: 'free' },
+    ]);
+    expect(merged.map((m) => m.id)).toEqual(['openai/gpt-6-luna']);
   });
 
   test('works with empty remote (curated only)', () => {
@@ -284,7 +320,7 @@ describe('getOpenRouterModels', () => {
     ];
     const fetchedAt = Date.now() - 1000;
     chrome.storage.local.get.mockResolvedValue({
-      [MODELS_CACHE_KEY]: { models: cached, fetchedAt },
+      [MODELS_CACHE_KEY]: { v: MODELS_CACHE_VERSION, models: cached, fetchedAt },
     });
 
     const result = await getOpenRouterModels({ forceRefresh: false });
@@ -292,6 +328,21 @@ describe('getOpenRouterModels', () => {
     expect(result.fetchedAt).toBe(fetchedAt);
     expect(result.models.some((m) => m.id === 'cached/m')).toBe(true);
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('ignores a cache an older build wrote (no version), and fetches', async () => {
+    chrome.storage.local.get.mockResolvedValue({
+      [MODELS_CACHE_KEY]: {
+        models: [{ id: 'black-forest-labs/flux-luna', name: 'FLUX Luna', cost: 'free' }],
+        fetchedAt: Date.now() - 1000,
+      },
+    });
+    global.fetch.mockRejectedValue(new TypeError('Failed to fetch'));
+    const result = await getOpenRouterModels({ forceRefresh: false });
+    expect(global.fetch).toHaveBeenCalled();
+    expect(result.fallback).toBe(true);
+    expect(result.error).toBe('couldn\'t reach OpenRouter');
+    expect(result.models.map((m) => m.id)).not.toContain('black-forest-labs/flux-luna');
   });
 
   test('fetches and writes cache on miss', async () => {
@@ -340,7 +391,7 @@ describe('getOpenRouterModels', () => {
       { id: 'stale/m', name: 'Stale', cost: 'free', supportsStructuredOutputs: false, curated: false },
     ];
     chrome.storage.local.get.mockResolvedValue({
-      [MODELS_CACHE_KEY]: { models: cached, fetchedAt: Date.now() - MODELS_CACHE_TTL_MS - 1 },
+      [MODELS_CACHE_KEY]: { v: MODELS_CACHE_VERSION, models: cached, fetchedAt: Date.now() - MODELS_CACHE_TTL_MS - 1 },
     });
     global.fetch.mockResolvedValue({ ok: false, status: 500 });
 
@@ -361,14 +412,15 @@ describe('getOpenRouterModels', () => {
   });
 });
 
-describe('modelSupportsStructuredOutputs', () => {
+describe('modelInfo', () => {
   beforeEach(() => {
     chrome.storage.local.get.mockReset();
   });
 
-  test('reads flag from cache', async () => {
+  test('reads the structured-output flag from the cache', async () => {
     chrome.storage.local.get.mockResolvedValue({
       [MODELS_CACHE_KEY]: {
+        v: MODELS_CACHE_VERSION,
         models: [
           { id: 'a/b', supportsStructuredOutputs: true },
           { id: 'c/d', supportsStructuredOutputs: false },
@@ -376,9 +428,9 @@ describe('modelSupportsStructuredOutputs', () => {
         fetchedAt: Date.now(),
       },
     });
-    expect(await modelSupportsStructuredOutputs('a/b')).toBe(true);
-    expect(await modelSupportsStructuredOutputs('c/d')).toBe(false);
-    expect(await modelSupportsStructuredOutputs('missing/x')).toBe(false);
+    expect((await modelInfo('a/b')).supportsStructuredOutputs).toBe(true);
+    expect((await modelInfo('c/d')).supportsStructuredOutputs).toBe(false);
+    expect(await modelInfo('missing/x')).toMatchObject({ supportsStructuredOutputs: false, listed: false, catalogKnown: true });
   });
 });
 
@@ -486,6 +538,32 @@ describe('callOpenRouter schema fallback', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
+  const errorResponse = (status, message) => ({
+    ok: false,
+    status,
+    text: async () => JSON.stringify({ error: { code: status, message } }),
+  });
+
+  test('retries when the refusal is about the schema', async () => {
+    global.fetch
+      .mockResolvedValueOnce(errorResponse(404, 'No endpoints found that support the provided \'response_format\' parameter (json_schema).'))
+      .mockResolvedValueOnce(sseResponse('{"groups":[]}'));
+    await callOpenRouter('k', 'm', [], null, { useJsonSchema: true, jsonSchema: schema });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  test.each([
+    ['a batch model', 400, 'openai/x-batch is a batch model and cannot serve chat completions'],
+    ['an unknown id', 400, 'acme/typo is not a valid model ID'],
+    ['a context overflow', 400, 'This endpoint\'s maximum context length is 8192 tokens'],
+  ])('does not retry %s: it fails the same without the schema', async (_label, status, message) => {
+    global.fetch.mockResolvedValue(errorResponse(status, message));
+    await expect(
+      callOpenRouter('k', 'm', [], null, { useJsonSchema: true, jsonSchema: schema })
+    ).rejects.toThrow(message.replace(/\.$/, ''));
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
   test('does not re-request once the response is already streaming', async () => {
     global.fetch.mockResolvedValueOnce({
       ok: true,
@@ -497,7 +575,7 @@ describe('callOpenRouter schema fallback', () => {
 
     await expect(
       callOpenRouter('k', 'm', [], null, { useJsonSchema: true, jsonSchema: schema })
-    ).rejects.toThrow('connection dropped mid-stream');
+    ).rejects.toThrow(/isn't an API response/);
 
     // A retry here would append a second generation to chunks already on screen.
     expect(global.fetch).toHaveBeenCalledTimes(1);

@@ -7,6 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const messageListeners = [];
 const tabRemovedListeners = [];
+const connectListeners = [];
 // chrome.storage.session keeps real values, so a test can drop the worker's
 // in-memory state and check what survives. Emptied before each test.
 const sessionStore = {};
@@ -30,6 +31,12 @@ global.chrome = {
       callListeners: (...args) => messageListeners.forEach(fn => fn(...args)),
     },
     getURL: vi.fn((path) => `chrome-extension://test-id/${path}`),
+    onConnect: {
+      addListener: vi.fn((fn) => connectListeners.push(fn)),
+      callListeners: (...args) => connectListeners.forEach(fn => fn(...args)),
+    },
+    connect: vi.fn(),
+    reload: vi.fn(),
     openOptionsPage: vi.fn(),
     lastError: null,
     onStartup: {
@@ -164,12 +171,23 @@ const backgroundWrapper = `
   if (typeof curatedModelsAsPickerEntries !== 'undefined') global.curatedModelsAsPickerEntries = curatedModelsAsPickerEntries;
   if (typeof getOpenRouterModels !== 'undefined') global.getOpenRouterModels = getOpenRouterModels;
   if (typeof fetchOpenRouterModels !== 'undefined') global.fetchOpenRouterModels = fetchOpenRouterModels;
-  if (typeof modelSupportsStructuredOutputs !== 'undefined') global.modelSupportsStructuredOutputs = modelSupportsStructuredOutputs;
   if (typeof buildTabGroupsJsonSchema !== 'undefined') global.buildTabGroupsJsonSchema = buildTabGroupsJsonSchema;
   if (typeof buildOpenRouterRequestBody !== 'undefined') global.buildOpenRouterRequestBody = buildOpenRouterRequestBody;
-  if (typeof resolveModelDisplayName !== 'undefined') global.resolveModelDisplayName = resolveModelDisplayName;
   if (typeof MODELS_CACHE_KEY !== 'undefined') global.MODELS_CACHE_KEY = MODELS_CACHE_KEY;
   if (typeof MODELS_CACHE_TTL_MS !== 'undefined') global.MODELS_CACHE_TTL_MS = MODELS_CACHE_TTL_MS;
+  if (typeof MODELS_CACHE_VERSION !== 'undefined') global.MODELS_CACHE_VERSION = MODELS_CACHE_VERSION;
+  if (typeof AI_PROTOCOL !== 'undefined') global.AI_PROTOCOL = AI_PROTOCOL;
+  if (typeof isBatchModel !== 'undefined') global.isBatchModel = isBatchModel;
+  if (typeof splitModelName !== 'undefined') global.splitModelName = splitModelName;
+  if (typeof canHuddleUseModel !== 'undefined') global.canHuddleUseModel = canHuddleUseModel;
+  if (typeof modelInfo !== 'undefined') global.modelInfo = modelInfo;
+  if (typeof mapOpenRouterHttpError !== 'undefined') global.mapOpenRouterHttpError = mapOpenRouterHttpError;
+  if (typeof readOpenRouterResponse !== 'undefined') global.readOpenRouterResponse = readOpenRouterResponse;
+  if (typeof maxTokensForTabs !== 'undefined') global.maxTokensForTabs = maxTokensForTabs;
+  if (typeof aiKeyState !== 'undefined') global.aiKeyState = aiKeyState;
+  if (typeof runAiOrganize !== 'undefined') global.runAiOrganize = runAiOrganize;
+  if (typeof aiRuns !== 'undefined') global.aiRuns = aiRuns;
+  if (typeof AI_KEY_ALARM !== 'undefined') global.AI_KEY_ALARM = AI_KEY_ALARM;
 
   // Tab Snoozing exposures
   if (typeof computePresetWakeTime !== 'undefined') global.computePresetWakeTime = computePresetWakeTime;
@@ -196,7 +214,6 @@ const backgroundWrapper = `
   // AI proposal / grouping exposures
   if (typeof callOpenRouter !== 'undefined') global.callOpenRouter = callOpenRouter;
   if (typeof handleAiGroupTabs !== 'undefined') global.handleAiGroupTabs = handleAiGroupTabs;
-  if (typeof runAiOrganizeInTab !== 'undefined') global.runAiOrganizeInTab = runAiOrganizeInTab;
   if (typeof handleApplyAiProposal !== 'undefined') global.handleApplyAiProposal = handleApplyAiProposal;
 })();
 `;
@@ -300,7 +317,10 @@ const aiProposalWrapper = `
   if (typeof escapeHtml !== 'undefined') global.escapeHtml = escapeHtml;
   if (typeof moveTab !== 'undefined') global.moveTab = moveTab;
   if (typeof renderGroup !== 'undefined') global.renderGroup = renderGroup;
-  if (typeof handleMessage !== 'undefined') global.handleMessage = handleMessage;
+  if (typeof handleRunMessage !== 'undefined') global.handleRunMessage = handleRunMessage;
+  if (typeof showProposal !== 'undefined') global.showProposal = showProposal;
+  if (typeof showError !== 'undefined') global.showError = showError;
+  if (typeof render !== 'undefined') global.renderProposal = render;
   if (typeof setupActionButtons !== 'undefined') global.setupActionButtons = setupActionButtons;
 })();
 `;

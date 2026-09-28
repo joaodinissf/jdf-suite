@@ -25,7 +25,7 @@ function flushPromises() {
 }
 
 function loadResponse(config) {
-  return { config, models: MODELS, expiryPresets: EXPIRY_PRESETS, modelsMeta: MODELS_META, defaultModel: 'm1' };
+  return { protocol: 2, config, expiryPresets: EXPIRY_PRESETS, defaultModel: 'm1' };
 }
 
 // replies: action -> reply object, or (message, cb) => reply. A reply of
@@ -33,8 +33,9 @@ function loadResponse(config) {
 function loadSettingsPage(replies) {
   document.body.innerHTML = optionsBody;
   chrome.storage.sync.get.mockImplementation((_keys, cb) => cb({}));
+  const all = { loadOpenRouterModels: { success: true, models: MODELS, modelsMeta: MODELS_META }, ...replies };
   chrome.runtime.sendMessage.mockImplementation((message, cb) => {
-    const reply = replies[message.action];
+    const reply = all[message.action];
     const value = typeof reply === 'function' ? reply(message, cb) : reply;
     if (cb && value !== undefined) cb(value);
   });
@@ -103,7 +104,8 @@ describe('Settings: AI section', () => {
     });
     await flushPromises();
 
-    expect($('aiKeyStatus').textContent).toBe('On file · expired');
+    expect($('aiKeyStatus').textContent).toBe('Expired · enter it again');
+    expect($('aiKeyStatus').classList.contains('expired')).toBe(true);
     expect(document.querySelector('#aiKeyForm .key-help').hidden).toBe(true);
 
     $('aiSaveKey').click();
@@ -126,7 +128,7 @@ describe('Settings: AI section', () => {
 
     expect(global.fetch).toHaveBeenCalledWith('https://openrouter.ai/api/v1/key', expect.anything());
     expect(sent('saveAiConfig')).toEqual([
-      { action: 'saveAiConfig', config: { key: 'sk-or-v1-new', expiryDuration: 86400000 } },
+      { action: 'saveAiConfig', config: { key: 'sk-or-v1-new', expiryDuration: 86400000, renew: true } },
     ]);
     expect($('settingsKeyInput').value).toBe('');
     expect($('aiKeyStatus').textContent).toMatch(/^On file · expires in/);
@@ -146,8 +148,25 @@ describe('Settings: AI section', () => {
     await flushPromises();
 
     expect(global.fetch).not.toHaveBeenCalled();
-    expect(sent('saveAiConfig')[0].config).toEqual({ key: 'sk-or-kept', expiryDuration: 86400000 });
+    expect(sent('saveAiConfig')[0].config).toEqual({ key: 'sk-or-kept', expiryDuration: 86400000, renew: false });
     expect($('ai-status').textContent).toBe('Expiry saved');
+  });
+
+  test('asking to delete the key drops an earlier "Expiry saved"', async () => {
+    loadSettingsPage({
+      loadAiConfig: loadResponse({ key: btoa('sk-or-kept'), model: 'm1', expiresAt: null, expiryDuration: null }),
+      saveAiConfig: (m) => ({ success: true, config: { key: btoa(m.config.key), model: 'm1', expiresAt: Date.now() + 86400000, expiryDuration: 86400000 } }),
+    });
+    await flushPromises();
+    $('settingsExpiry').value = '86400000';
+    $('aiSaveKey').click();
+    await flushPromises();
+    expect($('ai-status').textContent).toBe('Expiry saved');
+
+    $('aiDeleteKey').click();
+    expect($('aiConfirmDelete').hidden).toBe(false);
+    expect($('ai-status').textContent).toBe('');
+    expect($('ai-status').classList.contains('visible')).toBe(false);
   });
 
   test('a key OpenRouter rejects is not saved', async () => {
@@ -163,6 +182,26 @@ describe('Settings: AI section', () => {
     expect($('aiKeyError').hidden).toBe(false);
     expect(sent('saveAiConfig')).toHaveLength(0);
     expect($('aiSaveKey').disabled).toBe(false);
+  });
+
+  test('a save that fails right after one that worked drops the earlier "Key saved"', async () => {
+    loadSettingsPage({
+      loadAiConfig: loadResponse(null),
+      saveAiConfig: (m) => ({ success: true, config: { key: btoa(m.config.key), expiresAt: null } }),
+    });
+    await flushPromises();
+    $('settingsKeyInput').value = 'sk-or-v1-good';
+    $('aiSaveKey').click();
+    await flushPromises();
+    expect($('ai-status').textContent).toBe('Key saved');
+
+    global.fetch.mockResolvedValue({ ok: false, status: 401 });
+    $('settingsKeyInput').value = 'sk-or-v1-revoked';
+    $('aiSaveKey').click();
+    await flushPromises();
+    expect($('aiKeyError').textContent).toBe('OpenRouter rejected this key.');
+    expect($('ai-status').textContent).toBe('');
+    expect($('ai-status').classList.contains('visible')).toBe(false);
   });
 
   test('with no key on file, a blank Save asks for one', async () => {
@@ -182,7 +221,16 @@ describe('Settings: AI section', () => {
     expect($('aiKeyError').textContent).toBe('quota exceeded');
   });
 
-  test('Delete key drops the key and says so', async () => {
+  test('Enter in the key field saves the key', async () => {
+    loadSettingsPage({ loadAiConfig: loadResponse(null), saveAiConfig: { success: true, config: { key: btoa('sk-or-v1-abc'), expiresAt: null } } });
+    await flushPromises();
+    $('settingsKeyInput').value = 'sk-or-v1-abc';
+    $('aiKeyCard').requestSubmit();
+    await flushPromises();
+    expect(sent('saveAiConfig')).toHaveLength(1);
+  });
+
+  test('Delete key asks first, then drops the key, says so and keeps focus in the card', async () => {
     loadSettingsPage({
       loadAiConfig: loadResponse({ key: btoa('sk-or-k'), model: 'm2', expiresAt: null, expiryDuration: null }),
       deleteAiKey: { success: true, config: { key: null, model: 'm2', expiresAt: null, expiryDuration: null } },
@@ -191,8 +239,13 @@ describe('Settings: AI section', () => {
 
     $('aiDeleteKey').click();
     await flushPromises();
+    expect(sent('deleteAiKey')).toHaveLength(0);
+    expect($('aiConfirmDelete').hidden).toBe(false);
+    $('aiConfirmDeleteYes').click();
+    await flushPromises();
 
     expect(sent('deleteAiKey')).toHaveLength(1);
+    expect(document.activeElement).toBe($('settingsKeyInput'));
     expect($('aiKeyStatus').textContent).toBe('Not set');
     expect($('aiDeleteKey').hidden).toBe(true);
     expect($('ai-status').textContent).toBe('Key deleted');
@@ -211,16 +264,18 @@ describe('Settings: AI section', () => {
     $('aiSaveModel').click();
     await flushPromises();
 
-    expect(sent('saveAiDefaultModel')).toEqual([{ action: 'saveAiDefaultModel', model: 'm1' }]);
-    expect($('ai-status').textContent).toBe('Default model: Model One');
+    expect(sent('saveAiDefaultModel')).toEqual([{ action: 'saveAiDefaultModel', model: 'm1', allowUnlisted: false }]);
+    expect($('ai-model-status').textContent).toBe('Default model: Model One');
     // Choosing a default never touches the key.
     expect(sent('saveAiConfig')).toHaveLength(0);
   });
 
-  test('a custom model id can be the default, even before a key is on file', async () => {
+  test('an id the catalog does not list needs a second Save, even before a key is on file', async () => {
     loadSettingsPage({
       loadAiConfig: loadResponse(null),
-      saveAiDefaultModel: (m) => ({ success: true, config: { key: null, model: m.model } }),
+      saveAiDefaultModel: (m) => (m.allowUnlisted
+        ? { success: true, config: { key: null, model: m.model } }
+        : { success: false, unlisted: true, error: `${m.model} isn't in OpenRouter's list of models Huddle can use.` }),
     });
     await flushPromises();
     expect($('settingsSelect').value).toBe('m1'); // the built-in default
@@ -228,10 +283,17 @@ describe('Settings: AI section', () => {
     $('settingsCustom').value = 'acme/model';
     $('settingsCustom').dispatchEvent(new window.Event('input'));
     expect(document.querySelector('#aiModelPicker .model-schema-hint').textContent)
-      .toMatch(/may not support JSON output/);
+      .toMatch(/Not in OpenRouter's list/);
+    $('aiSaveModel').click();
+    await flushPromises();
+    expect($('aiModelError').textContent).toMatch(/Save again to keep it anyway/);
     $('aiSaveModel').click();
     await flushPromises();
 
-    expect(sent('saveAiDefaultModel')).toEqual([{ action: 'saveAiDefaultModel', model: 'acme/model' }]);
+    expect(sent('saveAiDefaultModel')).toEqual([
+      { action: 'saveAiDefaultModel', model: 'acme/model', allowUnlisted: false },
+      { action: 'saveAiDefaultModel', model: 'acme/model', allowUnlisted: true },
+    ]);
+    expect($('ai-model-status').textContent).toBe('Default model: acme/model');
   });
 });

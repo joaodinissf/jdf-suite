@@ -1,16 +1,31 @@
 // Background service worker for persistent logging
-console.log('Tab Organizer service worker starting...');
+console.log('Huddle service worker starting...');
 
 // ============================================================
 // AI Tab Grouping — Constants and Helpers
 // ============================================================
 
-// Curated defaults — always available offline; enriched from the live catalog
-// when present. Full OpenRouter list is fetched/cached separately.
+// Bumped whenever the messages between the organize page and this worker
+// change shape. Must equal HuddleAi.PROTOCOL in ai-config.js: Chrome keeps
+// running an unpacked extension's old worker after its files change on disk
+// (a git checkout), while pages load the new files, and the page uses this
+// number to say "reload Huddle" instead of failing in odd ways.
+const AI_PROTOCOL = 2;
+// The organize page runs organize over a port with this name (see onConnect).
+const AI_RUN_PORT = 'huddle-ai-run';
+const APP_TITLE = 'Huddle';
+const OPENROUTER_API = 'https://openrouter.ai/api/v1';
+
+// Curated defaults, always offered when the live catalog lists them, and on
+// their own when the catalog cannot be loaded. Prices are OpenRouter's, per
+// token, and only used offline; the catalog's own prices win.
 const AI_MODELS = [
-  { id: 'anthropic/claude-haiku-4.5', name: 'Claude Haiku 4.5', cost: '$0.80/M in', curated: true },
-  { id: 'google/gemini-3.1-flash-lite-preview-20260303', name: 'Gemini 3.1 Flash Lite', cost: '$0.25/M in', curated: true },
-  { id: 'qwen/qwen3.5-flash-20260224', name: 'Qwen 3.5 Flash', cost: '$0.065/M in', curated: true },
+  { id: 'anthropic/claude-haiku-4.5', name: 'Claude Haiku 4.5', provider: 'Anthropic',
+    pricing: { prompt: '0.000001', completion: '0.000005' } },
+  { id: 'google/gemini-3.1-flash-lite-preview-20260303', name: 'Gemini 3.1 Flash Lite', provider: 'Google',
+    pricing: { prompt: '0.00000025', completion: '0.0000015' } },
+  { id: 'qwen/qwen3.5-flash-20260224', name: 'Qwen 3.5 Flash', provider: 'Qwen',
+    pricing: { prompt: '0.000000065', completion: '0.0000003' } },
 ];
 const DEFAULT_MODEL = AI_MODELS[0].id;
 
@@ -22,33 +37,87 @@ const EXPIRY_PRESETS = [
   { label: 'Never expires', value: null },
 ];
 const DEFAULT_EXPIRY = 86400000; // 24 hours
+const AI_KEY_ALARM = 'huddle-ai-key-expiry';
 
 const VALID_TAB_GROUP_COLORS = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
 
-// OpenRouter model catalog cache (chrome.storage.local)
+// OpenRouter model catalog cache (chrome.storage.local). The version changes
+// whenever the rules for which models Huddle keeps change, so a cache an
+// older build wrote (with image, batch or no-JSON models in it) is dropped.
 const MODELS_CACHE_KEY = 'openRouterModelsCache';
+const MODELS_CACHE_VERSION = 3;
 const MODELS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const MODELS_FETCH_TIMEOUT_MS = 10000;
 
-function formatModelCost(pricing) {
-  if (!pricing || pricing.prompt == null || pricing.prompt === '') return 'price unknown';
-  const perToken = Number(pricing.prompt);
-  if (!Number.isFinite(perToken)) return 'price unknown';
-  if (perToken === 0) return 'free';
-  const perMillion = perToken * 1e6;
-  if (perMillion < 0.01) return `$${perMillion.toFixed(4)}/M in`;
-  if (perMillion < 1) return `$${perMillion.toFixed(3)}/M in`;
-  return `$${perMillion.toFixed(2)}/M in`;
+// A chat request that sends nothing back for this long is given up on.
+const CHAT_FIRST_BYTE_TIMEOUT_MS = 60000;
+const CHAT_IDLE_TIMEOUT_MS = 45000;
+
+// Dollars per million tokens, always with cents ($15.00, $1.50, $0.07, $0.00),
+// and two significant digits below a cent ($0.0040).
+function formatPerMillion(perToken) {
+  // Rounded first: 0.0000001 * 1e6 is 0.09999999999999999.
+  const v = Number((perToken * 1e6).toPrecision(6));
+  if (v === 0 || v >= 0.01) return v.toFixed(2);
+  return v.toPrecision(2);
 }
 
-// Batch-only variants cannot answer a chat request, so the picker hides them.
-function isBatchOnlyModelId(id) {
-  return typeof id === 'string' && id.endsWith(':batch');
+// "$1.00 in · $5.00 out per M", "free" (input and output both cost nothing)
+// or "variable price" (OpenRouter's -1 for routers that pick a model).
+function formatModelCost(pricing) {
+  if (!pricing) return 'price unknown';
+  const read = (v) => (v == null || v === '' ? null : Number(v));
+  const prompt = read(pricing.prompt);
+  const completion = read(pricing.completion);
+  const known = [prompt, completion].filter((v) => v !== null && Number.isFinite(v));
+  if (known.length === 0) return 'price unknown';
+  if (known.some((v) => v < 0)) return 'variable price';
+  if (known.every((v) => v === 0)) return 'free';
+  const parts = [];
+  if (prompt !== null && Number.isFinite(prompt)) parts.push(`$${formatPerMillion(prompt)} in`);
+  if (completion !== null && Number.isFinite(completion)) parts.push(`$${formatPerMillion(completion)} out`);
+  return `${parts.join(' · ')} per M`;
+}
+
+// Batch-only variants cannot answer a chat request. OpenRouter marks them in
+// the id (":batch", "-batch") or only in the name ("GPT-6 Luna (batch)").
+function isBatchModel(model) {
+  if (!model) return false;
+  const id = typeof model === 'string' ? model : model.id;
+  const name = typeof model === 'string' ? '' : (model.name || '');
+  return (typeof id === 'string' && /[:-]batch$/i.test(id)) || /\(batch\)/i.test(name);
+}
+
+// How providers write their own names, for ids whose model name has no
+// "Provider:" prefix. Any other slug gets a capital first letter.
+const PROVIDER_NAMES = {
+  openrouter: 'OpenRouter', openai: 'OpenAI', anthropic: 'Anthropic', google: 'Google',
+  'meta-llama': 'Meta', mistralai: 'Mistral', deepseek: 'DeepSeek', qwen: 'Qwen',
+  'x-ai': 'xAI', 'z-ai': 'Z.ai', nousresearch: 'Nous Research', sao10k: 'Sao10K',
+  moonshotai: 'MoonshotAI', cohere: 'Cohere', microsoft: 'Microsoft', amazon: 'Amazon',
+};
+
+function providerFromId(id) {
+  if (typeof id !== 'string' || !id.includes('/')) return '';
+  const slug = id.split('/')[0];
+  return PROVIDER_NAMES[slug.toLowerCase()] || (slug.charAt(0).toUpperCase() + slug.slice(1));
+}
+
+// "OpenAI: GPT-6 Luna" -> { name: 'GPT-6 Luna', provider: 'OpenAI' }. Names
+// without a prefix take the provider from the id ("openrouter/auto" ->
+// "OpenRouter").
+function splitModelName(rawName, id) {
+  const fallbackProvider = providerFromId(id);
+  const name = (rawName || id || '').trim();
+  const m = /^([^:/]{1,40}):\s+(.+)$/.exec(name);
+  if (m) return { name: m[2].trim(), provider: m[1].trim() };
+  return { name, provider: fallbackProvider };
 }
 
 // Huddle needs a text reply in JSON, so a model must emit text and accept
 // response_format. Models the catalog says cannot do both are left out.
 function canHuddleUseModel(raw) {
-  if (isBatchOnlyModelId(raw.id)) return false;
+  if (!raw || isBatchModel(raw)) return false;
   const params = raw.supported_parameters || [];
   if (!params.includes('response_format')) return false;
   const arch = raw.architecture || {};
@@ -65,110 +134,142 @@ function normalizeOpenRouterModel(raw) {
   if (!raw || !raw.id) return null;
   if (!canHuddleUseModel(raw)) return null;
   const params = raw.supported_parameters || [];
+  const { name, provider } = splitModelName(raw.name, raw.id);
   return {
     id: raw.id,
-    name: raw.name || raw.id,
+    name,
+    provider,
     cost: formatModelCost(raw.pricing),
     supportsStructuredOutputs: params.includes('structured_outputs'),
     curated: false,
   };
 }
 
-// The curated entries carry no structured-output facts of their own — only the
-// live catalog knows. Pass the flag through undefined rather than coercing to
-// false so the UI can say "unknown" instead of asserting an unsupported "no".
+// The curated entries on their own (no catalog): the structured-output flag
+// stays undefined so the UI can say "unknown" rather than a wrong "no".
 function curatedModelsAsPickerEntries() {
   return AI_MODELS.map((m) => ({
     id: m.id,
     name: m.name,
-    cost: m.cost,
-    supportsStructuredOutputs: m.supportsStructuredOutputs,
+    provider: m.provider,
+    cost: formatModelCost(m.pricing),
+    supportsStructuredOutputs: undefined,
     curated: true,
   }));
 }
 
+// With a live catalog, a curated model is recommended only while the catalog
+// lists it (and so passed canHuddleUseModel), with the catalog's facts. Only
+// with no catalog at all do the hardcoded entries stand in.
 function mergeModelsForPicker(remoteModels) {
-  const remote = Array.isArray(remoteModels) ? remoteModels : [];
+  const remote = (Array.isArray(remoteModels) ? remoteModels : [])
+    .filter((m) => m && m.id && !isBatchModel(m));
+  if (remote.length === 0) return curatedModelsAsPickerEntries();
   const byId = new Map(remote.map((m) => [m.id, m]));
-  const curated = AI_MODELS.map((c) => {
+  const curated = AI_MODELS.filter((c) => byId.has(c.id)).map((c) => {
     const hit = byId.get(c.id);
-    if (!hit) {
-      // Not in the catalog — leave the flag undefined ("unknown"), not false.
-      return {
-        id: c.id,
-        name: c.name,
-        cost: c.cost,
-        supportsStructuredOutputs: c.supportsStructuredOutputs,
-        curated: true,
-      };
-    }
     return {
       id: c.id,
-      name: c.name || hit.name,
-      cost: hit.cost || c.cost,
+      name: c.name,
+      provider: c.provider,
+      cost: hit.cost || formatModelCost(c.pricing),
       supportsStructuredOutputs: !!hit.supportsStructuredOutputs,
       curated: true,
     };
   });
   const curatedIds = new Set(curated.map((m) => m.id));
   const rest = remote
-    .filter((m) => m && m.id && !curatedIds.has(m.id) && !isBatchOnlyModelId(m.id))
-    .slice()
-    .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+    .filter((m) => !curatedIds.has(m.id))
+    .map((m) => ({ ...m, curated: false }))
+    .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id)
+      || (a.provider || '').localeCompare(b.provider || ''));
   return curated.concat(rest);
+}
+
+// OpenRouter's JSON error body ({ error: { code, message, metadata } }), read
+// once. Falls back to a short plain-text body; an HTML page is not a message.
+async function readOpenRouterErrorDetail(response) {
+  let text;
+  try {
+    text = await response.text();
+  } catch (_e) {
+    return {};
+  }
+  if (!text) return {};
+  try {
+    const data = JSON.parse(text);
+    const err = (data && data.error) || {};
+    const metadata = err.metadata || {};
+    return {
+      message: typeof err.message === 'string' ? err.message.trim() : '',
+      provider: typeof metadata.provider_name === 'string' ? metadata.provider_name : '',
+    };
+  } catch (_e) {
+    if (/^\s*</.test(text)) return {};
+    return { message: text.trim().slice(0, 160) };
+  }
+}
+
+function openRouterHeaders(extra = {}) {
+  return {
+    'Accept': 'application/json',
+    'HTTP-Referer': chrome.runtime.getURL(''),
+    'X-Title': APP_TITLE,
+    ...extra,
+  };
 }
 
 async function fetchOpenRouterModels() {
   let response;
   try {
-    response = await fetch('https://openrouter.ai/api/v1/models', {
+    response = await fetch(`${OPENROUTER_API}/models`, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        // OpenRouter documents optional app identification; helps some edge filters.
-        'HTTP-Referer': chrome.runtime.getURL(''),
-        'X-Title': 'Huddle',
-      },
+      headers: openRouterHeaders(),
+      signal: AbortSignal.timeout(MODELS_FETCH_TIMEOUT_MS),
     });
   } catch (err) {
-    console.error('[Tab Organizer] Models catalog network error:', err);
-    throw new Error(`Network error loading catalog: ${err.message || err}`, { cause: err });
+    console.error('[Huddle] Models catalog network error:', err);
+    const timedOut = err && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    throw new Error(timedOut ? 'OpenRouter didn\'t answer' : 'couldn\'t reach OpenRouter', { cause: err });
   }
 
   if (!response.ok) {
-    let detail = '';
-    try {
-      const text = await response.text();
-      detail = text ? `: ${text.slice(0, 120)}` : '';
-    } catch (_e) {
-      // ignore body read failures
-    }
-    console.error('[Tab Organizer] Models catalog HTTP', response.status, detail);
-    throw new Error(`Failed to fetch models (${response.status})${detail}`);
+    const detail = await readOpenRouterErrorDetail(response);
+    console.error('[Huddle] Models catalog HTTP', response.status, detail.message || '');
+    throw new Error(`OpenRouter ${response.status}${detail.message ? `: ${detail.message}` : ''}`);
   }
 
   let data;
   try {
     data = await response.json();
   } catch (err) {
-    console.error('[Tab Organizer] Models catalog JSON parse error:', err);
-    throw new Error('Models catalog returned invalid JSON', { cause: err });
+    console.error('[Huddle] Models catalog JSON parse error:', err);
+    throw new Error('OpenRouter sent a catalog Huddle can\'t read', { cause: err });
   }
 
   const list = Array.isArray(data.data) ? data.data : [];
   if (list.length === 0) {
-    throw new Error('Models catalog was empty');
+    throw new Error('OpenRouter sent an empty catalog');
   }
   return list.map(normalizeOpenRouterModel).filter(Boolean);
 }
 
+// The cache as this build wrote it, or null (none, or an older build's).
+async function readModelsCache() {
+  const stored = await chrome.storage.local.get([MODELS_CACHE_KEY]);
+  const cache = stored && stored[MODELS_CACHE_KEY];
+  if (!cache || cache.v !== MODELS_CACHE_VERSION
+      || !Array.isArray(cache.models) || cache.models.length === 0
+      || typeof cache.fetchedAt !== 'number') {
+    return null;
+  }
+  return cache;
+}
+
 async function getOpenRouterModels({ forceRefresh = false } = {}) {
   if (!forceRefresh) {
-    const stored = await chrome.storage.local.get([MODELS_CACHE_KEY]);
-    const cache = stored[MODELS_CACHE_KEY];
-    if (cache && Array.isArray(cache.models) && cache.models.length > 0
-        && typeof cache.fetchedAt === 'number'
-        && (Date.now() - cache.fetchedAt) < MODELS_CACHE_TTL_MS) {
+    const cache = await readModelsCache();
+    if (cache && (Date.now() - cache.fetchedAt) < MODELS_CACHE_TTL_MS) {
       return {
         models: mergeModelsForPicker(cache.models),
         fetchedAt: cache.fetchedAt,
@@ -182,11 +283,11 @@ async function getOpenRouterModels({ forceRefresh = false } = {}) {
     const fetchedAt = Date.now();
     try {
       await chrome.storage.local.set({
-        [MODELS_CACHE_KEY]: { models: remote, fetchedAt },
+        [MODELS_CACHE_KEY]: { v: MODELS_CACHE_VERSION, models: remote, fetchedAt },
       });
     } catch (cacheErr) {
       // Still return the live catalog even if caching fails (quota, etc.).
-      console.warn('[Tab Organizer] Models catalog cache write failed:', cacheErr);
+      console.warn('[Huddle] Models catalog cache write failed:', cacheErr);
     }
     return {
       models: mergeModelsForPicker(remote),
@@ -194,10 +295,9 @@ async function getOpenRouterModels({ forceRefresh = false } = {}) {
       fromCache: false,
     };
   } catch (error) {
-    console.error('[Tab Organizer] getOpenRouterModels failed:', error);
-    const stored = await chrome.storage.local.get([MODELS_CACHE_KEY]);
-    const cache = stored[MODELS_CACHE_KEY];
-    if (cache && Array.isArray(cache.models) && cache.models.length > 0) {
+    console.error('[Huddle] getOpenRouterModels failed:', error);
+    const cache = await readModelsCache();
+    if (cache) {
       return {
         models: mergeModelsForPicker(cache.models),
         fetchedAt: cache.fetchedAt,
@@ -216,31 +316,33 @@ async function getOpenRouterModels({ forceRefresh = false } = {}) {
   }
 }
 
-async function modelSupportsStructuredOutputs(modelId) {
-  if (!modelId) return false;
-  const stored = await chrome.storage.local.get([MODELS_CACHE_KEY]);
-  const cache = stored[MODELS_CACHE_KEY];
-  if (cache && Array.isArray(cache.models)) {
-    const hit = cache.models.find((m) => m.id === modelId);
-    if (hit) return !!hit.supportsStructuredOutputs;
-  }
-  const curated = AI_MODELS.find((m) => m.id === modelId);
-  if (curated && curated.supportsStructuredOutputs != null) {
-    return !!curated.supportsStructuredOutputs;
-  }
-  return false;
+function catalogReply(catalog) {
+  return {
+    success: !catalog.fallback,
+    models: Array.isArray(catalog.models) ? catalog.models : curatedModelsAsPickerEntries(),
+    modelsMeta: {
+      fetchedAt: catalog.fetchedAt,
+      fromCache: !!catalog.fromCache,
+      stale: !!catalog.stale,
+      fallback: !!catalog.fallback,
+      error: catalog.error || null,
+    },
+  };
 }
 
-async function resolveModelDisplayName(modelId) {
-  if (!modelId) return modelId;
+// What Huddle knows about a model id: its display name and whether it takes
+// a strict JSON schema (only the cached catalog knows; curated alone: no).
+async function modelInfo(modelId) {
   const curated = AI_MODELS.find((m) => m.id === modelId);
-  if (curated) return curated.name;
-  const stored = await chrome.storage.local.get([MODELS_CACHE_KEY]);
-  const cache = stored[MODELS_CACHE_KEY];
-  const hit = cache && Array.isArray(cache.models)
-    ? cache.models.find((m) => m.id === modelId)
-    : null;
-  return (hit && hit.name) || modelId;
+  const cache = modelId ? await readModelsCache() : null;
+  const hit = cache ? cache.models.find((m) => m.id === modelId) : null;
+  return {
+    id: modelId,
+    name: (curated && curated.name) || (hit && hit.name) || modelId,
+    listed: !!hit,
+    catalogKnown: !!cache,
+    supportsStructuredOutputs: !!(hit && hit.supportsStructuredOutputs),
+  };
 }
 
 function buildTabGroupsJsonSchema(tabIds) {
@@ -285,6 +387,10 @@ function buildTabGroupsJsonSchema(tabIds) {
   };
 }
 
+// ============================================================
+// AI key and default model (chrome.storage.local 'aiConfig')
+// ============================================================
+
 function encodeKey(plaintext) {
   return btoa(plaintext);
 }
@@ -296,9 +402,23 @@ function decodeKey(encoded) {
 function isKeyExpired(aiConfig) {
   if (!aiConfig || !aiConfig.key) return true;
   if (aiConfig.expiresAt === null) return false;
-  return Date.now() > aiConfig.expiresAt;
+  return typeof aiConfig.expiresAt === 'number' && Date.now() > aiConfig.expiresAt;
 }
 
+// An alarm at the key's deadline removes it from storage then, not just the
+// next time something reads it.
+function scheduleKeyExpiryAlarm(aiConfig) {
+  if (!chrome.alarms) return;
+  const at = aiConfig && aiConfig.key ? aiConfig.expiresAt : null;
+  Promise.resolve(chrome.alarms.clear(AI_KEY_ALARM)).catch(() => {});
+  if (typeof at === 'number') {
+    Promise.resolve(chrome.alarms.create(AI_KEY_ALARM, { when: Math.max(at, Date.now() + 1000) })).catch(() => {});
+  }
+}
+
+// config: { key, expiryDuration, renew?, model? }. A newly typed key (renew)
+// or a changed expiry policy starts a fresh countdown; re-saving the kept key
+// with the same policy keeps its deadline.
 async function saveAiConfig(config) {
   const key = encodeKey(config.key);
   const previous = await loadAiConfig();
@@ -309,10 +429,8 @@ async function saveAiConfig(config) {
       ? config.expiryDuration
       : DEFAULT_EXPIRY);
 
-  // Editing the model must not restart the key's countdown. Only a new key, a
-  // changed expiry policy, or re-entering a key that has already expired resets
-  // it; re-saving the same live key keeps its deadline.
-  const keptKey = !!previous
+  const keptKey = !config.renew
+    && !!previous
     && previous.key === key
     && previous.expiryDuration === expiryDuration
     && previous.expiresAt !== undefined
@@ -329,23 +447,47 @@ async function saveAiConfig(config) {
     model: config.model || (previous && previous.model) || DEFAULT_MODEL,
     expiresAt,
     expiryDuration,
+    keyExpiredAt: null,
     setupComplete: true,
   };
 
   await chrome.storage.local.set({ aiConfig });
+  scheduleKeyExpiryAlarm(aiConfig);
   return aiConfig;
 }
 
+// Reads the config, and deletes a key whose deadline has passed: expiry
+// removes the secret from the profile, it does not just hide it. The model,
+// the expiry policy and keyExpiredAt (so pages can say "expired") stay.
 async function loadAiConfig() {
   const result = await chrome.storage.local.get(['aiConfig']);
-  return result.aiConfig || null;
+  const aiConfig = (result && result.aiConfig) || null;
+  if (aiConfig && aiConfig.key && typeof aiConfig.expiresAt === 'number' && Date.now() > aiConfig.expiresAt) {
+    const purged = { ...aiConfig, key: null, expiresAt: null, keyExpiredAt: aiConfig.expiresAt };
+    await chrome.storage.local.set({ aiConfig: purged });
+    return purged;
+  }
+  return aiConfig;
 }
 
 // The default model can be chosen before any key is on file, so it is stored
-// on its own: a config without a key still reads as "no key".
-async function saveAiDefaultModel(model) {
+// on its own: a config without a key still reads as "no key". An id the
+// catalog does not list (a typo, a retired model) is refused unless the user
+// confirmed it (allowUnlisted); with no catalog to check against it is kept.
+async function saveAiDefaultModel(model, { allowUnlisted = false } = {}) {
   const id = typeof model === 'string' ? model.trim() : '';
   if (!id) throw new Error('Choose a model first.');
+  if (isBatchModel(id)) {
+    throw new Error('Batch models can\'t organize tabs. Pick another model.');
+  }
+  if (!allowUnlisted && !AI_MODELS.some((m) => m.id === id)) {
+    const info = await modelInfo(id);
+    if (info.catalogKnown && !info.listed) {
+      const err = new Error(`${id} isn't in OpenRouter's list of models Huddle can use.`);
+      err.unlisted = true;
+      throw err;
+    }
+  }
   const previous = await loadAiConfig();
   const aiConfig = previous
     ? { ...previous, model: id }
@@ -358,41 +500,20 @@ async function saveAiDefaultModel(model) {
 async function deleteAiKey() {
   const previous = await loadAiConfig();
   if (!previous) return null;
-  const aiConfig = { ...previous, key: null, expiresAt: null };
+  const aiConfig = { ...previous, key: null, expiresAt: null, keyExpiredAt: null };
   await chrome.storage.local.set({ aiConfig });
+  scheduleKeyExpiryAlarm(aiConfig);
   return aiConfig;
 }
 
 // 'missing' or 'expired' when organize cannot run with the stored key.
 function aiKeyState(config) {
-  if (!config || !config.key) return 'missing';
+  if (!config || !config.key) return config && config.keyExpiredAt ? 'expired' : 'missing';
   return isKeyExpired(config) ? 'expired' : null;
 }
 
-// Runs waiting for their proposal tab to send 'aiProposalReady', keyed by
-// that tab's id. In memory only: if the service worker is stopped, the map
-// comes back empty and the page is told its run has ended. A waiting run
-// resolves with { instructions, model } (model: for this run only, or null
-// for the default), or with null when it is dropped.
-const aiPendingRuns = new Map();
-
-// Parks a run for tabId, dropping any run that tab was still waiting on.
-function waitForAiProposalReady(tabId) {
-  const previous = aiPendingRuns.get(tabId);
-  if (previous) previous(null);
-  return new Promise((resolve) => {
-    aiPendingRuns.set(tabId, resolve);
-  });
-}
-
-// A proposal tab closed before it sent 'aiProposalReady' ends its run, so
-// the waiting promise settles and its config is not held until shutdown.
-chrome.tabs.onRemoved.addListener((tabId) => {
-  const resolve = aiPendingRuns.get(tabId);
-  if (resolve) {
-    aiPendingRuns.delete(tabId);
-    resolve(null);
-  }
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm && alarm.name === AI_KEY_ALARM) loadAiConfig().catch(() => {});
 });
 
 // ============================================================
@@ -447,13 +568,21 @@ ${tabLines}`
   return [systemMessage, userMessage];
 }
 
-function buildOpenRouterRequestBody(model, messages, { useJsonSchema = false, jsonSchema = null } = {}) {
+// Room for the answer (and a reasoning model's thinking) without asking
+// OpenRouter to reserve credit for the model's whole output limit, which is
+// what turns a small balance into a 402 for a few hundred tokens of JSON.
+function maxTokensForTabs(tabCount) {
+  return Math.min(16000, 2000 + 100 * Math.max(0, tabCount || 0));
+}
+
+function buildOpenRouterRequestBody(model, messages, { useJsonSchema = false, jsonSchema = null, maxTokens = null } = {}) {
   const body = {
     model,
     messages,
     temperature: 0.3,
     stream: true,
   };
+  if (Number.isFinite(maxTokens) && maxTokens > 0) body.max_tokens = maxTokens;
 
   if (useJsonSchema && jsonSchema) {
     body.response_format = {
@@ -469,25 +598,126 @@ function buildOpenRouterRequestBody(model, messages, { useJsonSchema = false, js
   return body;
 }
 
-async function readOpenRouterResponse(response, onChunk) {
-  const contentType = response.headers.get('content-type') || '';
+function aiError(message, kind, extra = {}) {
+  const error = new Error(message);
+  error.kind = kind;
+  Object.assign(error, extra);
+  return error;
+}
 
-  // If the response is not SSE, fall back to reading it as plain JSON
+// "(401: User not found.)" or "(401)".
+function statusWithDetail(status, said) {
+  return said ? `${status}: ${said.replace(/\.$/, '')}` : String(status);
+}
+
+// An OpenRouter error as a sentence the user can act on, with a kind the
+// organize page turns into the right buttons:
+//   model     another model is the fix (Change model, Retry)
+// retryable: false marks a failure the same request meets again (a 4xx about
+// the model or the request, a provider refusing it, too few credits): the
+// page makes the fix its primary button instead of Retry.
+//   auth      a 401 not yet pinned on the key or the model (see classifyAuthError)
+//   credits   the account needs credits
+//   transient try again (rate limits, timeouts, server errors)
+// ctx: { model, modelName }
+function mapOpenRouterHttpError(status, detail = {}, ctx = {}) {
+  const said = detail.message || '';
+  const provider = detail.provider || '';
+  const who = ctx.modelName || ctx.model || 'this model';
+  const code = statusWithDetail(status, said);
+  let error;
+  if (status === 401) {
+    error = provider
+      ? aiError(`${provider}, the provider serving ${who}, refused the request (${code}). Your key works; pick another model.`, 'model', { retryable: false })
+      : aiError(`OpenRouter refused the request (${code}).`, 'auth');
+  } else if (status === 402) {
+    // Retrying before adding credits fails the same way: Add credits leads.
+    error = aiError(`OpenRouter needs more credits to run ${who} (${code}). Add credits on OpenRouter, or pick a cheaper model.`, 'credits', { retryable: false });
+  } else if (status === 403) {
+    // Moderation or a region/provider block: the same request is refused again.
+    error = aiError(`OpenRouter refused this request for ${who} (${code}). Pick another model.`, 'model', { retryable: false });
+  } else if (status === 404) {
+    // Retrying the same model finds no endpoint again: Change model leads.
+    error = aiError(`${who} isn't available on OpenRouter right now (${code}). Pick another model.`, 'model', { retryable: false });
+  } else if (status === 408 || status === 429 || status >= 500) {
+    const lead = status === 429
+      ? 'OpenRouter is rate limiting this request'
+      : status === 408 ? 'OpenRouter timed out'
+        : `OpenRouter or ${provider ? `${provider}, the provider serving ${who},` : `the provider serving ${who}`} had a problem`;
+    error = aiError(`${lead} (${code}). Try again in a moment.`, 'transient');
+  } else {
+    // 400 and the like: an unknown model id, a context too long for it, an
+    // unsupported parameter. None of them changes on a retry.
+    error = aiError(`OpenRouter couldn't run ${who} with this request (${code}). Pick another model.`, 'model', { retryable: false });
+  }
+  error.status = status;
+  error.openRouterError = { message: said, provider };
+  return error;
+}
+
+// A 401 that names no provider is either the key or the model. Asking
+// OpenRouter about the key itself tells them apart.
+async function classifyAuthError(error, apiKey, ctx = {}) {
+  let probe;
+  try {
+    probe = await fetch(`${OPENROUTER_API}/key`, {
+      method: 'GET',
+      headers: openRouterHeaders({ 'Authorization': `Bearer ${apiKey}` }),
+      signal: AbortSignal.timeout(MODELS_FETCH_TIMEOUT_MS),
+    });
+  } catch (_e) {
+    return error;
+  }
+  const said = (error.openRouterError && error.openRouterError.message) || '';
+  if (probe.status === 401 || probe.status === 403) {
+    return aiError(
+      `OpenRouter rejected your saved key (${statusWithDetail(401, said)}). Enter a new key to organize.`,
+      'key', { needsKey: 'rejected', status: 401 },
+    );
+  }
+  if (probe.ok) {
+    const who = ctx.modelName || ctx.model || 'this model';
+    return aiError(
+      `OpenRouter refused the request for ${who} (${statusWithDetail(401, said)}). Your key works; pick another model.`,
+      'model', { status: 401, retryable: false },
+    );
+  }
+  return error;
+}
+
+// Reads a 200 reply: SSE chunks (streamed to onChunk) or a plain JSON body.
+// Returns { text, finishReason }. An error OpenRouter reports inside a 200
+// (a provider failing after the stream started) is thrown, not returned as
+// a partial answer.
+async function readOpenRouterResponse(response, onChunk, { onActivity = () => {}, ctx = {} } = {}) {
+  const contentType = (response.headers && response.headers.get('content-type')) || '';
+
   if (!contentType.includes('text/event-stream')) {
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '';
+    let data;
+    try {
+      data = await response.json();
+    } catch (_e) {
+      throw aiError('OpenRouter sent back something that isn\'t an API response (a sign-in or proxy page?). Check your connection, then Retry.', 'network');
+    }
+    if (data && data.error) {
+      throw mapOpenRouterHttpError(Number(data.error.code) || 502,
+        { message: data.error.message, provider: data.error.metadata && data.error.metadata.provider_name }, ctx);
+    }
+    const choice = (data && data.choices && data.choices[0]) || {};
+    const content = (choice.message && choice.message.content) || '';
     if (content && onChunk) onChunk(content);
-    return content;
+    return { text: content, finishReason: choice.finish_reason || null };
   }
 
-  // SSE streaming
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let fullText = '';
+  let finishReason = null;
 
   while (true) {
     const { done, value } = await reader.read();
+    onActivity();
     if (done) break;
 
     buffer += decoder.decode(value, { stream: true });
@@ -500,127 +730,135 @@ async function readOpenRouterResponse(response, onChunk) {
       const payload = trimmed.startsWith('data: ') ? trimmed.slice(6) : trimmed.slice(5);
       if (payload === '[DONE]') continue;
 
+      let parsed;
       try {
-        const parsed = JSON.parse(payload);
-        const content = parsed.choices?.[0]?.delta?.content;
-        if (content) {
-          fullText += content;
-          if (onChunk) onChunk(content);
-        }
+        parsed = JSON.parse(payload);
       } catch (_e) {
-        // skip malformed SSE lines
+        continue; // skip malformed SSE lines
       }
+      const choice = (parsed.choices && parsed.choices[0]) || {};
+      if (parsed.error || choice.finish_reason === 'error') {
+        const err = parsed.error || {};
+        const cause = mapOpenRouterHttpError(Number(err.code) || 502,
+          { message: err.message, provider: err.metadata && err.metadata.provider_name }, ctx);
+        throw aiError(`The provider stopped mid-answer. ${cause.message}`, cause.kind === 'transient' ? 'transient' : 'model',
+          { status: cause.status });
+      }
+      const content = choice.delta && choice.delta.content;
+      if (content) {
+        fullText += content;
+        if (onChunk) onChunk(content);
+      }
+      if (choice.finish_reason) finishReason = choice.finish_reason;
     }
   }
 
-  return fullText;
-}
-
-// Read an error response's body: OpenRouter sends
-// { error: { code, message, metadata: { provider_name, raw, ... } } }.
-// Never throws; resolves null when there is no readable body.
-async function readOpenRouterErrorBody(response) {
-  try {
-    const text = await response.text();
-    if (!text) return null;
-    try {
-      return JSON.parse(text);
-    } catch (_e) {
-      return { error: { message: text.slice(0, 500) } };
-    }
-  } catch (_e) {
-    return null;
-  }
-}
-
-// OpenRouter's own explanation, e.g. `No auth credentials found`, plus the
-// upstream provider when it names one. Empty when the body says nothing.
-function describeOpenRouterErrorBody(body) {
-  const detail = body && body.error;
-  if (!detail || typeof detail.message !== 'string' || !detail.message.trim()) return '';
-  const provider = detail.metadata && detail.metadata.provider_name;
-  return provider ? `${detail.message.trim()} (provider: ${provider})` : detail.message.trim();
-}
-
-// Map a failed response to a user-facing error. The status alone only guesses:
-// OpenRouter returns 401 for more than a bad key, so when the body explains the
-// failure, that explanation is what the user sees.
-function mapOpenRouterHttpError(status, body = null) {
-  const said = describeOpenRouterErrorBody(body);
-  let message;
-  if (status === 401) {
-    message = said
-      ? `OpenRouter refused the request (401): ${said}`
-      : 'Invalid API key. Please check your OpenRouter key.';
-  } else if (status === 429) {
-    message = 'Rate limited. Please try again in a moment.';
-  } else if (status === 402) {
-    message = 'Insufficient credits. Please add credits on OpenRouter.';
-  } else {
-    message = `OpenRouter API error (${status})`;
-  }
-  if (said && status !== 401) message += `: ${said}`;
-  const error = new Error(message);
-  error.status = status;
-  error.openRouterError = body && body.error ? body.error : null;
-  return error;
+  return { text: fullText, finishReason };
 }
 
 // Statuses an endpoint uses to refuse the request itself — the only ones that
 // can mean "this provider won't take the json_schema". 401/402/429 describe the
-// account, not the payload: they would fail identically without the schema, so
-// retrying just burns a second call (and hammers an already rate-limited API).
+// account, not the payload: they would fail identically without the schema.
 const SCHEMA_REJECTION_STATUSES = new Set([400, 404, 422, 501]);
+// ...and only when the refusal is about the schema (or says nothing at all):
+// a batch model, an unknown id or a context overflow fail the same either way.
+const SCHEMA_REJECTION_TEXT = /response_format|json_schema|structured|require_parameters|support the (requested|provided) parameters?/i;
 
-// options: { useJsonSchema, jsonSchema }
-// When useJsonSchema is true and the endpoint refuses the schema outright,
-// retries once with plain json_object so organize still works there.
+function isSchemaRejection(error) {
+  if (!SCHEMA_REJECTION_STATUSES.has(error.status)) return false;
+  const said = (error.openRouterError && error.openRouterError.message) || '';
+  return !said || SCHEMA_REJECTION_TEXT.test(said);
+}
+
+// options: { useJsonSchema, jsonSchema, maxTokens, signal, ctx, onFinish,
+//            firstByteMs, idleMs }
+// Resolves with the model's text. When the endpoint refuses the json_schema
+// outright, retries once with plain json_object so organize still works there.
+// Rejects with an error carrying .kind; an abort through `signal` rejects
+// with an AbortError.
 async function callOpenRouter(apiKey, model, messages, onChunk, options = {}) {
+  const ctx = { model, ...(options.ctx || {}) };
+  const firstByteMs = options.firstByteMs || CHAT_FIRST_BYTE_TIMEOUT_MS;
+  const idleMs = options.idleMs || CHAT_IDLE_TIMEOUT_MS;
+  const controller = new AbortController();
+  const outer = options.signal || null;
+  const onOuterAbort = () => controller.abort();
+  if (outer) {
+    if (outer.aborted) controller.abort();
+    else outer.addEventListener('abort', onOuterAbort, { once: true });
+  }
+  let timer = null;
+  let timedOut = 0;
+  const arm = (ms) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      timedOut = ms;
+      controller.abort();
+    }, ms);
+  };
+
   const postRequest = async (opts) => {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    arm(firstByteMs);
+    const response = await fetch(`${OPENROUTER_API}/chat/completions`, {
       method: 'POST',
-      headers: {
+      headers: openRouterHeaders({
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': chrome.runtime.getURL(''),
-        'X-Title': 'Tab Organizer',
-      },
+      }),
       body: JSON.stringify(buildOpenRouterRequestBody(model, messages, opts)),
+      signal: controller.signal,
     });
 
     if (!response.ok) {
-      const body = await readOpenRouterErrorBody(response);
-      console.error('[Tab Organizer] OpenRouter request failed:', {
+      const detail = await readOpenRouterErrorDetail(response);
+      console.error('[Huddle] OpenRouter request failed:', {
         status: response.status,
         model,
         responseFormat: opts.useJsonSchema ? 'json_schema' : 'json_object',
-        body,
+        detail,
       });
-      throw mapOpenRouterHttpError(response.status, body);
+      throw mapOpenRouterHttpError(response.status, detail, ctx);
     }
     return response;
   };
 
-  const wantSchema = !!(options.useJsonSchema && options.jsonSchema);
-  let response;
   try {
-    response = await postRequest({
-      useJsonSchema: wantSchema,
-      jsonSchema: options.jsonSchema || null,
-    });
-  } catch (error) {
-    if (!wantSchema || !SCHEMA_REJECTION_STATUSES.has(error.status)) throw error;
-    console.warn(
-      '[Tab Organizer] Endpoint refused the JSON schema; retrying with json_object:',
-      error.message
-    );
-    response = await postRequest({ useJsonSchema: false, jsonSchema: null });
-  }
+    const wantSchema = !!(options.useJsonSchema && options.jsonSchema);
+    const base = { maxTokens: options.maxTokens || null };
+    let response;
+    try {
+      response = await postRequest({ ...base, useJsonSchema: wantSchema, jsonSchema: options.jsonSchema || null });
+    } catch (error) {
+      if (!wantSchema || !isSchemaRejection(error)) throw error;
+      console.warn('[Huddle] Endpoint refused the JSON schema; retrying with json_object:', error.message);
+      response = await postRequest({ ...base, useJsonSchema: false, jsonSchema: null });
+    }
 
-  // Past this point the response is streaming into onChunk, and the proposal UI
-  // has already rendered those chunks. A retry here would append a second
-  // generation onto the partial text on screen, so failures must propagate.
-  return readOpenRouterResponse(response, onChunk);
+    // Past this point the response is streaming into onChunk, and the page has
+    // already rendered those chunks. A retry here would append a second
+    // generation onto the partial text on screen, so failures must propagate.
+    arm(idleMs);
+    const result = await readOpenRouterResponse(response, onChunk, { onActivity: () => arm(idleMs), ctx });
+    if (options.onFinish) options.onFinish(result.finishReason);
+    return result.text;
+  } catch (error) {
+    if (outer && outer.aborted) {
+      const abort = new Error('The run was stopped.');
+      abort.name = 'AbortError';
+      throw abort;
+    }
+    if (timedOut) {
+      throw aiError(`OpenRouter didn't answer within ${Math.round(timedOut / 1000)} s. Try again, or pick a faster model.`, 'transient');
+    }
+    if (error && error.kind) throw error;
+    if (error instanceof TypeError) {
+      throw aiError('Couldn\'t reach OpenRouter. Check your connection, then Retry.', 'network');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    if (outer) outer.removeEventListener('abort', onOuterAbort);
+  }
 }
 
 function parseAiResponse(responseText, originalTabs) {
@@ -645,11 +883,13 @@ function parseAiResponse(responseText, originalTabs) {
   const validTabIds = new Set(originalTabs.map(t => t.id));
   const assignedTabIds = new Set();
   const groups = [];
+  let unknownIds = 0;
 
   for (const group of parsed.groups) {
     if (!group.name || !Array.isArray(group.tabIds)) continue;
 
     // Validate and filter tab IDs
+    unknownIds += group.tabIds.filter(id => !validTabIds.has(id)).length;
     const validIds = group.tabIds
       .filter(id => validTabIds.has(id) && !assignedTabIds.has(id));
     validIds.forEach(id => assignedTabIds.add(id));
@@ -666,6 +906,16 @@ function parseAiResponse(responseText, originalTabs) {
     });
   }
 
+  // A plan with no groups would Apply as "nothing happened".
+  if (groups.length === 0) {
+    return {
+      success: false,
+      error: unknownIds > 0
+        ? 'The model didn\'t put any of your tabs in a group (it listed tabs that aren\'t open). Try again, add instructions or pick another model.'
+        : 'The model didn\'t put any of your tabs in a group. Try again, add instructions or pick another model.',
+    };
+  }
+
   // Collect unassigned tabs into "Ungrouped"
   const unassignedIds = originalTabs
     .map(t => t.id)
@@ -679,58 +929,64 @@ function parseAiResponse(responseText, originalTabs) {
 }
 
 // ============================================================
-// AI Tab Grouping — Message Handlers
+// AI Tab Grouping — Runs and Message Handlers
 // ============================================================
 
-// Opens the organize page and runs organize there. With no key, or an expired
-// one, the page asks for the key itself and starts the run once it is saved.
-async function handleAiGroupTabs(message, sendResponse) {
-  // The popup waits on exactly one reply, including when something fails
-  // before the proposal tab exists.
-  let responded = false;
-  const reply = (response) => {
-    if (responded) return;
-    responded = true;
-    sendResponse(response);
-  };
-
+// The organize page for a window, if one is open.
+async function findOrganizeTab(windowId) {
   try {
-    const respectGroups = message.respectGroups !== undefined ? message.respectGroups : true;
-    const params = new URLSearchParams({ respectGroups: respectGroups ? 'true' : 'false' });
-    const keyState = aiKeyState(await loadAiConfig());
-    if (keyState) params.set('key', keyState);
-
-    const proposalUrl = chrome.runtime.getURL(`ai-proposal.html?${params}`);
-    const proposalTab = await chrome.tabs.create({ url: proposalUrl, active: true });
-    reply({ success: true, action: keyState ? 'setup' : 'proposal' });
-
-    await runAiOrganizeInTab(proposalTab.id, respectGroups, proposalTab.windowId);
-  } catch (error) {
-    console.error('[Tab Organizer] Error in AI group tabs:', error);
-    reply({ success: false, error: error.message });
+    const tabs = await chrome.tabs.query({ windowId, url: chrome.runtime.getURL('ai-proposal.html') + '*' });
+    return (tabs && tabs[0]) || null;
+  } catch (_e) {
+    return null;
   }
 }
 
-// One organize run in the organize page open in tabId: waits for the page to
-// send 'aiProposalReady' (instructions, and a model for this run only), then
-// streams the proposal to it. Run again on the page parks a new one here.
-async function runAiOrganizeInTab(tabId, respectGroups, windowId = null) {
-  const send = (msg) => {
-    chrome.tabs.sendMessage(tabId, msg).catch(() => {});
-  };
-
-  // Registered before any await, so the page's ready message cannot race it.
-  const start = await waitForAiProposalReady(tabId);
-  // The proposal tab was closed (or restarted) before the user started the run.
-  if (start === null) return;
-
+// The popup's O: opens the organize page for its window, or brings back the
+// one already open there (telling it the popup's Groups/Flat choice). The
+// page starts its own runs.
+async function handleAiGroupTabs(message, sendResponse) {
   try {
-    // The page may have saved a key since it opened, so read it now.
+    const respectGroups = message.respectGroups !== undefined ? message.respectGroups : true;
+    const win = await chrome.windows.getCurrent();
+    const windowId = win && typeof win.id === 'number' ? win.id : undefined;
+    const existing = typeof windowId === 'number' ? await findOrganizeTab(windowId) : null;
+    if (existing) {
+      await chrome.tabs.update(existing.id, { active: true });
+      chrome.tabs.sendMessage(existing.id, { type: 'ai-set-mode', respectGroups }).catch(() => {});
+      sendResponse({ success: true, action: 'focused' });
+      return;
+    }
+    const params = new URLSearchParams({ respectGroups: respectGroups ? 'true' : 'false' });
+    const createProps = { url: chrome.runtime.getURL(`ai-proposal.html?${params}`), active: true };
+    if (typeof windowId === 'number') createProps.windowId = windowId;
+    await chrome.tabs.create(createProps);
+    sendResponse({ success: true, action: 'opened' });
+  } catch (error) {
+    console.error('[Huddle] Error in AI group tabs:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// The run each organize tab has going, so a new one (or the tab closing)
+// aborts it. In memory only: runs live on their page's port, and a worker
+// restart closes those ports, which the page sees and reports.
+const aiRuns = new Map(); // tabId -> { controller }
+
+// One organize run for the organize page in tabId. post() sends to that
+// page's port; signal aborts the run (Stop, reload, tab closed, new run).
+// start: { instructions, model (null: the default), respectGroups }
+async function runAiOrganize({ tabId, windowId, start, signal, post }) {
+  const respectGroups = start.respectGroups !== false;
+  let apiKey = null;
+  let ctx = {};
+  try {
     const config = await loadAiConfig();
     const keyState = aiKeyState(config);
     if (keyState) {
-      send({
+      post({
         type: 'ai-error',
+        kind: 'key',
         needsKey: keyState,
         error: keyState === 'expired'
           ? 'Your OpenRouter key has expired. Enter it again to organize.'
@@ -738,76 +994,94 @@ async function runAiOrganizeInTab(tabId, respectGroups, windowId = null) {
       });
       return;
     }
-    // The page's picker overrides the default for this run only.
     const model = (typeof start.model === 'string' && start.model.trim())
       || config.model
       || DEFAULT_MODEL;
+    const info = await modelInfo(model);
+    ctx = { model, modelName: info.name };
+    if (isBatchModel({ id: model, name: info.name })) {
+      // No retry can help: the page offers Change model instead.
+      post({ type: 'ai-error', kind: 'model', retryable: false, error: `${info.name} is a batch model, and batch models can't organize tabs. Pick another model.` });
+      return;
+    }
 
-    // Gather tabs
-    send({ type: 'ai-status', text: 'Gathering tabs...' });
+    post({ type: 'ai-status', text: 'Gathering tabs…' });
     const targetWindowId = typeof windowId === 'number'
       ? windowId
       : (await chrome.windows.getCurrent()).id;
     const tabs = await getTabsWithGroupInfo(targetWindowId);
 
-    // Groups mode: only organize ungrouped tabs. Flat mode: all tabs.
+    // Groups mode: only organize ungrouped tabs. Flat mode: all tabs. Huddle's
+    // own pages (this one, a second organize tab, Settings) are never sent.
+    const ownPages = chrome.runtime.getURL('');
     const unpinnedTabs = tabs.filter(t => {
       if (t.pinned || t.id === tabId) return false;
+      const url = t.pendingUrl || t.url || '';
+      if (url.startsWith(ownPages)) return false;
       if (respectGroups && t.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) return false;
       return true;
     });
 
     if (unpinnedTabs.length === 0) {
-      const errorMsg = respectGroups
-        ? 'No ungrouped tabs to organize. Switch to Flat to reorganize all tabs.'
-        : 'No unpinned tabs to organize.';
-      send({ type: 'ai-error', error: errorMsg });
+      post(respectGroups
+        ? { type: 'ai-error', kind: 'no-tabs', error: 'Every tab in this window is already in a group, so Groups mode has nothing to organize. Organize all tabs (Flat) to regroup them.' }
+        : { type: 'ai-error', kind: 'none', error: 'There are no unpinned tabs in this window to organize.' });
       return;
     }
 
-    // Build prompt and send debug info
     const messages = buildAiPrompt(unpinnedTabs, start.instructions || '');
-    const modelName = await resolveModelDisplayName(model);
-    const useJsonSchema = await modelSupportsStructuredOutputs(model);
+    const useJsonSchema = info.supportsStructuredOutputs;
     const tabIds = unpinnedTabs.map((t) => t.id);
     const jsonSchema = useJsonSchema ? buildTabGroupsJsonSchema(tabIds) : null;
-    send({
+    post({
       type: 'ai-debug',
       model,
-      modelName,
+      modelName: info.name,
       messages,
       respectGroups,
       useJsonSchema,
     });
-    send({
-      type: 'ai-status',
-      text: useJsonSchema
-        ? `Calling ${modelName} (structured output)...`
-        : `Calling ${modelName}...`,
-    });
+    post({ type: 'ai-status', text: `Asking ${info.name}…` });
 
-    // Stream API call (strict json_schema when the catalog says the model supports it)
-    const apiKey = decodeKey(config.key);
+    apiKey = decodeKey(config.key);
+    let finishReason = null;
     const responseText = await callOpenRouter(
       apiKey,
       model,
       messages,
-      (chunk) => {
-        send({ type: 'ai-chunk', text: chunk });
+      (chunk) => post({ type: 'ai-chunk', text: chunk }),
+      {
+        useJsonSchema,
+        jsonSchema,
+        maxTokens: maxTokensForTabs(unpinnedTabs.length),
+        signal,
+        ctx,
+        onFinish: (reason) => { finishReason = reason; },
       },
-      { useJsonSchema, jsonSchema }
     );
 
-    // Parse response
-    send({ type: 'ai-status', text: 'Parsing response...' });
-    const result = parseAiResponse(responseText, unpinnedTabs);
-
-    if (!result.success) {
-      send({ type: 'ai-error', error: result.error });
+    if (!responseText.trim()) {
+      post({
+        type: 'ai-error',
+        kind: 'model',
+        error: `${info.name} returned an empty answer${finishReason ? ` (stopped: ${finishReason})` : ''}. Try again or pick another model.`,
+      });
       return;
     }
 
-    // Build tab metadata and send proposal
+    post({ type: 'ai-status', text: 'Reading the proposal…' });
+    const result = parseAiResponse(responseText, unpinnedTabs);
+
+    if (!result.success) {
+      const error = finishReason === 'length'
+        ? `${info.name} ran out of room before finishing its answer. Try again, or pick another model.`
+        : /invalid JSON|missing "groups"/.test(result.error)
+          ? `${info.name} didn't answer in the JSON format Huddle needs. Try again or pick another model.`
+          : result.error;
+      post({ type: 'ai-error', kind: 'model', error });
+      return;
+    }
+
     const tabMeta = unpinnedTabs.map(t => ({
       id: t.id,
       title: t.title || '(no title)',
@@ -815,22 +1089,99 @@ async function runAiOrganizeInTab(tabId, respectGroups, windowId = null) {
       favIconUrl: t.favIconUrl || '',
     }));
 
-    send({
+    post({
       type: 'ai-proposal',
       groups: result.groups,
       ungroupedTabIds: result.ungroupedTabIds,
       tabs: tabMeta,
       windowId: targetWindowId,
+      respectGroups,
+      model,
+      modelName: info.name,
     });
   } catch (error) {
-    console.error('[Tab Organizer] Error in AI organize run:', error);
-    // The proposal tab may already be closed; send() swallows that.
-    send({ type: 'ai-error', error: error.message });
+    if (signal.aborted) return; // Stopped, reloaded or closed: nobody to tell.
+    let err = error;
+    if (err && err.kind === 'auth' && apiKey) err = await classifyAuthError(err, apiKey, ctx);
+    if (signal.aborted) return;
+    console.error('[Huddle] Error in AI organize run:', err);
+    post({
+      type: 'ai-error',
+      kind: (err && err.kind) || 'model',
+      needsKey: err && err.needsKey,
+      retryable: err && err.retryable === false ? false : undefined,
+      error: (err && err.message) || String(err),
+    });
   }
 }
 
-// The proposal tab stays open until this finishes, so a failure can be shown
-// there; it is closed only once the groups are in place.
+// The organize page opens a port per run and sends { type: 'start', ... }.
+// The port is the run: messages go back on it, its disconnect (Stop, reload,
+// tab closed) aborts the request, and the page sees this worker stopping as
+// the port closing. The page pings while it waits, which keeps the worker
+// awake through a slow answer.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== AI_RUN_PORT) return;
+  const tab = port.sender && port.sender.tab;
+  let run = null;
+  const post = (msg) => {
+    if (run && run.controller.signal.aborted) return;
+    try {
+      port.postMessage(msg);
+    } catch (_e) {
+      // the page went away
+    }
+  };
+
+  port.onMessage.addListener((msg) => {
+    if (!msg || msg.type !== 'start' || run) return;
+    if (msg.protocol !== AI_PROTOCOL) {
+      post({ type: 'ai-error', kind: 'stale', protocol: AI_PROTOCOL, error: 'Huddle was updated. Reload it to continue.' });
+      return;
+    }
+    if (!tab || typeof tab.id !== 'number') {
+      post({ type: 'ai-error', kind: 'none', error: 'Organize only runs from the organize page.' });
+      return;
+    }
+    const previous = aiRuns.get(tab.id);
+    if (previous) previous.controller.abort();
+    run = { controller: new AbortController() };
+    aiRuns.set(tab.id, run);
+    post({ type: 'started', protocol: AI_PROTOCOL });
+    const mine = run;
+    runAiOrganize({
+      tabId: tab.id,
+      windowId: tab.windowId,
+      start: {
+        instructions: typeof msg.instructions === 'string' ? msg.instructions : '',
+        model: typeof msg.model === 'string' && msg.model.trim() ? msg.model.trim() : null,
+        respectGroups: msg.respectGroups !== false,
+      },
+      signal: mine.controller.signal,
+      post,
+    }).finally(() => {
+      if (aiRuns.get(tab.id) === mine) aiRuns.delete(tab.id);
+    });
+  });
+
+  port.onDisconnect.addListener(() => {
+    if (!run) return;
+    run.controller.abort();
+    if (tab && aiRuns.get(tab.id) === run) aiRuns.delete(tab.id);
+  });
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  const run = aiRuns.get(tabId);
+  if (run) {
+    run.controller.abort();
+    aiRuns.delete(tabId);
+  }
+});
+
+// Groups the tabs still in the window. Tabs closed or moved away since the
+// proposal was made are left out and counted; the page is closed only when
+// everything proposed was grouped, and never when it is the window's last tab.
 async function handleApplyAiProposal(message, sender, sendResponse) {
   try {
     const { groups, windowId } = message;
@@ -839,10 +1190,29 @@ async function handleApplyAiProposal(message, sender, sendResponse) {
     // sort below records and restores again for the moves it makes.
     const splitPairs = await captureSplitPairs([windowId]);
 
-    // Tabs closed or moved away since the proposal was made would make
-    // chrome.tabs.group reject, so only the ones still in the window are used.
     const windowTabs = await chrome.tabs.query({ windowId });
     const stillHere = new Map(windowTabs.map(t => [t.id, t]));
+
+    let proposed = 0;
+    const usable = (groups || []).map((group) => {
+      const ids = group.tabIds || [];
+      proposed += ids.length;
+      return { ...group, tabIds: ids.filter(id => stillHere.has(id)) };
+    }).filter((group) => group.tabIds.length > 0);
+    const grouped = usable.reduce((n, g) => n + g.tabIds.length, 0);
+    // Tabs the page already took out of the proposal count as left out too.
+    const leftOut = Number.isInteger(message.leftOut) && message.leftOut > 0 ? message.leftOut : 0;
+    const skipped = proposed - grouped + leftOut;
+
+    if (grouped === 0) {
+      sendResponse({
+        success: false,
+        error: proposed > 0
+          ? 'None of the proposed tabs are still in this window.'
+          : 'There are no groups to apply.',
+      });
+      return;
+    }
 
     // Flat mode: tabs left in (or moved to) Ungrouped leave their old groups.
     if (message.respectGroups === false && Array.isArray(message.ungroupedTabIds)) {
@@ -856,12 +1226,9 @@ async function handleApplyAiProposal(message, sender, sendResponse) {
     }
 
     // Apply groups with a small delay between each to avoid overwhelming Chrome
-    for (const group of groups) {
-      const tabIds = (group.tabIds || []).filter(id => stillHere.has(id));
-      if (tabIds.length === 0) continue;
-
+    for (const group of usable) {
       const groupId = await chrome.tabs.group({
-        tabIds,
+        tabIds: group.tabIds,
         createProperties: { windowId },
       });
 
@@ -879,8 +1246,9 @@ async function handleApplyAiProposal(message, sender, sendResponse) {
     // Sort after all groups are created
     await sortWindowTabs(windowId, true);
 
-    sendResponse({ success: true });
-    if (sender.tab) {
+    const closePage = skipped === 0 && !!sender.tab && windowTabs.some((t) => t.id !== sender.tab.id);
+    sendResponse({ success: true, grouped, groups: usable.length, skipped, closing: closePage });
+    if (closePage) {
       try {
         await chrome.tabs.remove(sender.tab.id);
       } catch (_e) {
@@ -888,7 +1256,7 @@ async function handleApplyAiProposal(message, sender, sendResponse) {
       }
     }
   } catch (error) {
-    console.error('[Tab Organizer] Error applying AI proposal:', error);
+    console.error('[Huddle] Error applying AI proposal:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -906,7 +1274,7 @@ async function getTabGroupsInfo(windowId = null) {
     
     return groupsMap;
   } catch (error) {
-    console.error('[Tab Organizer] Error getting tab groups info:', error);
+    console.error('[Huddle] Error getting tab groups info:', error);
     return new Map();
   }
 }
@@ -949,7 +1317,7 @@ async function recreateTabGroup(groupInfo, tabIds, targetWindowId) {
     
     return newGroupId;
   } catch (error) {
-    console.error('[Tab Organizer] Error recreating tab group:', error);
+    console.error('[Huddle] Error recreating tab group:', error);
     return null;
   }
 }
@@ -979,7 +1347,7 @@ async function moveTabsWithGroups(tabsToMove, targetWindowId) {
     try {
       await chrome.tabs.move(tabIds, { windowId: targetWindowId, index: -1 });
     } catch (error) {
-      console.error('[Tab Organizer] Error moving tabs with groups:', error);
+      console.error('[Huddle] Error moving tabs with groups:', error);
       continue;
     }
     moved += tabIds.length;
@@ -1021,7 +1389,7 @@ async function handleClumpOpenUrls(message, sender, sendResponse) {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'log') {
-    console.log('[Tab Organizer]', message.data.message, ...message.data.args);
+    console.log('[Huddle]', message.data.message, ...message.data.args);
     sendResponse({ success: true });
   } else if (message.action === 'clumpOpenUrls') {
     handleClumpOpenUrls(message, _sender, sendResponse);
@@ -1070,29 +1438,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   } else if (message.action === 'aiGroupTabs') {
     handleAiGroupTabs(message, sendResponse);
     return true;
-  } else if (message.action === 'aiProposalReady') {
-    // pending:false means no run is waiting for this tab (it was refreshed,
-    // its run already started, or the service worker restarted).
-    const tabId = _sender.tab ? _sender.tab.id : null;
-    const resolve = aiPendingRuns.get(tabId);
-    if (resolve) {
-      aiPendingRuns.delete(tabId);
-      resolve({
-        instructions: message.instructions || '',
-        model: typeof message.model === 'string' ? message.model : null,
-      });
-    }
-    sendResponse({ success: true, pending: !!resolve });
-  } else if (message.action === 'aiRestartRun') {
-    // Run again from the organize page: a new run in the same tab, which the
-    // page then starts with 'aiProposalReady' like the first one.
-    const tab = _sender.tab;
-    if (!tab || typeof tab.id !== 'number') {
-      sendResponse({ success: false, error: 'Run again only works from the organize page' });
-    } else {
-      runAiOrganizeInTab(tab.id, message.respectGroups !== false, tab.windowId);
-      sendResponse({ success: true });
-    }
   } else if (message.action === 'applyAiProposal') {
     handleApplyAiProposal(message, _sender, sendResponse);
     return true;
@@ -1109,75 +1454,36 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     });
     return true;
   } else if (message.action === 'loadAiConfig') {
-    Promise.all([loadAiConfig(), getOpenRouterModels({ forceRefresh: false })]).then(
-      ([config, catalog]) => {
-        sendResponse({
-          config,
-          models: catalog.models,
-          expiryPresets: EXPIRY_PRESETS,
-          defaultModel: DEFAULT_MODEL,
-          modelsMeta: {
-            fetchedAt: catalog.fetchedAt,
-            fromCache: catalog.fromCache,
-            stale: !!catalog.stale,
-            fallback: !!catalog.fallback,
-            error: catalog.error || null,
-          },
-        });
-      }
-    ).catch((err) => {
+    // Only the config: the catalog comes separately (loadOpenRouterModels), so
+    // a slow catalog never holds up the key form.
+    loadAiConfig().then((config) => {
+      sendResponse({ protocol: AI_PROTOCOL, config, expiryPresets: EXPIRY_PRESETS, defaultModel: DEFAULT_MODEL });
+    }).catch((err) => {
       // error says the config could not be read, so config: null is not
       // "no key on file".
       sendResponse({
+        protocol: AI_PROTOCOL,
         config: null,
         error: err.message,
-        models: curatedModelsAsPickerEntries(),
         expiryPresets: EXPIRY_PRESETS,
         defaultModel: DEFAULT_MODEL,
-        modelsMeta: { fetchedAt: null, fromCache: false, fallback: true, error: err.message },
       });
     });
     return true;
-  } else if (message.action === 'refreshOpenRouterModels') {
-    // Always respond with a models array so a model picker never gets an empty
-    // message (which used to surface as the opaque "Refresh failed").
-    getOpenRouterModels({ forceRefresh: true })
-      .then((catalog) => {
-        const models = Array.isArray(catalog.models)
-          ? catalog.models
-          : curatedModelsAsPickerEntries();
-        sendResponse({
-          success: !catalog.fallback,
-          models,
-          modelsMeta: {
-            fetchedAt: catalog.fetchedAt,
-            fromCache: !!catalog.fromCache,
-            stale: !!catalog.stale,
-            fallback: !!catalog.fallback,
-            error: catalog.error || null,
-          },
-        });
-      })
+  } else if (message.action === 'loadOpenRouterModels' || message.action === 'refreshOpenRouterModels') {
+    // Always a models array, so a picker never gets an empty reply.
+    getOpenRouterModels({ forceRefresh: message.action === 'refreshOpenRouterModels' })
+      .then((catalog) => sendResponse(catalogReply(catalog)))
       .catch((err) => {
-        console.error('[Tab Organizer] refreshOpenRouterModels handler error:', err);
-        sendResponse({
-          success: false,
-          error: err.message || String(err),
-          models: curatedModelsAsPickerEntries(),
-          modelsMeta: {
-            fetchedAt: null,
-            fromCache: false,
-            fallback: true,
-            error: err.message || String(err),
-          },
-        });
+        console.error('[Huddle] catalog handler error:', err);
+        sendResponse(catalogReply({ models: curatedModelsAsPickerEntries(), fetchedAt: null, fallback: true, error: err.message || String(err) }));
       });
     return true;
   } else if (message.action === 'saveAiDefaultModel') {
-    saveAiDefaultModel(message.model).then((saved) => {
+    saveAiDefaultModel(message.model, { allowUnlisted: !!message.allowUnlisted }).then((saved) => {
       sendResponse({ success: true, config: saved });
     }).catch((err) => {
-      sendResponse({ success: false, error: err.message });
+      sendResponse({ success: false, error: err.message, unlisted: !!err.unlisted });
     });
     return true;
   } else if (message.action === 'deleteAiKey') {
@@ -1214,6 +1520,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   } else if (message.action === 'restoreSnoozed') {
     handleRestoreSnoozed(message, sendResponse);
     return true;
+  } else if (message && typeof message.action === 'string') {
+    // Every action gets a reply. A page newer than this worker (the files
+    // changed on disk, the worker did not) learns that here instead of from
+    // a silently closed message port.
+    sendResponse({ success: false, error: 'unknown-action', protocol: AI_PROTOCOL });
   }
 });
 
@@ -1225,7 +1536,7 @@ const settle = (ms = 200) => new Promise((resolve) => setTimeout(resolve, ms));
 async function handleSortAllWindows(respectGroups = true, sendResponse) {
   try {
     const windows = await chrome.windows.getAll({ populate: true });
-    console.log('[Tab Organizer] Sorting tabs in', windows.length, 'windows', respectGroups ? '(preserving groups)' : '(individual tabs)');
+    console.log('[Huddle] Sorting tabs in', windows.length, 'windows', respectGroups ? '(preserving groups)' : '(individual tabs)');
 
     // Sort tabs within each window
     let unsorted = 0;
@@ -1236,7 +1547,7 @@ async function handleSortAllWindows(respectGroups = true, sendResponse) {
       throw new Error(`${unsorted} of ${windows.length} windows couldn't be sorted. Try again.`);
     }
 
-    console.log('[Tab Organizer] Completed sortAllWindows');
+    console.log('[Huddle] Completed sortAllWindows');
     sendResponse({
       success: true,
       tabs: windows.reduce((sum, w) => sum + w.tabs.length, 0),
@@ -1244,7 +1555,7 @@ async function handleSortAllWindows(respectGroups = true, sendResponse) {
     });
 
   } catch (error) {
-    console.error('[Tab Organizer] Error in sortAllWindows:', error);
+    console.error('[Huddle] Error in sortAllWindows:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -1252,17 +1563,17 @@ async function handleSortAllWindows(respectGroups = true, sendResponse) {
 async function handleSortCurrentWindow(respectGroups = true, sendResponse) {
   try {
     const tabs = await chrome.tabs.query({ currentWindow: true });
-    console.log('[Tab Organizer] Sorting tabs in current window', respectGroups ? '(preserving groups)' : '(individual tabs)');
+    console.log('[Huddle] Sorting tabs in current window', respectGroups ? '(preserving groups)' : '(individual tabs)');
 
     if (!(await sortWindowTabs(tabs[0].windowId, respectGroups))) {
       throw new Error('The window couldn\'t be sorted. Try again.');
     }
 
-    console.log('[Tab Organizer] Completed sortCurrentWindow');
+    console.log('[Huddle] Completed sortCurrentWindow');
     sendResponse({ success: true, tabs: tabs.length });
 
   } catch (error) {
-    console.error('[Tab Organizer] Error in sortCurrentWindow:', error);
+    console.error('[Huddle] Error in sortCurrentWindow:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -1298,7 +1609,7 @@ async function handleExtractDomain(message, sendResponse) {
   try {
     const targetDomain = lexHost(message.url);
     const respectGroups = message.respectGroups !== undefined ? message.respectGroups : true;
-    console.log('[Tab Organizer] Extracting domain:', targetDomain, respectGroups ? '(preserving groups)' : '(individual tabs)');
+    console.log('[Huddle] Extracting domain:', targetDomain, respectGroups ? '(preserving groups)' : '(individual tabs)');
 
     // Moving tabs to the new window dissolves their splits; record them first.
     const splitPairs = await captureSplitPairs();
@@ -1332,7 +1643,7 @@ async function handleExtractDomain(message, sendResponse) {
         await chrome.tabs.move(tabIds, { windowId: newWindow.id, index: -1 });
         moved = tabIds.length;
       }
-      console.log('[Tab Organizer] Moved', moved, 'of', tabsToMove.length, 'tabs to new window');
+      console.log('[Huddle] Moved', moved, 'of', tabsToMove.length, 'tabs to new window');
     }
     await restoreSplitPairs(splitPairs);
 
@@ -1343,7 +1654,7 @@ async function handleExtractDomain(message, sendResponse) {
     // Activate the original active tab
     await chrome.tabs.update(message.tabId, { active: true });
 
-    console.log('[Tab Organizer] Completed extractDomain');
+    console.log('[Huddle] Completed extractDomain');
 
     // The active tab went into the new window too.
     sendResponse({
@@ -1355,7 +1666,7 @@ async function handleExtractDomain(message, sendResponse) {
     });
 
   } catch (error) {
-    console.error('[Tab Organizer] Error in extractDomain:', error);
+    console.error('[Huddle] Error in extractDomain:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -1364,24 +1675,24 @@ async function handleExtractDomain(message, sendResponse) {
 async function handleRemoveDuplicatesWindow(respectGroups = true, sendResponse) {
   try {
     const tabs = await chrome.tabs.query({ currentWindow: true });
-    console.log('[Tab Organizer] Removing duplicates in current window', respectGroups ? '(respecting groups)' : '(individual tabs)');
+    console.log('[Huddle] Removing duplicates in current window', respectGroups ? '(respecting groups)' : '(individual tabs)');
 
     const { tabsToRemove } = findDuplicateTabs([tabs], respectGroups);
 
     if (tabsToRemove.length > 0) {
       await chrome.tabs.remove(tabsToRemove);
-      console.log('[Tab Organizer] Removed', tabsToRemove.length, 'duplicate tabs from current window');
+      console.log('[Huddle] Removed', tabsToRemove.length, 'duplicate tabs from current window');
     }
 
     // Sort remaining tabs in the current window
     await settle();
     const sorted = await sortWindowTabs(tabs[0].windowId, respectGroups);
-    console.log('[Tab Organizer] Completed removeDuplicatesWindow');
+    console.log('[Huddle] Completed removeDuplicatesWindow');
 
     sendResponse({ success: true, removed: tabsToRemove.length, sortFailed: !sorted });
 
   } catch (error) {
-    console.error('[Tab Organizer] Error in removeDuplicatesWindow:', error);
+    console.error('[Huddle] Error in removeDuplicatesWindow:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -1390,14 +1701,14 @@ async function handleRemoveDuplicatesWindow(respectGroups = true, sendResponse) 
 async function handleRemoveDuplicatesAllWindows(respectGroups = true, sendResponse) {
   try {
     const windows = await chrome.windows.getAll({ populate: true });
-    console.log('[Tab Organizer] Removing duplicates in', windows.length, 'windows separately', respectGroups ? '(respecting groups)' : '(individual tabs)');
+    console.log('[Huddle] Removing duplicates in', windows.length, 'windows separately', respectGroups ? '(respecting groups)' : '(individual tabs)');
 
     const windowTabArrays = windows.map(window => window.tabs);
     const { tabsToRemove } = findDuplicateTabs(windowTabArrays, respectGroups);
 
     if (tabsToRemove.length > 0) {
       await chrome.tabs.remove(tabsToRemove);
-      console.log('[Tab Organizer] Removed', tabsToRemove.length, 'duplicate tabs across all windows');
+      console.log('[Huddle] Removed', tabsToRemove.length, 'duplicate tabs across all windows');
     }
 
     // Sort all windows
@@ -1406,12 +1717,12 @@ async function handleRemoveDuplicatesAllWindows(respectGroups = true, sendRespon
     for (const window of windows) {
       if (!(await sortWindowTabs(window.id, respectGroups))) unsorted++;
     }
-    console.log('[Tab Organizer] Completed removeDuplicatesAllWindows');
+    console.log('[Huddle] Completed removeDuplicatesAllWindows');
 
     sendResponse({ success: true, removed: tabsToRemove.length, sortFailed: unsorted > 0 });
 
   } catch (error) {
-    console.error('[Tab Organizer] Error in removeDuplicatesAllWindows:', error);
+    console.error('[Huddle] Error in removeDuplicatesAllWindows:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -1420,7 +1731,7 @@ async function handleRemoveDuplicatesAllWindows(respectGroups = true, sendRespon
 async function handleRemoveDuplicatesGlobally(respectGroups = true, sendResponse) {
   try {
     const windows = await chrome.windows.getAll({ populate: true });
-    console.log('[Tab Organizer] Removing duplicates globally across all windows', respectGroups ? '(respecting groups)' : '(individual tabs)');
+    console.log('[Huddle] Removing duplicates globally across all windows', respectGroups ? '(respecting groups)' : '(individual tabs)');
 
     // Flatten all tabs from all windows for global deduplication
     const allTabs = windows.flatMap(window => window.tabs);
@@ -1428,7 +1739,7 @@ async function handleRemoveDuplicatesGlobally(respectGroups = true, sendResponse
 
     if (tabsToRemove.length > 0) {
       await chrome.tabs.remove(tabsToRemove);
-      console.log('[Tab Organizer] Removed', tabsToRemove.length, 'duplicate tabs globally');
+      console.log('[Huddle] Removed', tabsToRemove.length, 'duplicate tabs globally');
     }
 
     // Sort all windows
@@ -1437,12 +1748,12 @@ async function handleRemoveDuplicatesGlobally(respectGroups = true, sendResponse
     for (const window of windows) {
       if (!(await sortWindowTabs(window.id, respectGroups))) unsorted++;
     }
-    console.log('[Tab Organizer] Completed removeDuplicatesGlobally');
+    console.log('[Huddle] Completed removeDuplicatesGlobally');
 
     sendResponse({ success: true, removed: tabsToRemove.length, sortFailed: unsorted > 0 });
 
   } catch (error) {
-    console.error('[Tab Organizer] Error in removeDuplicatesGlobally:', error);
+    console.error('[Huddle] Error in removeDuplicatesGlobally:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -1564,7 +1875,7 @@ async function analyzeDomainDistribution(excludeTabId) {
       domainTabs
     };
   } catch (error) {
-    console.error('[Tab Organizer] Error analyzing domain distribution:', error);
+    console.error('[Huddle] Error analyzing domain distribution:', error);
     throw error;
   }
 }
@@ -1604,7 +1915,7 @@ function createConfirmationDialogUrl(domainAnalysis) {
 // Handle Extract All Domains functionality
 async function handleExtractAllDomains(respectGroups = true, sendResponse) {
   try {
-    console.log('[Tab Organizer] Starting Extract All Domains', respectGroups ? '(preserving groups)' : '(individual tabs)');
+    console.log('[Huddle] Starting Extract All Domains', respectGroups ? '(preserving groups)' : '(individual tabs)');
 
     // Analyze all domains and their tab counts
     const domainAnalysis = await analyzeDomainDistribution();
@@ -1614,7 +1925,7 @@ async function handleExtractAllDomains(respectGroups = true, sendResponse) {
     const needsConfirmation = totalWindowsToCreate > 5;
 
     if (needsConfirmation) {
-      console.log('[Tab Organizer] Many windows would be created, requesting confirmation');
+      console.log('[Huddle] Many windows would be created, requesting confirmation');
 
       // Create a confirmation dialog using the separate HTML file
       const confirmationUrl = createConfirmationDialogUrl(domainAnalysis);
@@ -1630,11 +1941,11 @@ async function handleExtractAllDomains(respectGroups = true, sendResponse) {
         splitConfirmWaiters.set(confirmTab.id, resolve);
       });
       await chrome.storage.session.set({ [splitConfirmKey(confirmTab.id)]: { respectGroups } })
-        .catch((error) => console.error('[Tab Organizer] Could not save the Split domains request:', error));
+        .catch((error) => console.error('[Huddle] Could not save the Split domains request:', error));
 
       const confirmed = await confirmationPromise;
       if (!confirmed) {
-        console.log('[Tab Organizer] User cancelled Extract All Domains');
+        console.log('[Huddle] User cancelled Extract All Domains');
         sendResponse({ success: true, cancelled: true });
         return;
       }
@@ -1643,7 +1954,7 @@ async function handleExtractAllDomains(respectGroups = true, sendResponse) {
     sendResponse(await extractAndSortAllDomains(domainAnalysis, respectGroups));
 
   } catch (error) {
-    console.error('[Tab Organizer] Error in Extract All Domains:', error);
+    console.error('[Huddle] Error in Extract All Domains:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -1659,7 +1970,7 @@ async function extractAndSortAllDomains(domainAnalysis, respectGroups) {
   for (const window of windows) {
     if (!(await sortWindowTabs(window.id, respectGroups))) unsorted++;
   }
-  console.log('[Tab Organizer] Completed Extract All Domains');
+  console.log('[Huddle] Completed Extract All Domains');
 
   return { success: true, windows: created, notMoved, sortFailed: unsorted > 0 };
 }
@@ -1701,7 +2012,7 @@ async function handleExtractAllDomainsConfirmation(message, sender, sendResponse
     sendResponse(result);
     closeDialog();
   } catch (error) {
-    console.error('[Tab Organizer] Error in Extract All Domains confirmation:', error);
+    console.error('[Huddle] Error in Extract All Domains confirmation:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -1721,7 +2032,7 @@ async function performExtractAllDomains(domainAnalysis, respectGroups = true) {
     }
   };
   try {
-    console.log('[Tab Organizer] Performing extraction for', domainAnalysis.extractableDomains.length, 'domains', respectGroups ? '(preserving groups)' : '(individual tabs)');
+    console.log('[Huddle] Performing extraction for', domainAnalysis.extractableDomains.length, 'domains', respectGroups ? '(preserving groups)' : '(individual tabs)');
 
     // Moving tabs between windows dissolves their splits; record them first.
     const splitPairs = await captureSplitPairs();
@@ -1745,12 +2056,12 @@ async function performExtractAllDomains(domainAnalysis, respectGroups = true) {
       // Move other tabs from this domain to the new window
       await moveInto(domainTabs.slice(1), newWindow.id);
 
-      console.log('[Tab Organizer] Created window for domain:', domain, 'with', domainTabs.length, 'tabs');
+      console.log('[Huddle] Created window for domain:', domain, 'with', domainTabs.length, 'tabs');
     }
 
     // Phase 2: Create one "Miscellaneous" window for all single-tab domains
     if (domainAnalysis.singleTabDomains.length > 0) {
-      console.log('[Tab Organizer] Creating miscellaneous window for', domainAnalysis.singleTabDomains.length, 'single-tab domains');
+      console.log('[Huddle] Creating miscellaneous window for', domainAnalysis.singleTabDomains.length, 'single-tab domains');
 
       // Use the first single-tab domain as the anchor
       const firstSingleDomain = domainAnalysis.singleTabDomains[0];
@@ -1772,16 +2083,16 @@ async function performExtractAllDomains(domainAnalysis, respectGroups = true) {
 
       await moveInto(singleTabsToMove, miscWindow.id);
 
-      console.log('[Tab Organizer] Created miscellaneous window with', domainAnalysis.singleTabDomains.length, 'single-tab domains');
+      console.log('[Huddle] Created miscellaneous window with', domainAnalysis.singleTabDomains.length, 'single-tab domains');
     }
 
     await restoreSplitPairs(splitPairs);
 
-    console.log('[Tab Organizer] Extract All Domains extraction phase completed');
+    console.log('[Huddle] Extract All Domains extraction phase completed');
     return { windows, notMoved };
 
   } catch (error) {
-    console.error('[Tab Organizer] Error in performExtractAllDomains:', error);
+    console.error('[Huddle] Error in performExtractAllDomains:', error);
     throw error;
   }
 }
@@ -1847,7 +2158,7 @@ async function moveTabsIntoSortedOrder(windowId, respectGroups = true) {
       await sortWindowTabsOnce(windowId, respectGroups);
       return true;
     } catch (error) {
-      console.error(`[Tab Organizer] Error sorting window tabs (attempt ${attempt}):`, error);
+      console.error(`[Huddle] Error sorting window tabs (attempt ${attempt}):`, error);
     }
   }
   return false;
@@ -1981,7 +2292,7 @@ async function handleFlattenWindow(sendResponse) {
       .filter(tab => tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE)
       .map(tab => tab.id);
 
-    console.log('[Tab Organizer] Flattening current window,', groupedTabIds.length, 'grouped tabs');
+    console.log('[Huddle] Flattening current window,', groupedTabIds.length, 'grouped tabs');
 
     if (groupedTabIds.length > 0) {
       await chrome.tabs.ungroup(groupedTabIds);
@@ -1989,7 +2300,7 @@ async function handleFlattenWindow(sendResponse) {
 
     sendResponse({ success: true, ungrouped: groupedTabIds.length });
   } catch (error) {
-    console.error('[Tab Organizer] Error in flattenWindow:', error);
+    console.error('[Huddle] Error in flattenWindow:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -2035,7 +2346,7 @@ async function handleCompactWindow(sendResponse) {
     const tabs = await chrome.tabs.query({ currentWindow: true });
     const pairs = planCompactPairs(tabs);
 
-    console.log('[Tab Organizer] Compacting current window into', pairs.length, 'split views');
+    console.log('[Huddle] Compacting current window into', pairs.length, 'split views');
 
     // One pair at a time: a rejected pair (e.g. a tab closed meanwhile) must
     // not stop the rest.
@@ -2047,13 +2358,13 @@ async function handleCompactWindow(sendResponse) {
         paired++;
       } catch (error) {
         failed++;
-        console.error('[Tab Organizer] Could not split tabs', pair, error);
+        console.error('[Huddle] Could not split tabs', pair, error);
       }
     }
 
     sendResponse({ success: true, paired, failed });
   } catch (error) {
-    console.error('[Tab Organizer] Error in compactWindow:', error);
+    console.error('[Huddle] Error in compactWindow:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -2067,7 +2378,7 @@ async function handleExpandWindow(sendResponse) {
     const tabs = await chrome.tabs.query({ currentWindow: true });
     const splitIds = [...new Set(tabs.map(tabSplitViewId).filter(id => id !== null))];
 
-    console.log('[Tab Organizer] Expanding', splitIds.length, 'split views in current window');
+    console.log('[Huddle] Expanding', splitIds.length, 'split views in current window');
 
     let unsplit = 0;
     let failed = 0;
@@ -2077,13 +2388,13 @@ async function handleExpandWindow(sendResponse) {
         unsplit++;
       } catch (error) {
         failed++;
-        console.error('[Tab Organizer] Could not unsplit', splitId, error);
+        console.error('[Huddle] Could not unsplit', splitId, error);
       }
     }
 
     sendResponse({ success: true, unsplit, failed });
   } catch (error) {
-    console.error('[Tab Organizer] Error in expandWindow:', error);
+    console.error('[Huddle] Error in expandWindow:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -2112,7 +2423,7 @@ async function captureSplitPairs(windowIds = null) {
     }
     return [...bySplit.values()].filter(ids => ids.length === 2);
   } catch (error) {
-    console.error('[Tab Organizer] Could not record split pairs:', error);
+    console.error('[Huddle] Could not record split pairs:', error);
     return [];
   }
 }
@@ -2138,7 +2449,7 @@ async function restoreSplitPairs(pairs) {
       await chrome.tabs.createSplit([left.id, right.id]);
       restored++;
     } catch (error) {
-      console.error('[Tab Organizer] Could not restore split', [left.id, right.id], error);
+      console.error('[Huddle] Could not restore split', [left.id, right.id], error);
     }
   }
   return restored;
@@ -2148,7 +2459,7 @@ async function handleCopyTabs(respectGroups = true, sendResponse, scope = 'all')
   try {
     const scopeLabel = scope === 'window' ? 'current window' : 'all windows';
     console.log(
-      '[Tab Organizer] Copying tabs from',
+      '[Huddle] Copying tabs from',
       scopeLabel,
       respectGroups ? '(preserving groups)' : '(individual tabs)'
     );
@@ -2166,7 +2477,7 @@ async function handleCopyTabs(respectGroups = true, sendResponse, scope = 'all')
 
     sendResponse({ success: true, text, tabCount: tabs.length });
   } catch (error) {
-    console.error('[Tab Organizer] Error in copyTabs:', error);
+    console.error('[Huddle] Error in copyTabs:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -2174,10 +2485,10 @@ async function handleCopyTabs(respectGroups = true, sendResponse, scope = 'all')
 async function handleMoveAllToSingleWindow(message, sendResponse) {
   try {
     const windows = await chrome.windows.getAll({ populate: true });
-    console.log('[Tab Organizer] Moving tabs from', windows.length, 'windows to single window');
+    console.log('[Huddle] Moving tabs from', windows.length, 'windows to single window');
 
     if (windows.length <= 1) {
-      console.log('[Tab Organizer] Only one window exists, nothing to move');
+      console.log('[Huddle] Only one window exists, nothing to move');
       sendResponse({ success: true, moved: 0 });
       return;
     }
@@ -2212,7 +2523,7 @@ async function handleMoveAllToSingleWindow(message, sendResponse) {
     }
 
     if (tabsToMove.length === 0) {
-      console.log('[Tab Organizer] No unpinned tabs to move');
+      console.log('[Huddle] No unpinned tabs to move');
       sendResponse({ success: true, moved: 0 });
       return;
     }
@@ -2232,13 +2543,13 @@ async function handleMoveAllToSingleWindow(message, sendResponse) {
     }
     await restoreSplitPairs(splitPairs);
 
-    console.log('[Tab Organizer] Moved', moved, 'of', tabsToMove.length, 'unpinned tabs to single window');
+    console.log('[Huddle] Moved', moved, 'of', tabsToMove.length, 'unpinned tabs to single window');
 
     // Wait a moment for tabs to settle, then sort tabs in the target window
     await settle();
     const sorted = await sortWindowTabs(targetWindow.id, respectGroups);
 
-    console.log('[Tab Organizer] Completed moveAllToSingleWindow');
+    console.log('[Huddle] Completed moveAllToSingleWindow');
 
     // Bring the target window into focus
     await chrome.windows.update(targetWindow.id, { focused: true });
@@ -2251,7 +2562,7 @@ async function handleMoveAllToSingleWindow(message, sendResponse) {
     sendResponse({ success: true, moved, notMoved: tabsToMove.length - moved, sortFailed: !sorted });
 
   } catch (error) {
-    console.error('[Tab Organizer] Error in moveAllToSingleWindow:', error);
+    console.error('[Huddle] Error in moveAllToSingleWindow:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -2682,7 +2993,7 @@ async function handleSnoozeTab(message, sendResponse) {
     );
     sendResponse(result);
   } catch (error) {
-    console.error('[Tab Organizer] Error in snoozeTab:', error);
+    console.error('[Huddle] Error in snoozeTab:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -2704,7 +3015,7 @@ async function handleSnoozeSelected(message, sendResponse) {
     );
     sendResponse(result);
   } catch (error) {
-    console.error('[Tab Organizer] Error in snoozeSelected:', error);
+    console.error('[Huddle] Error in snoozeSelected:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -2727,7 +3038,7 @@ async function handleSnoozeWindow(message, sendResponse) {
     );
     sendResponse(result);
   } catch (error) {
-    console.error('[Tab Organizer] Error in snoozeWindow:', error);
+    console.error('[Huddle] Error in snoozeWindow:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -2763,7 +3074,7 @@ async function handleSnoozeGroup(message, sendResponse) {
     );
     sendResponse(result);
   } catch (error) {
-    console.error('[Tab Organizer] Error in snoozeGroup:', error);
+    console.error('[Huddle] Error in snoozeGroup:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -2835,7 +3146,7 @@ async function restoreSnoozedRecord(record) {
           createdTabs.push(await chrome.tabs.create({ windowId, url: t.url, active: false }));
         } catch (e) {
           createdTabs.push(null);
-          console.warn('[Tab Organizer] Failed to restore snoozed tab:', t.url, e && e.message);
+          console.warn('[Huddle] Failed to restore snoozed tab:', t.url, e && e.message);
         }
       }
       const opened = createdTabs.some(Boolean);
@@ -2917,7 +3228,7 @@ async function restoreSnoozedRecord(record) {
       if (firstTabId === undefined) firstTabId = created.id;
     } catch (e) {
       failedCount++;
-      console.warn('[Tab Organizer] Failed to restore snoozed tab:', t.url, e && e.message);
+      console.warn('[Huddle] Failed to restore snoozed tab:', t.url, e && e.message);
     }
   }
 
@@ -3033,7 +3344,7 @@ async function restorePoppedRecord(record, options = {}) {
     // popped from storage — without this recovery it would be gone for good.
     // Re-persist it (under the same lock used everywhere else) and arm a
     // near-future retry so the tabs are never permanently lost.
-    console.error('[Tab Organizer] restoreSnoozedRecord failed; re-persisting snoozed record to avoid data loss:', error);
+    console.error('[Huddle] restoreSnoozedRecord failed; re-persisting snoozed record to avoid data loss:', error);
     await withSnoozeLock(async () => {
       const items = await loadSnoozedItems();
       items.push(record);
@@ -3121,7 +3432,7 @@ async function handleWakeNow(message, sendResponse) {
     // A partial wake is still a wake; the counts let the page say what failed.
     sendResponse({ success: true, createdCount, failedCount });
   } catch (error) {
-    console.error('[Tab Organizer] Error in wakeSnoozed:', error);
+    console.error('[Huddle] Error in wakeSnoozed:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -3146,7 +3457,7 @@ async function handleCancelSnooze(message, sendResponse) {
     }
     sendResponse({ success: removed !== null, record: removed || undefined });
   } catch (error) {
-    console.error('[Tab Organizer] Error in cancelSnoozed:', error);
+    console.error('[Huddle] Error in cancelSnoozed:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -3170,7 +3481,7 @@ async function handleRestoreSnoozed(message, sendResponse) {
     if (restored) await scheduleSnoozeAlarm(record);
     sendResponse({ success: restored });
   } catch (error) {
-    console.error('[Tab Organizer] Error in restoreSnoozed:', error);
+    console.error('[Huddle] Error in restoreSnoozed:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -3181,7 +3492,7 @@ async function handleListSnoozed(sendResponse) {
     items.sort((a, b) => a.wakeAt - b.wakeAt);
     sendResponse({ success: true, items });
   } catch (error) {
-    console.error('[Tab Organizer] Error in listSnoozed:', error);
+    console.error('[Huddle] Error in listSnoozed:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
@@ -3246,7 +3557,7 @@ async function reconcileSnoozeAlarms() {
       }
     }
   } catch (error) {
-    console.error('[Tab Organizer] Error reconciling snooze alarms:', error);
+    console.error('[Huddle] Error reconciling snooze alarms:', error);
   }
 }
 

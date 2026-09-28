@@ -43,6 +43,12 @@
   font-family: var(--mono);
 }
 
+/* Mono is for the key itself; the placeholder is words. */
+.ai-form .key-input::placeholder {
+  font-family: var(--ui);
+  letter-spacing: normal;
+}
+
 .key-input-wrapper {
   position: relative;
 }
@@ -80,12 +86,28 @@
 }
 
 .ai-form .field-help,
-.ai-form .model-cost,
 .ai-form .model-schema-hint,
 .ai-form .models-status {
   font-size: 12.5px;
   color: var(--tx-dim);
   margin-top: 6px;
+}
+
+/* The chosen model under the list, named, so it reads right even when the
+   filter hides its row. */
+.ai-form .model-choice {
+  font-size: 13px;
+  color: var(--tx);
+  margin: 8px 0 0;
+}
+
+.ai-form .model-schema-hint {
+  margin-bottom: 0;
+}
+
+.ai-form .model-choice:empty,
+.ai-form .model-schema-hint:empty {
+  display: none;
 }
 
 .ai-form .field-help[hidden] {
@@ -96,21 +118,30 @@
   margin-bottom: 8px;
 }
 
-/* The native listbox, themed: 8 whole rows (no half-cut last row), the
-   selected row in the action tint, and quiet group headers. */
+/* The native listbox, themed: every row (options and the group headers) is
+   one fixed 26px line, so the box is exactly 8 whole rows plus its padding;
+   the selected row takes the action tint, and group headers stay quiet. */
 .ai-form .model-select {
-  height: calc(8 * 1.85em + 8px);
+  height: calc(8 * 26px + 10px);
   padding: 4px;
   font-size: 13.5px;
 }
 
+.ai-form .model-select[hidden] {
+  display: none;
+}
+
 /* Options set their own font: Chrome applies an optgroup's font to its
-   options, which would shrink the rows and break the 8-row height. */
+   options, which would change the row height. */
 .ai-form .model-select option {
-  font: 400 13.5px/1.25 var(--ui);
-  padding: .3em .5em;
+  font: 400 13.5px/20px var(--ui);
+  height: 26px;
+  padding: 3px 8px;
   border-radius: 5px;
   color: var(--tx);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* A gradient is the one background Chrome lets a selected option keep. */
@@ -121,9 +152,21 @@
 }
 
 .ai-form .model-select optgroup {
-  font-size: 11.5px;
-  font-weight: 700;
+  font: 700 11.5px/26px var(--ui);
   color: var(--tx-dim);
+}
+
+.ai-form .models-empty {
+  margin: 0;
+  padding: 14px 12px;
+  border: 1px dashed var(--bd-hi);
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--tx-dim);
+}
+
+.ai-form .models-empty[hidden] {
+  display: none;
 }
 
 .model-actions {
