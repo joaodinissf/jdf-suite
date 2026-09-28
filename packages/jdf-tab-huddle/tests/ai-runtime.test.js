@@ -98,6 +98,7 @@ describe('callOpenRouter - error status mapping', () => {
       status: 503,
       model: 'some/model',
       responseFormat: 'json_object',
+      requireParameters: false,
       detail: { message: 'No endpoints available', provider: '' },
     });
     spy.mockRestore();
@@ -232,12 +233,12 @@ describe('callOpenRouter - non-streaming JSON fallback', () => {
 });
 
 describe('callOpenRouter - structured output options', () => {
-  test('sends json_schema body when useJsonSchema is true', async () => {
+  test('sends a json_schema body when the model takes structured outputs', async () => {
     global.fetch = vi.fn().mockResolvedValue(makeNonStreamingResponse('{"groups":[]}'));
     const jsonSchema = buildTabGroupsJsonSchema([1, 2]);
 
     await callOpenRouter('key', 'model', [{ role: 'user', content: 'hi' }], null, {
-      useJsonSchema: true,
+      params: ['max_tokens', 'response_format', 'structured_outputs'],
       jsonSchema,
     });
 
@@ -253,7 +254,7 @@ describe('callOpenRouter - structured output options', () => {
       .mockResolvedValueOnce(makeNonStreamingResponse('{"groups":[]}'));
 
     const result = await callOpenRouter('key', 'model', [], null, {
-      useJsonSchema: true,
+      params: ['max_tokens', 'response_format', 'structured_outputs'],
       jsonSchema: buildTabGroupsJsonSchema([1]),
     });
 
@@ -269,7 +270,7 @@ describe('callOpenRouter - structured output options', () => {
   test('does not retry when json_object request fails', async () => {
     global.fetch = vi.fn().mockResolvedValue(makeErrorResponse(500));
     await expect(
-      callOpenRouter('key', 'model', [], null, { useJsonSchema: false })
+      callOpenRouter('key', 'model', [], null, { params: ['response_format'] })
     ).rejects.toMatchObject({ status: 500 });
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
@@ -278,7 +279,7 @@ describe('callOpenRouter - structured output options', () => {
     global.fetch = vi.fn().mockResolvedValue(makeErrorResponse(401));
     await expect(
       callOpenRouter('key', 'model', [], null, {
-        useJsonSchema: true,
+        params: ['max_tokens', 'response_format', 'structured_outputs'],
         jsonSchema: buildTabGroupsJsonSchema([1]),
       })
     ).rejects.toMatchObject({ status: 401 });

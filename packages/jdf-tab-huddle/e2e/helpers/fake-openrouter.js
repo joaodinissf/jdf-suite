@@ -12,6 +12,8 @@ export const BAD_KEY = 'sk-or-e2e-bad';
 
 const TEXT = { output_modalities: ['text'] };
 const JSON_PARAMS = ['max_tokens', 'temperature', 'response_format'];
+const LUNA_PARAMS = ['include_reasoning', 'max_completion_tokens', 'max_tokens', 'reasoning',
+  'reasoning_effort', 'response_format', 'seed', 'structured_outputs', 'tool_choice', 'tools'];
 const model = (id, name, prompt, completion, extra = {}) => ({
   id,
   name,
@@ -24,7 +26,10 @@ const model = (id, name, prompt, completion, extra = {}) => ({
 export const CATALOG = [
   model('anthropic/claude-haiku-4.5', 'Anthropic: Claude Haiku 4.5', '0.000001', '0.000005',
     { supported_parameters: [...JSON_PARAMS, 'structured_outputs'] }),
-  model('openai/gpt-6-luna', 'OpenAI: GPT-6 Luna', '0.0000015', '0.000006'),
+  // Like the live catalog: GPT-6 Luna takes structured outputs but no
+  // temperature, so a strict request with one finds no provider.
+  model('openai/gpt-6-luna', 'OpenAI: GPT-6 Luna', '0.0000001', '0.0000005',
+    { supported_parameters: LUNA_PARAMS }),
   // Batch variants, marked in the id or only in the name: never offered.
   model('openai/gpt-6-luna:batch', 'OpenAI: GPT-6 Luna (batch)', '0.00000075', '0.000003'),
   model('openai/gpt-6-luna-batch', 'GPT-6 Luna (batch)', '0.00000075', '0.000003'),
@@ -35,6 +40,10 @@ export const CATALOG = [
     { supported_parameters: ['temperature'] }),
   // A provider refuses it with a 401 while the same key works elsewhere.
   model('deepseek/deepseek-v4-flash', 'DeepSeek: DeepSeek V4 Flash', '0.0000001', '0.0000004'),
+  // Lists structured outputs, but no provider honors a strict request for it
+  // (OpenRouter's 404 whatever the request carries): only the fallback works.
+  model('huddle-test/no-strict', 'Huddle Test: No Strict', '0.000001', '0.000001',
+    { supported_parameters: [...JSON_PARAMS, 'structured_outputs'] }),
   // Answers slowly (for reloads and worker stops mid-run).
   model('huddle-test/slow', 'Huddle Test: Slow', '0.000001', '0.000001'),
 ];
@@ -53,6 +62,27 @@ export function siteUrls() {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// What OpenRouter says when require_parameters leaves no provider.
+export const NO_ENDPOINTS = 'No endpoints found that can handle the requested parameters. To learn more about provider routing, visit: https://openrouter.ai/docs/guides/routing/provider-selection';
+
+// The body's parameters a provider has to honor, as OpenRouter counts them
+// (a json_schema answer format needs structured_outputs as well).
+function requestedParameters(body) {
+  const asked = Object.keys(body).filter((k) => !['model', 'messages', 'stream', 'provider'].includes(k));
+  if (body.response_format && body.response_format.type === 'json_schema') asked.push('structured_outputs');
+  return asked;
+}
+
+// With provider.require_parameters, a request carrying any parameter the
+// model does not list routes nowhere: the 404 the real service sends.
+function refusedByRouting(body) {
+  if (!(body.provider && body.provider.require_parameters)) return false;
+  if (body.model === 'huddle-test/no-strict') return true;
+  const entry = CATALOG.find((m) => m.id === body.model);
+  if (!entry) return false;
+  return requestedParameters(body).some((p) => !entry.supported_parameters.includes(p));
+}
 
 function jsonReply(status, obj) {
   return { status, headers: { 'content-type': 'application/json' }, body: JSON.stringify(obj) };
@@ -113,9 +143,17 @@ export async function installFakeOpenRouter(context, { slowMs = 4000 } = {}) {
         : jsonReply(401, { error: { code: 401, message: 'User not found.' } });
     } else if (path === '/api/v1/chat/completions') {
       const body = JSON.parse(req.postData() || '{}');
-      log.chats.push({ model: body.model, prompt: (body.messages || []).map((m) => m.content).join('\n') });
+      log.chats.push({
+        model: body.model,
+        prompt: (body.messages || []).map((m) => m.content).join('\n'),
+        params: requestedParameters(body),
+        responseFormat: body.response_format ? body.response_format.type : null,
+        requireParameters: !!(body.provider && body.provider.require_parameters),
+      });
       if (key !== GOOD_KEY) {
         reply = jsonReply(401, { error: { code: 401, message: 'User not found.' } });
+      } else if (refusedByRouting(body)) {
+        reply = jsonReply(404, { error: { code: 404, message: NO_ENDPOINTS } });
       } else if (body.model === 'deepseek/deepseek-v4-flash') {
         reply = jsonReply(401, { error: { code: 401, message: 'User not found.', metadata: { provider_name: 'DeepInfra' } } });
       } else {

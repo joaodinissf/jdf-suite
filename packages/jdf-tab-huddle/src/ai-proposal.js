@@ -187,8 +187,18 @@ function savedDefaultModel() {
   return (aiConfig && aiConfig.model) || builtInDefaultModel || null;
 }
 
+// The default a run uses when none is picked here: the saved one, or the
+// first recommended model while the catalog no longer lists it.
+function defaultResolution() {
+  return HuddleAi.resolveDefaultModel(aiConfig, builtInDefaultModel, modelPicker);
+}
+
+function defaultModel() {
+  return defaultResolution().model || null;
+}
+
 function nextModel() {
-  return explicitModel || savedDefaultModel();
+  return explicitModel || defaultModel();
 }
 
 function modelLabel(id) {
@@ -240,6 +250,8 @@ function updateModelBar() {
       const next = ['Retry', 'Run again', 'Organize'].includes(label) ? `${label} uses` : 'The next run uses';
       setModelNote(`That run used ${ran}. ${next} ${modelLabel(id)}.`);
     }
+  } else if (!explicitModel) {
+    setModelNote(HuddleAi.defaultFallbackNote(defaultResolution(), modelPicker));
   } else {
     setModelNote('');
   }
@@ -294,7 +306,10 @@ function focusAfterPick() {
 function onPickerChange(id) {
   transientNote = '';
   const value = id || null;
-  explicitModel = value && value !== savedDefaultModel() ? value : null;
+  // The saved default counts as "no pick" even while the catalog lacks it:
+  // the picker reports it when the catalog loads, and the run then uses the
+  // stand-in the model bar names.
+  explicitModel = value && value !== defaultModel() && value !== savedDefaultModel() ? value : null;
   savePageState();
   updateModelBar();
   updateKeySection();

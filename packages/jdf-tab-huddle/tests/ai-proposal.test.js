@@ -854,3 +854,28 @@ describe('the raw output', () => {
     expect($('debugToggle').getAttribute('aria-expanded')).toBe('false');
   });
 });
+
+describe('a default the catalog no longer lists', () => {
+  test('the page says so and names the model it uses instead', async () => {
+    loadPage({ config: { ...KEYED, model: 'qwen/qwen3.5-flash-20260224' } });
+    await flush();
+    await flush();
+    expect($('modelName').textContent).toBe('Model One');
+    expect($('defaultTag').hidden).toBe(true);
+    expect($('modelNote').textContent)
+      .toBe('Your default Qwen 3.5 Flash is no longer on OpenRouter; using Model One.');
+    // Make default turns the stand-in into the saved default.
+    expect($('makeDefault').hidden).toBe(false);
+  });
+
+  test('offline (no catalog) the saved default stays, with no note', async () => {
+    loadPage({
+      config: { ...KEYED, model: 'qwen/qwen3.5-flash-20260224' },
+      replies: { loadOpenRouterModels: { success: false, models: MODELS, modelsMeta: { ...MODELS_META, fallback: true } } },
+    });
+    await flush();
+    await flush();
+    expect($('modelName').textContent).toBe('Qwen 3.5 Flash');
+    expect($('modelNote').textContent).toBe('');
+  });
+});
