@@ -19,7 +19,9 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 - **Copy this window / Copy all windows**: Copy tab URLs to the clipboard (current window only, or every window), paragraph-separated by tab group when Groups mode is on
 - **Organize with AI** (OpenRouter): the popup's Organize with AI opens the organize page, which proposes groups you can edit before applying them. When the chosen model supports structured outputs, Huddle requests a strict JSON schema; otherwise it uses JSON object mode. Responses are always reconciled so no input tab is dropped.
   - **Model for this run**: the organize page names the model at the top. Change it (recommended + full OpenRouter list, filterable, or a custom model id) and press Run again to re-run in the same tab; the choice applies to that run only, and **Make default** saves it as the default.
-  - **No key yet, or an expired one**: the organize page asks for the key inline (checked with OpenRouter before it is saved) and starts the run once it is saved.
+  - **No key yet, an expired one, or one OpenRouter rejects**: the organize page asks for the key inline (checked with OpenRouter before it is saved) and starts the run once it is saved. An expired key is deleted from the browser, not just hidden.
+  - **Errors say what to do**: a model or provider refusal offers Change model, a key problem the key form, Groups mode with nothing ungrouped offers Flat, and a stuck request can be stopped (Esc). A run always ends in a proposal, an error or "This run has ended", never a spinner that never stops. Cmd/Ctrl+Enter runs or applies.
+  - **After switching branches** in a clone, reload Huddle at `chrome://extensions`: Chrome keeps running the old background worker until then. The organize page notices and offers **Reload Huddle**.
   - **Settings → Organize with AI**: the key's status, replacing or deleting the key, when it expires, and the default model.
 
 ### Duplicate Management

@@ -224,11 +224,12 @@ describe('AI Service - Constants', () => {
     expect(AI_MODELS.length).toBeGreaterThanOrEqual(2);
   });
 
-  test('each model has id, name, and cost', () => {
+  test('each model has id, name, provider and pricing', () => {
     for (const model of AI_MODELS) {
       expect(model.id).toBeTruthy();
       expect(model.name).toBeTruthy();
-      expect(model.cost).toBeTruthy();
+      expect(model.provider).toBeTruthy();
+      expect(formatModelCost(model.pricing)).toMatch(/ in · .* out per M$/);
     }
   });
 

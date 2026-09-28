@@ -48,45 +48,70 @@
       line-height: 1.25;
     }
 
-    /* The model for this run: a purple group chip heading a one-line bar;
-       Change opens the shared picker (ai-config.css) under it. */
+    /* The model for the next run: a plain toolbar under the title (no group
+       chip or group line, so it never reads as a proposed group), with its
+       actions on the right. Change opens the shared picker (ai-config.css)
+       under it. It sits right above Run again and Retry, so the note it
+       shows after a pick is next to the button that uses the new model. */
     .model-bar {
-      background: var(--panel);
-      border: 1px solid var(--bd);
-      border-radius: 10px;
-      padding: 10px 16px;
-      margin: 0 0 20px;
+      border-top: 1px solid var(--bd);
+      border-bottom: 1px solid var(--bd);
+      padding: 10px 0;
+      margin: 0 0 24px;
+    }
+
+    .model-bar[hidden] {
+      display: none;
+    }
+
+    /* No model known yet (the config is loading): the bar keeps its room, so
+       nothing below it jumps, but shows no placeholder name. */
+    .model-bar.pending .model-bar-row {
+      visibility: hidden;
     }
 
     .model-bar-row {
       display: flex;
       align-items: center;
-      flex-wrap: wrap;
-      gap: 8px 12px;
+      gap: 8px;
+      min-width: 0;
     }
 
-    .model-bar .group-chip {
-      font-size: 12px;
-      padding: 2px 8px;
+    .model-label {
+      flex: none;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--tx-dim);
     }
 
     .model-name {
-      font-weight: 600;
+      flex: 0 1 auto;
       min-width: 0;
-      overflow-wrap: anywhere;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .default-tag {
-      font: 600 12px/1.4 var(--mono);
-      color: var(--tx-dim);
+      flex: none;
+      font: 600 11.5px/1.4 var(--ui);
+      color: var(--kbd-tx);
+      background: var(--kbd-bg);
+      border-radius: 5px;
+      padding: 0 6px;
     }
 
     .default-tag[hidden] {
       display: none;
     }
 
-    .model-bar .group-line {
-      min-width: 24px;
+    .model-bar-actions {
+      flex: none;
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 16px;
     }
 
     .model-note {
@@ -97,6 +122,18 @@
 
     .model-note:empty {
       display: none;
+    }
+
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
     }
 
     .model-panel {
@@ -131,24 +168,75 @@
       margin: 0 0 12px;
     }
 
-    .key-setup .error-msg {
+    .key-setup .field-error {
       margin-top: 12px;
     }
 
     .loading {
-      text-align: center;
-      padding: 60px 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 48px 0;
+    }
+
+    /* Focus moves here when a run starts, so a second Enter can't reach
+       Stop. It is not a control, so it shows no focus ring. */
+    .loading:focus,
+    .loading:focus-visible {
+      outline: none;
+    }
+
+    .loading-text {
+      margin: 0;
       font-size: 15px;
       color: var(--tx-dim);
     }
 
-    .error-msg {
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 2px solid var(--bd-hi);
+      border-top-color: var(--ac);
+      animation: spin .9s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .spinner {
+        animation: none;
+        border-top-color: var(--bd-hi);
+      }
+    }
+
+    .error-msg,
+    .field-error {
       padding: 12px 16px;
       background: var(--danger-soft);
       border: 1px solid var(--danger);
       border-radius: 8px;
       color: var(--danger);
       font-weight: 600;
+    }
+
+    .error-msg p {
+      margin: 0;
+    }
+
+    .field-error[hidden] {
+      display: none;
+    }
+
+    .compose > .error-msg,
+    .compose > .ended-msg,
+    #content > .error-msg,
+    #content > .ended-msg {
+      margin: 0 0 20px;
     }
 
     .apply-error {
@@ -211,9 +299,90 @@
       border-color: var(--bd-control-hi);
     }
 
-    .instructions textarea::placeholder {
+    .instructions textarea::placeholder,
+    .next-run textarea::placeholder {
       color: var(--tx-dim);
       opacity: 1;
+    }
+
+    .proposal-head {
+      margin: 0 0 10px;
+      font-size: 13.5px;
+      color: var(--tx-dim);
+    }
+
+    .proposal-head strong {
+      color: var(--tx);
+    }
+
+    /* The instructions Run again uses, folded away under the proposal head. */
+    .next-run {
+      margin: 0 0 16px;
+      font-size: 13.5px;
+    }
+
+    .next-run summary {
+      cursor: pointer;
+      color: var(--tx-dim);
+      font-weight: 600;
+      width: fit-content;
+      border-radius: 4px;
+    }
+
+    .next-run summary .summary-text {
+      font-weight: 400;
+    }
+
+    .next-run textarea {
+      display: block;
+      width: 100%;
+      margin-top: 8px;
+      font: 14px/1.5 var(--ui);
+      color: var(--tx);
+      background: var(--comp);
+      border: 1px solid var(--bd-control);
+      border-radius: 8px;
+      padding: 8px 12px;
+      resize: vertical;
+    }
+
+    .next-run textarea:hover {
+      border-color: var(--bd-control-hi);
+    }
+
+    /* Why Apply is disabled, readable without hovering. */
+    .proposal-warn {
+      margin: 0 0 16px;
+      padding: 10px 14px;
+      background: var(--warn-soft);
+      border: 1px solid var(--warn-edge);
+      border-radius: 8px;
+      font-size: 13.5px;
+    }
+
+    .group-empty {
+      margin: 0;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: var(--tx-dim);
+    }
+
+    .keys-hint {
+      margin: 12px 0 0;
+      font-size: 12px;
+      color: var(--tx-dim);
+    }
+
+    .keys-hint kbd {
+      display: inline-block;
+      min-width: 1.6em;
+      margin-right: 2px;
+      padding: 0 4px;
+      font: 700 10.5px/1.6 var(--mono);
+      text-align: center;
+      border-radius: 3px;
+      background: var(--kbd-bg);
+      color: var(--kbd-tx);
     }
 
     /* A proposed group is drawn like a Chrome tab group: its name is an
@@ -295,11 +464,11 @@
       display: none;
     }
 
-    .color-dot[aria-pressed="true"] {
+    .color-dot[aria-checked="true"] {
       box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--tx);
     }
 
-    .color-dot[aria-pressed="true"] svg {
+    .color-dot[aria-checked="true"] svg {
       display: block;
     }
 
@@ -310,6 +479,8 @@
     }
 
     .tab-list {
+      list-style: none;
+      margin: 0;
       padding: 4px 0;
     }
 
@@ -379,6 +550,15 @@
 
     .actions {
       margin: 0 0 20px;
+    }
+
+    .actions .actions-keys {
+      margin: 0 0 0 auto;
+      align-self: center;
+    }
+
+    .actions[hidden] {
+      display: none;
     }
 
     .form-actions {
@@ -492,27 +672,30 @@
         <h1>Organize with AI</h1>
       </div>
     </header>
-    <section id="modelBar" class="model-bar" data-group="purple" aria-label="Model for this run">
+    <section id="modelBar" class="model-bar pending" aria-label="Model">
       <div class="model-bar-row">
-        <span class="group-chip">Model</span>
-        <span id="modelName" class="model-name">Default model</span>
-        <span id="defaultTag" class="default-tag" hidden>default</span>
-        <button type="button" id="makeDefault" class="link-btn" hidden>Make default</button>
-        <button type="button" id="changeModel" class="link-btn" aria-expanded="false" aria-controls="modelPanel">Change</button>
-        <span class="group-line"></span>
-        <button type="button" id="runAgainButton" class="btn small" hidden>Run again</button>
+        <span class="model-label">Model</span>
+        <span id="modelName" class="model-name"></span>
+        <span id="defaultTag" class="default-tag" hidden>Default</span>
+        <span class="model-bar-actions">
+          <button type="button" id="makeDefault" class="link-btn" hidden>Make default</button>
+          <button type="button" id="changeModel" class="link-btn" aria-expanded="false" aria-controls="modelPanel">Change</button>
+        </span>
       </div>
       <p id="modelNote" class="model-note" role="status" aria-live="polite"></p>
       <div id="modelPanel" class="model-panel ai-form" hidden></div>
     </section>
-    <div id="actionsContainer" class="actions" style="display: none;">
-      <button class="btn primary confirm" id="applyButton">Apply groups</button>
-      <button class="btn cancel" id="cancelButton">Cancel</button>
+    <p id="runStatus" class="visually-hidden" role="status" aria-live="polite"></p>
+    <div id="actionsContainer" class="actions" hidden>
+      <button type="button" class="btn primary confirm" id="applyButton" aria-keyshortcuts="Meta+Enter Control+Enter">Apply groups</button>
+      <button type="button" class="btn" id="runAgainButton">Run again</button>
+      <button type="button" class="btn cancel" id="cancelButton" aria-keyshortcuts="Escape">Cancel</button>
+      <p class="keys-hint actions-keys" id="proposalKeys"></p>
     </div>
     <div id="content">
-      <div class="loading">Loading proposal…</div>
+      <div class="loading"><p class="loading-text">Loading…</p></div>
     </div>
-    <button class="debug-toggle" id="debugToggle" hidden>Show the model's raw output</button>
+    <button type="button" class="debug-toggle" id="debugToggle" aria-expanded="false" aria-controls="debugSection" hidden>Show the model's raw output</button>
     <div class="debug-section" id="debugSection"></div>
   </main>
   <script src="ai-config.js"></script>

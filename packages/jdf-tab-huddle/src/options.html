@@ -149,6 +149,38 @@
       color: var(--danger);
     }
 
+    /* An empty status line takes no room, so it never widens the spacing. */
+    .status:empty {
+      min-height: 0;
+      margin-top: 0;
+    }
+
+    /* A card's own feedback sits in its actions row, next to the button. */
+    .card-actions .status {
+      min-height: 0;
+      margin: 0;
+      align-self: center;
+    }
+
+    /* A warning, not an error: the key only needs entering again. */
+    .key-status-line strong.expired {
+      color: var(--warn-edge);
+    }
+
+    /* The question takes Delete key's place on the right. */
+    .confirm-delete {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 13.5px;
+    }
+
+    .confirm-delete[hidden] {
+      display: none;
+    }
+
     section + section {
       margin-top: 36px;
     }
@@ -300,27 +332,32 @@
         <p><strong>You are responsible for your API key.</strong> Huddle stores it in this browser with basic encoding. It is <strong>not encrypted</strong>: anyone with access to this computer could read it. Use a key with a spending limit on OpenRouter, keep the expiry short, and never share this browser profile.</p>
       </div>
 
-      <div class="card stack ai-form">
+      <form class="card stack ai-form" id="aiKeyCard" novalidate>
         <h3 class="card-title">Key</h3>
         <p class="key-status-line">Status: <strong id="aiKeyStatus">Loading…</strong></p>
         <div id="aiKeyForm"></div>
         <div id="aiKeyError" class="error-msg" role="alert" hidden></div>
         <div class="card-actions">
-          <button type="button" class="btn primary" id="aiSaveKey" disabled>Save key</button>
+          <button type="submit" class="btn primary" id="aiSaveKey" disabled>Save key</button>
+          <div id="ai-status" class="status" role="status" aria-live="polite"></div>
           <button type="button" class="btn danger" id="aiDeleteKey" hidden>Delete key</button>
+          <span class="confirm-delete" id="aiConfirmDelete" hidden>
+            <span>Delete the saved key?</span>
+            <button type="button" class="btn danger" id="aiConfirmDeleteYes">Delete</button>
+            <button type="button" class="btn" id="aiConfirmDeleteNo">Keep</button>
+          </span>
         </div>
-      </div>
+      </form>
 
-      <div class="card stack ai-form">
+      <form class="card stack ai-form" id="aiModelCard" novalidate>
         <h3 class="card-title">Default model</h3>
         <div id="aiModelPicker"></div>
         <div id="aiModelError" class="error-msg" role="alert" hidden></div>
         <div class="card-actions">
-          <button type="button" class="btn primary" id="aiSaveModel" disabled>Save default model</button>
+          <button type="submit" class="btn primary" id="aiSaveModel" disabled>Save default model</button>
+          <div id="ai-model-status" class="status" role="status" aria-live="polite"></div>
         </div>
-      </div>
-
-      <div id="ai-status" class="status" role="status" aria-live="polite"></div>
+      </form>
     </section>
   </main>
 

@@ -103,8 +103,23 @@ function showStatus(message, { error = false, target = 'clumping-status' } = {})
   statusEl.classList.toggle('error', error);
   statusEl.classList.add('visible');
   if (!error) {
-    statusHideTimers[target] = setTimeout(() => statusEl.classList.remove('visible'), 1800);
+    statusHideTimers[target] = setTimeout(() => {
+      statusEl.classList.remove('visible');
+      // Emptied after the fade, so the line gives its room back.
+      statusHideTimers[target] = setTimeout(() => { statusEl.textContent = ''; }, 350);
+    }, 1800);
   }
+}
+
+// Empties a status line at once, so an earlier "Saved" never sits next to a
+// new error.
+function clearStatus(target) {
+  const statusEl = document.getElementById(target);
+  if (!statusEl) return;
+  clearTimeout(statusHideTimers[target]);
+  statusHideTimers[target] = null;
+  statusEl.classList.remove('visible', 'error');
+  statusEl.textContent = '';
 }
 
 async function handleFormChange() {
@@ -123,6 +138,8 @@ let aiConfig = null;
 let aiBuiltInDefault = null;
 let aiKeyForm = null;
 let aiModelPicker = null;
+// An id the catalog does not list, which a second Save keeps anyway.
+let aiUnlistedConfirm = null;
 
 function showAiError(id, msg) {
   const el = document.getElementById(id);
@@ -133,14 +150,18 @@ function showAiError(id, msg) {
 
 function renderAiKeyState() {
   const status = document.getElementById('aiKeyStatus');
-  if (status) status.textContent = HuddleAi.keyStatusLabel(aiConfig);
+  const state = HuddleAi.keyState(aiConfig);
+  if (status) {
+    status.textContent = HuddleAi.keyStatusLabel(aiConfig);
+    status.classList.toggle('expired', state === 'expired');
+  }
   const hasKey = !!(aiConfig && aiConfig.key);
-  const expired = HuddleAi.isStoredKeyExpired(aiConfig);
   document.getElementById('aiDeleteKey').hidden = !hasKey;
+  document.getElementById('aiConfirmDelete').hidden = true;
   document.getElementById('aiSaveKey').textContent = hasKey ? 'Save' : 'Save key';
   // A usable key can stay, so the expiry alone can change. An expired key
-  // cannot be kept.
-  aiKeyForm.setKeepHint(hasKey && !expired
+  // cannot be kept (the background has already removed it).
+  aiKeyForm.setKeepHint(hasKey && state === null
     ? 'Leave the key blank to keep the one on file and only change when it expires.'
     : null);
 }
@@ -150,6 +171,7 @@ function renderAiKeyState() {
 async function saveAiKey() {
   const button = document.getElementById('aiSaveKey');
   showAiError('aiKeyError', '');
+  clearStatus('ai-status');
   button.disabled = true;
   const result = await aiKeyForm.collect({ storedConfig: aiConfig, allowKeep: true });
   if (!result.ok) {
@@ -161,7 +183,8 @@ async function saveAiKey() {
   try {
     response = await HuddleAi.request({
       action: 'saveAiConfig',
-      config: { key: result.key, expiryDuration: result.expiryDuration },
+      // A newly typed key restarts its countdown, even if it is the same key.
+      config: { key: result.key, expiryDuration: result.expiryDuration, renew: result.newKey },
     });
   } catch (err) {
     response = { success: false, error: err.message };
@@ -177,6 +200,21 @@ async function saveAiKey() {
   showStatus(result.newKey ? 'Key saved' : 'Expiry saved', { target: 'ai-status' });
 }
 
+// Delete asks first, in place: the key has to be pasted again from
+// OpenRouter to undo it.
+function askDeleteAiKey() {
+  clearStatus('ai-status');
+  document.getElementById('aiDeleteKey').hidden = true;
+  document.getElementById('aiConfirmDelete').hidden = false;
+  document.getElementById('aiConfirmDeleteNo').focus();
+}
+
+function keepAiKey() {
+  document.getElementById('aiConfirmDelete').hidden = true;
+  document.getElementById('aiDeleteKey').hidden = false;
+  document.getElementById('aiDeleteKey').focus();
+}
+
 async function deleteAiKey() {
   showAiError('aiKeyError', '');
   let response;
@@ -186,37 +224,56 @@ async function deleteAiKey() {
     response = { success: false, error: err.message };
   }
   if (!response || !response.success) {
+    keepAiKey();
     showAiError('aiKeyError', `Couldn't delete the key: ${(response && response.error) || 'no reply from Huddle'}`);
     return;
   }
   aiConfig = response.config || null;
   renderAiKeyState();
   showStatus('Key deleted', { target: 'ai-status' });
+  aiKeyForm.keyInput.focus();
 }
 
 async function saveAiDefaultModel() {
   showAiError('aiModelError', '');
   const model = aiModelPicker.getModelId();
   if (!model) {
-    showAiError('aiModelError', 'Please choose a model or enter a custom model id.');
+    showAiError('aiModelError', 'Please choose a model or enter a model id.');
     return;
   }
+  const allowUnlisted = aiUnlistedConfirm === model;
   let response;
   try {
-    response = await HuddleAi.request({ action: 'saveAiDefaultModel', model });
+    response = await HuddleAi.request({ action: 'saveAiDefaultModel', model, allowUnlisted });
   } catch (err) {
     response = { success: false, error: err.message };
   }
   if (!response || !response.success) {
-    showAiError('aiModelError', (response && response.error) || 'Failed to save the default model.');
+    if (response && response.unlisted) {
+      aiUnlistedConfirm = model;
+      showAiError('aiModelError', `${response.error} Check the id; Save again to keep it anyway.`);
+    } else {
+      showAiError('aiModelError', (response && response.error) || 'Failed to save the default model.');
+    }
     return;
   }
+  aiUnlistedConfirm = null;
   aiConfig = response.config || aiConfig;
-  showStatus(`Default model: ${aiModelPicker.modelName(model)}`, { target: 'ai-status' });
+  showStatus(`Default model: ${aiModelPicker.modelName(model)}`, { target: 'ai-model-status' });
+}
+
+// Another page (the organize page's key form or Make default) changed it.
+function onAiStorageChanged(changes, area) {
+  if (area !== 'local' || !changes.aiConfig || !aiKeyForm) return;
+  const before = aiConfig && aiConfig.model;
+  aiConfig = changes.aiConfig.newValue || null;
+  renderAiKeyState();
+  const after = (aiConfig && aiConfig.model) || aiBuiltInDefault;
+  if (after !== before && aiModelPicker) aiModelPicker.setModelId(after);
 }
 
 // Buttons stay off until the config has loaded: an empty expiry select would
-// otherwise send no duration at all.
+// otherwise send no duration at all. The catalog loads on its own after.
 async function initAiSection() {
   if (!document.getElementById('aiSection')) return;
   aiKeyForm = HuddleAi.createKeyForm(document.getElementById('aiKeyForm'), {
@@ -225,10 +282,20 @@ async function initAiSection() {
   });
   aiModelPicker = HuddleAi.createModelPicker(document.getElementById('aiModelPicker'), {
     idPrefix: 'settings',
+    onChange: () => { aiUnlistedConfirm = null; showAiError('aiModelError', ''); },
   });
-  document.getElementById('aiSaveKey').addEventListener('click', saveAiKey);
-  document.getElementById('aiDeleteKey').addEventListener('click', deleteAiKey);
-  document.getElementById('aiSaveModel').addEventListener('click', saveAiDefaultModel);
+  document.getElementById('aiKeyCard').addEventListener('submit', (e) => {
+    e.preventDefault();
+    saveAiKey();
+  });
+  document.getElementById('aiModelCard').addEventListener('submit', (e) => {
+    e.preventDefault();
+    saveAiDefaultModel();
+  });
+  document.getElementById('aiDeleteKey').addEventListener('click', askDeleteAiKey);
+  document.getElementById('aiConfirmDeleteYes').addEventListener('click', deleteAiKey);
+  document.getElementById('aiConfirmDeleteNo').addEventListener('click', keepAiKey);
+  if (chrome.storage && chrome.storage.onChanged) chrome.storage.onChanged.addListener(onAiStorageChanged);
 
   let data;
   try {
@@ -248,10 +315,11 @@ async function initAiSection() {
   aiBuiltInDefault = data.defaultModel || null;
   aiKeyForm.setExpiryPresets(data.expiryPresets || [],
     aiConfig && aiConfig.expiryDuration !== undefined ? aiConfig.expiryDuration : 86400000);
-  aiModelPicker.setCatalog(data.models, data.modelsMeta, (aiConfig && aiConfig.model) || aiBuiltInDefault);
   renderAiKeyState();
   document.getElementById('aiSaveKey').disabled = false;
   document.getElementById('aiSaveModel').disabled = false;
+  aiModelPicker.setModelId((aiConfig && aiConfig.model) || aiBuiltInDefault);
+  await aiModelPicker.load();
 }
 
 async function init() {

@@ -36,30 +36,47 @@ describe('key status', () => {
     expect(HuddleAi.keyStatusLabel({ key: null, model: 'm1' })).toBe('Not set');
     expect(HuddleAi.keyStatusLabel({ key: 'k', expiresAt: null })).toBe('On file · never expires');
     expect(HuddleAi.keyStatusLabel({ key: 'k', expiresAt: NOW + 3600000 })).toBe('On file · expires in 1h 0m');
-    expect(HuddleAi.keyStatusLabel({ key: 'k', expiresAt: NOW - 1 })).toBe('On file · expired');
+    expect(HuddleAi.keyStatusLabel({ key: 'k', expiresAt: NOW - 1 })).toBe('Expired · enter it again');
+    // The background removes an expired key and leaves keyExpiredAt.
+    expect(HuddleAi.keyStatusLabel({ key: null, keyExpiredAt: NOW - 1 })).toBe('Expired · enter it again');
   });
 
   test('keyState and hasUsableKey', () => {
     expect(HuddleAi.keyState(null)).toBe('missing');
     expect(HuddleAi.keyState({ key: 'k', expiresAt: NOW - 1 })).toBe('expired');
     expect(HuddleAi.keyState({ key: 'k', expiresAt: null })).toBeNull();
+    expect(HuddleAi.keyState({ key: null, keyExpiredAt: NOW - 1 })).toBe('expired');
     expect(HuddleAi.hasUsableKey({ key: 'k', expiresAt: NOW + 1 })).toBe(true);
     expect(HuddleAi.hasUsableKey({ key: 'k', expiresAt: NOW - 1 })).toBe(false);
   });
 });
 
 describe('formatModelsStatus', () => {
-  test('a stale cache with a fetch error names the error once', () => {
+  test('a failed refresh says so, with the age of the list still shown', () => {
     const text = HuddleAi.formatModelsStatus(
-      { fromCache: true, stale: true, fetchedAt: Date.now() - 30 * 3600000, error: 'Failed to fetch' },
+      { fromCache: true, stale: true, fetchedAt: Date.now() - 2 * 60000, error: 'OpenRouter 502: upstream catalog unavailable' },
       312
     );
-    expect(text).toBe('312 models · stale cache (30h ago) · Failed to fetch');
+    expect(text).toBe('Couldn\'t refresh (OpenRouter 502: upstream catalog unavailable). Showing the list from 2 min ago.');
   });
 
-  test('a fallback names the reason', () => {
-    expect(HuddleAi.formatModelsStatus({ fallback: true, error: 'offline' }, 3))
-      .toBe('Recommended only · could not load catalog: offline');
+  test('a fallback names the reason once', () => {
+    expect(HuddleAi.formatModelsStatus({ fallback: true, error: 'couldn\'t reach OpenRouter' }, 3))
+      .toBe('Recommended only · couldn\'t reach OpenRouter');
+  });
+
+  test('a cached list gives its age', () => {
+    expect(HuddleAi.formatModelsStatus({ fromCache: true, fetchedAt: Date.now() - 3 * 3600000 }, 14))
+      .toBe('14 models · updated 3 h ago');
+  });
+});
+
+describe('optionLabel', () => {
+  test('name, provider and price, with no duplicate "(free)"', () => {
+    expect(HuddleAi.optionLabel({ name: 'GPT-6 Luna', provider: 'OpenAI', cost: '$1.50 in · $6.00 out per M' }))
+      .toBe('GPT-6 Luna · OpenAI · $1.50 in · $6.00 out per M');
+    expect(HuddleAi.optionLabel({ name: 'Llama 4 Scout (free)', provider: 'Meta', cost: 'free' }))
+      .toBe('Llama 4 Scout (free) · Meta');
   });
 });
 
@@ -145,7 +162,7 @@ describe('createKeyForm', () => {
   test('a network failure during the check means the key is refused', async () => {
     global.fetch.mockRejectedValue(new TypeError('Failed to fetch'));
     typeKey('sk-or-v1-abc');
-    expect((await form.collect()).error).toMatch(/could not reach openrouter/i);
+    expect((await form.collect()).error).toMatch(/couldn.t reach openrouter to check/i);
   });
 
   test('"Never expires" is sent as null', async () => {
@@ -190,96 +207,133 @@ describe('createKeyForm', () => {
   test('setKeepHint shows the hint and a matching placeholder', () => {
     form.setKeepHint('Leave blank to keep it');
     expect(document.querySelector('.key-help').hidden).toBe(false);
-    expect(form.keyInput.placeholder).toMatch(/leave blank/i);
+    expect(form.keyInput.placeholder).toBe('Key on file · paste to replace');
     form.setKeepHint(null);
     expect(document.querySelector('.key-help').hidden).toBe(true);
-    expect(form.keyInput.placeholder).toBe('sk-or-...');
+    expect(form.keyInput.placeholder).toBe('sk-or-…');
   });
 });
 
 describe('createModelPicker', () => {
   let picker;
   let onChange;
+  let onCommit;
+  let onCancel;
+  let catalog;
 
   beforeEach(() => {
     document.body.innerHTML = '<div id="mount"></div>';
     onChange = vi.fn();
+    onCommit = vi.fn();
+    onCancel = vi.fn();
+    catalog = { success: true, models: MODELS, modelsMeta: MODELS_META };
+    chrome.runtime.lastError = null;
     chrome.runtime.sendMessage.mockImplementation((message, cb) => {
-      if (message.action === 'refreshOpenRouterModels') {
-        cb({ success: true, models: MODELS, modelsMeta: MODELS_META });
-      }
+      if (/OpenRouterModels$/.test(message.action)) cb(catalog);
     });
-    picker = HuddleAi.createModelPicker(document.getElementById('mount'), { idPrefix: 't', onChange });
+    picker = HuddleAi.createModelPicker(document.getElementById('mount'), {
+      idPrefix: 't', onChange, onCommit, onCancel,
+    });
   });
 
   const select = () => document.getElementById('tSelect');
   const custom = () => document.getElementById('tCustom');
   const filter = () => document.getElementById('tFilter');
   const hint = () => document.querySelector('.model-schema-hint').textContent;
+  const status = () => document.querySelector('.models-status').textContent;
   const values = () => Array.from(select().options).map((o) => o.value);
+  const typeFilter = (text) => {
+    filter().value = text;
+    filter().dispatchEvent(new window.Event('input'));
+  };
+  const key = (el, k) => el.dispatchEvent(new window.KeyboardEvent('keydown', { key: k, bubbles: true }));
 
-  test('lists recommended models first, in their own group', () => {
-    picker.setCatalog(MODELS, MODELS_META, 'm1');
+  async function loadWith(id) {
+    picker.setModelId(id);
+    await picker.load();
+  }
+
+  test('loads the catalog on its own, recommended models first', async () => {
+    await loadWith('m1');
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'loadOpenRouterModels' }, expect.any(Function));
     const groups = Array.from(select().querySelectorAll('optgroup')).map((g) => g.label);
     expect(groups).toEqual(['Recommended', 'All models']);
     expect(select().value).toBe('m1');
     expect(picker.getModelId()).toBe('m1');
-    expect(document.querySelector('.models-status').textContent).toMatch(/^2 models/);
+    expect(status()).toMatch(/^2 models/);
   });
 
-  test('filter narrows the list but keeps the current choice visible', () => {
-    picker.setCatalog(MODELS, MODELS_META, 'm1');
-    filter().value = 'two';
-    filter().dispatchEvent(new window.Event('input'));
-    expect(values()).toContain('m2');
-    expect(values()).toContain('m1');
-    expect(select().value).toBe('m1');
+  test('the filter applies to every model, the current choice included', async () => {
+    await loadWith('m1');
+    typeFilter('two');
+    expect(values()).toEqual(['m2']);
+    // The choice is still the choice; it just is not a row now.
+    expect(picker.getModelId()).toBe('m1');
+    expect(select().selectedIndex).toBe(-1);
+    expect(status()).toBe('1 of 2 models');
   });
 
-  test('schema hint follows the model', () => {
-    picker.setCatalog(MODELS, MODELS_META, 'm1');
-    expect(hint()).toMatch(/yes/i);
+  test('a filter with no matches says so', async () => {
+    await loadWith('m1');
+    typeFilter('zzzz');
+    expect(values()).toEqual([]);
+    expect(document.querySelector('.models-empty').hidden).toBe(false);
+    expect(document.querySelector('.models-empty').textContent).toBe('No models match "zzzz".');
+    // Said once: the status line keeps the catalog count, not "No matches".
+    expect(status()).not.toMatch(/match/i);
+  });
+
+  test('the chosen model is named with its price, even when the filter hides it', async () => {
+    await loadWith('m1');
+    const choice = () => document.querySelector('.model-choice').textContent;
+    expect(choice()).toMatch(/^Chosen: /);
+    typeFilter('zzzz');
+    expect(choice()).toMatch(/^Chosen: /);
+    expect(choice()).not.toBe('Chosen: ');
+  });
+
+  test('a model without strict answers gets a plain warning; others none', async () => {
+    await loadWith('m1');
+    expect(hint()).toBe('');
     select().value = 'm2';
     select().dispatchEvent(new window.Event('change'));
-    expect(hint()).toMatch(/no/i);
+    expect(hint()).toMatch(/exact answer format/);
+    expect(hint()).not.toMatch(/structured|schema|JSON/i);
     expect(onChange).toHaveBeenLastCalledWith('m2');
   });
 
-  test('schema hint says unknown when the flag is missing (not "no")', () => {
-    picker.setCatalog([{ id: 'u1', name: 'Unknown', cost: '?', curated: true }], MODELS_META, 'u1');
-    expect(hint()).toMatch(/unknown/i);
-    expect(hint()).not.toMatch(/:\s*no/i);
+  test('an unknown structured-output flag says nothing', async () => {
+    catalog = { models: [{ id: 'u1', name: 'Unknown', cost: '?', curated: true }], modelsMeta: MODELS_META };
+    await loadWith('u1');
+    expect(hint()).toBe('');
   });
 
-  test('a custom id overrides the list and warns about JSON output', () => {
-    picker.setCatalog(MODELS, MODELS_META, 'm1');
+  test('a typed id overrides the list, and the list shows no selection', async () => {
+    await loadWith('m1');
     custom().value = 'foo/bar';
     custom().dispatchEvent(new window.Event('input'));
     expect(picker.getModelId()).toBe('foo/bar');
-    expect(hint()).toMatch(/may not support JSON output/);
+    expect(select().selectedIndex).toBe(-1);
+    expect(hint()).toMatch(/Not in OpenRouter's list/);
     expect(onChange).toHaveBeenLastCalledWith('foo/bar');
-  });
+    expect(picker.isListed('foo/bar')).toBe(false);
 
-  test('filtering while a custom id is typed does not add it to the list', () => {
-    picker.setCatalog(MODELS, MODELS_META, 'm1');
-    select().value = 'm2';
-    select().dispatchEvent(new window.Event('change'));
-    custom().value = 'foo/bar';
-    custom().dispatchEvent(new window.Event('input'));
-    filter().value = 'model';
-    filter().dispatchEvent(new window.Event('input'));
-
-    expect(values()).not.toContain('foo/bar');
-    expect(select().value).toBe('m2');
-
-    // Clearing the custom field falls back to the list choice.
+    // Clearing it falls back to the list choice.
     custom().value = '';
     custom().dispatchEvent(new window.Event('input'));
-    expect(picker.getModelId()).toBe('m2');
+    expect(picker.getModelId()).toBe('m1');
+    expect(select().value).toBe('m1');
   });
 
-  test('choosing from the list clears a custom id', () => {
-    picker.setCatalog(MODELS, MODELS_META, 'm1');
+  test('a typed batch id gets its own message', async () => {
+    await loadWith('m1');
+    custom().value = 'openai/gpt-6-luna:batch';
+    custom().dispatchEvent(new window.Event('input'));
+    expect(hint()).toMatch(/Batch models can't organize tabs/);
+  });
+
+  test('choosing from the list clears a typed id', async () => {
+    await loadWith('m1');
     custom().value = 'foo/bar';
     select().value = 'm2';
     select().dispatchEvent(new window.Event('change'));
@@ -287,42 +341,72 @@ describe('createModelPicker', () => {
     expect(picker.getModelId()).toBe('m2');
   });
 
-  test('a saved id the catalog does not know goes in the custom field', () => {
-    picker.setCatalog(MODELS, MODELS_META, 'acme/private');
+  test('a saved id the catalog does not know goes in the id field', async () => {
+    await loadWith('acme/private');
     expect(custom().value).toBe('acme/private');
     expect(picker.getModelId()).toBe('acme/private');
   });
 
-  test('setModelId selects a list model or fills the custom field', () => {
-    picker.setCatalog(MODELS, MODELS_META, 'm1');
-    picker.setModelId('m2');
+  test('ArrowDown in the filter moves into the list; Enter commits; Escape cancels', async () => {
+    await loadWith('m1');
+    typeFilter('two');
+    key(filter(), 'ArrowDown');
+    expect(document.activeElement).toBe(select());
     expect(picker.getModelId()).toBe('m2');
-    picker.setModelId('acme/x');
-    expect(custom().value).toBe('acme/x');
-    expect(picker.getModelId()).toBe('acme/x');
+    key(select(), 'Enter');
+    expect(onCommit).toHaveBeenCalled();
+    key(select(), 'Escape');
+    expect(onCancel).toHaveBeenCalled();
   });
 
-  test('a curated-only catalog refreshes once and keeps the selection', async () => {
-    picker.setCatalog([MODELS[0]], { fallback: true, error: 'offline' }, 'm1');
-    await flushPromises();
-    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
-      { action: 'refreshOpenRouterModels' },
-      expect.any(Function)
-    );
-    expect(values()).toEqual(['m1', 'm2']);
-    expect(select().value).toBe('m1');
+  test('Enter in the filter takes the first match', async () => {
+    await loadWith('m1');
+    typeFilter('two');
+    key(filter(), 'Enter');
+    expect(picker.getModelId()).toBe('m2');
+    expect(onCommit).toHaveBeenCalled();
   });
 
-  test('a full, fresh catalog does not refresh on its own', () => {
-    picker.setCatalog(MODELS, MODELS_META, 'm1');
-    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+  test('a model a refresh drops keeps its name and says it is gone', async () => {
+    await loadWith('m2');
+    catalog = { models: [MODELS[0]], modelsMeta: MODELS_META };
+    await picker.refresh();
+    expect(picker.modelName('m2')).toBe('Model Two');
+    expect(hint()).toBe('OpenRouter no longer lists Model Two. Pick another model.');
   });
 
   test('a failed refresh says why and keeps the list', async () => {
-    picker.setCatalog(MODELS, MODELS_META, 'm1');
-    chrome.runtime.sendMessage.mockImplementation((message, cb) => cb({ models: [], error: 'HTTP 500' }));
+    await loadWith('m1');
+    chrome.runtime.sendMessage.mockImplementation((message, cb) => cb({ models: [], modelsMeta: { error: 'HTTP 500' } }));
     await picker.refresh();
-    expect(document.querySelector('.models-status').textContent).toMatch(/HTTP 500/);
+    expect(status()).toMatch(/HTTP 500/);
     expect(values()).toEqual(['m1', 'm2']);
+  });
+});
+
+describe('request', () => {
+  afterEach(() => {
+    chrome.runtime.lastError = null;
+  });
+
+  test('an old worker that does not know the action reads as stale', async () => {
+    chrome.runtime.sendMessage.mockImplementation((_m, cb) => cb({ success: false, error: 'unknown-action' }));
+    await expect(HuddleAi.request({ action: 'x' })).rejects.toMatchObject({ stale: true });
+  });
+
+  test('a closed message port reads as stale, with a reload hint', async () => {
+    chrome.runtime.sendMessage.mockImplementation((_m, cb) => {
+      chrome.runtime.lastError = { message: 'The message port closed before a response was received.' };
+      cb(undefined);
+    });
+    const err = await HuddleAi.request({ action: 'x' }).catch((e) => e);
+    expect(err.stale).toBe(true);
+    expect(err.message).toMatch(/Reload Huddle/);
+  });
+});
+
+describe('page and worker protocol', () => {
+  test('the pages and the worker agree on the protocol number', () => {
+    expect(HuddleAi.PROTOCOL).toBe(AI_PROTOCOL);
   });
 });

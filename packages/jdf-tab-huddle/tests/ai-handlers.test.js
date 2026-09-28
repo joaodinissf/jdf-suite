@@ -1,386 +1,322 @@
-// Tests for handleAiGroupTabs / handleApplyAiProposal (src/background.js).
-// These orchestrate the AI grouping flow against chrome.* APIs.
-// Exposed globally by tests/setup.js.
+// Tests for the organize flow in src/background.js: the popup's O
+// (handleAiGroupTabs), runs over the organize page's port (onConnect), Apply
+// and the stored key and default model. Exposed globally by tests/setup.js.
 
-// handleAiGroupTabs parks each run until its own proposal tab posts an
-// 'aiProposalReady' message (the runs are keyed by that tab's id). That message
-// is normally sent by ai-proposal.js; here we simulate it by driving the same
-// chrome.runtime.onMessage listener background.js itself registered, from the
-// tab id the tabs.create mock handed out. Returns the reply callback.
-function triggerAiProposalReady(instructions = '', tabId = 10, model = undefined) {
-  const reply = vi.fn();
-  chrome.runtime.onMessage.callListeners(
-    { action: 'aiProposalReady', instructions, model },
-    { tab: { id: tabId } },
-    reply
-  );
-  return reply;
+const HAIKU = 'anthropic/claude-haiku-4.5';
+const TABS = [
+  { id: 20, url: 'https://x.com', title: 'X', pinned: false, groupId: -1 },
+  { id: 21, url: 'https://y.com', title: 'Y', pinned: false, groupId: -1 },
+];
+
+function jsonAnswer(content) {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => 'application/json' },
+    json: async () => ({ choices: [{ message: { content }, finish_reason: 'stop' }] }),
+  };
 }
 
-// Flushes pending microtasks (storage.get / tabs.create awaits) so execution
-// parks at the pending-run promise before we resolve it.
-function flushMicrotasks() {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+function errorAnswer(status, message, provider) {
+  const error = { code: status, message };
+  if (provider) error.metadata = { provider_name: provider };
+  return { ok: false, status, text: async () => JSON.stringify({ error }) };
 }
 
-describe('handleAiGroupTabs - opening the organize page', () => {
-  test('missing key opens the organize page asking for a key, with no network call', async () => {
-    chrome.storage.local.get.mockResolvedValue({});
-    chrome.tabs.create.mockResolvedValue({ id: 100 });
-    global.fetch = vi.fn();
+const groupsFor = (ids) => JSON.stringify({ groups: [{ name: 'G', color: 'blue', tabIds: ids }] });
 
+// A fake of the port the organize page opens. connect() runs the worker's
+// onConnect listener with it; start() sends the page's start message.
+function makePort(tab = { id: 10, windowId: 1 }) {
+  const onMessage = [];
+  const onDisconnect = [];
+  const port = {
+    name: 'huddle-ai-run',
+    sender: tab ? { tab } : {},
+    postMessage: vi.fn(),
+    disconnect: vi.fn(),
+    onMessage: { addListener: (fn) => onMessage.push(fn) },
+    onDisconnect: { addListener: (fn) => onDisconnect.push(fn) },
+    send: (msg) => onMessage.forEach((fn) => fn(msg)),
+    close: () => onDisconnect.forEach((fn) => fn()),
+    posted: () => port.postMessage.mock.calls.map((c) => c[0]),
+    types: () => port.posted().map((m) => m.type),
+    last: (type) => port.posted().filter((m) => m.type === type).at(-1),
+  };
+  chrome.runtime.onConnect.callListeners(port);
+  return port;
+}
+
+function start(port, extra = {}) {
+  port.send({ type: 'start', protocol: AI_PROTOCOL, instructions: '', model: null, respectGroups: true, ...extra });
+}
+
+// Resolves once the run has posted a proposal or an error.
+async function settled(port) {
+  await vi.waitFor(() => expect(port.types().some((t) => t === 'ai-proposal' || t === 'ai-error')).toBe(true));
+}
+
+function mockConfig(config) {
+  chrome.storage.local.get.mockImplementation(async (keys) => {
+    const list = Array.isArray(keys) ? keys : [keys];
+    return list.includes('aiConfig') && config ? { aiConfig: config } : {};
+  });
+}
+
+beforeEach(() => {
+  mockConfig({ key: btoa('sk-or-good'), expiresAt: null, model: HAIKU });
+  chrome.storage.local.set.mockResolvedValue(undefined);
+  chrome.tabs.query.mockResolvedValue(TABS);
+  chrome.tabGroups.query.mockResolvedValue([]);
+  chrome.windows.getCurrent.mockResolvedValue({ id: 1 });
+  global.fetch = vi.fn().mockResolvedValue(jsonAnswer(groupsFor([20, 21])));
+});
+
+describe('handleAiGroupTabs - the popup\'s O', () => {
+  test('opens the organize page in the popup\'s window with the Groups/Flat choice, and starts nothing', async () => {
+    chrome.tabs.query.mockResolvedValue([]);
+    chrome.tabs.create.mockResolvedValue({ id: 10, windowId: 1 });
     const sendResponse = vi.fn();
-    const promise = handleAiGroupTabs({ respectGroups: true }, sendResponse);
-    await flushMicrotasks();
-
-    expect(chrome.tabs.create).toHaveBeenCalledTimes(1);
+    await handleAiGroupTabs({ respectGroups: false }, sendResponse);
     expect(chrome.tabs.create).toHaveBeenCalledWith({
-      url: 'chrome-extension://test-id/ai-proposal.html?respectGroups=true&key=missing',
+      url: 'chrome-extension://test-id/ai-proposal.html?respectGroups=false',
       active: true,
+      windowId: 1,
     });
-    expect(chrome.tabs.create.mock.calls[0][0].url).not.toContain('ai-setup');
-    expect(sendResponse).toHaveBeenCalledWith({ success: true, action: 'setup' });
-    expect(chrome.windows.getCurrent).not.toHaveBeenCalled();
+    expect(sendResponse).toHaveBeenCalledWith({ success: true, action: 'opened' });
     expect(global.fetch).not.toHaveBeenCalled();
-
-    // The run waits for the page; closing it ends the run.
-    chrome.tabs.onRemoved.callListeners(100, {});
-    await promise;
   });
 
-  test('expired key opens the organize page in its expired state', async () => {
-    chrome.storage.local.get.mockResolvedValue({
-      aiConfig: { key: 'abc', expiresAt: Date.now() - 1000, model: 'anthropic/claude-haiku-4.5' },
-    });
-    chrome.tabs.create.mockResolvedValue({ id: 101 });
-    global.fetch = vi.fn();
-
-    const sendResponse = vi.fn();
-    const promise = handleAiGroupTabs({ respectGroups: true }, sendResponse);
-    await flushMicrotasks();
-
-    expect(chrome.tabs.create).toHaveBeenCalledWith({
-      url: 'chrome-extension://test-id/ai-proposal.html?respectGroups=true&key=expired',
-      active: true,
-    });
-    expect(sendResponse).toHaveBeenCalledWith({ success: true, action: 'setup' });
-    expect(global.fetch).not.toHaveBeenCalled();
-
-    chrome.tabs.onRemoved.callListeners(101, {});
-    await promise;
-  });
-
-  test('the Flat choice is carried into the organize page URL', async () => {
-    chrome.storage.local.get.mockResolvedValue({});
-    chrome.tabs.create.mockResolvedValue({ id: 100 });
-
-    const promise = handleAiGroupTabs({ respectGroups: false }, vi.fn());
-    await flushMicrotasks();
-
-    expect(chrome.tabs.create).toHaveBeenCalledWith({
-      url: 'chrome-extension://test-id/ai-proposal.html?respectGroups=false&key=missing',
-      active: true,
-    });
-    chrome.tabs.onRemoved.callListeners(100, {});
-    await promise;
-  });
-
-  test('a key saved on the page before it starts the run is used for that run', async () => {
-    // No key when the popup asked; the page's inline form saves one.
-    chrome.storage.local.get.mockResolvedValueOnce({});
-    chrome.storage.local.get.mockResolvedValue({
-      aiConfig: { key: btoa('sk-or-new'), expiresAt: null, model: 'anthropic/claude-haiku-4.5' },
-    });
-    chrome.tabs.create.mockResolvedValue({ id: 10 });
-    chrome.tabs.sendMessage.mockResolvedValue({});
-    chrome.windows.getCurrent.mockResolvedValue({ id: 1 });
-    chrome.tabGroups.query.mockResolvedValue([]);
-    chrome.tabs.query.mockResolvedValue([{ id: 20, url: 'https://x.com', title: 'X', pinned: false, groupId: -1 }]);
-    const content = JSON.stringify({ groups: [{ name: 'G', color: 'blue', tabIds: [20] }] });
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      headers: { get: () => 'application/json' },
-      json: async () => ({ choices: [{ message: { content } }] }),
-    });
-
-    const promise = handleAiGroupTabs({ respectGroups: true }, vi.fn());
-    await flushMicrotasks();
-    triggerAiProposalReady('');
-    await promise;
-
-    const [, init] = global.fetch.mock.calls[0];
-    expect(init.headers.Authorization).toBe('Bearer sk-or-new');
-    const types = chrome.tabs.sendMessage.mock.calls.map((call) => call[1].type);
-    expect(types).toContain('ai-proposal');
-  });
-
-  test('a run started while the key is still missing tells the page it needs one', async () => {
-    chrome.storage.local.get.mockResolvedValue({});
-    chrome.tabs.create.mockResolvedValue({ id: 10 });
-    chrome.tabs.sendMessage.mockResolvedValue({});
-    global.fetch = vi.fn();
-
-    const promise = handleAiGroupTabs({ respectGroups: true }, vi.fn());
-    await flushMicrotasks();
-    triggerAiProposalReady('');
-    await promise;
-
-    expect(global.fetch).not.toHaveBeenCalled();
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(10, expect.objectContaining({
-      type: 'ai-error',
-      needsKey: 'missing',
-    }));
-  });
-
-  test('a failure before any tab opens still answers the popup with the reason', async () => {
-    chrome.storage.local.get.mockRejectedValue(new Error('storage is unavailable'));
-
+  test('brings back the organize page already open in that window, with the popup\'s mode', async () => {
+    chrome.tabs.query.mockResolvedValue([{ id: 44, windowId: 1 }]);
+    chrome.tabs.sendMessage.mockResolvedValue(undefined);
     const sendResponse = vi.fn();
     await handleAiGroupTabs({ respectGroups: true }, sendResponse);
-
-    expect(sendResponse).toHaveBeenCalledTimes(1);
-    expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'storage is unavailable' });
-    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+    expect(chrome.tabs.query).toHaveBeenCalledWith({ windowId: 1, url: 'chrome-extension://test-id/ai-proposal.html*' });
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+    expect(chrome.tabs.update).toHaveBeenCalledWith(44, { active: true });
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(44, { type: 'ai-set-mode', respectGroups: true });
+    expect(sendResponse).toHaveBeenCalledWith({ success: true, action: 'focused' });
   });
 
   test('a failing tabs.create answers the popup with the reason', async () => {
-    chrome.storage.local.get.mockResolvedValue({
-      aiConfig: { key: 'abc', expiresAt: null, model: 'anthropic/claude-haiku-4.5' },
-    });
-    chrome.tabs.create.mockRejectedValue(new Error('window is closing'));
-
+    chrome.tabs.query.mockResolvedValue([]);
+    chrome.tabs.create.mockRejectedValue(new Error('no tabs for you'));
     const sendResponse = vi.fn();
     await handleAiGroupTabs({ respectGroups: true }, sendResponse);
-
-    expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'window is closing' });
+    expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'no tabs for you' });
   });
 });
 
-describe('handleAiGroupTabs - gathering tabs', () => {
-  beforeEach(() => {
-    chrome.storage.local.get.mockResolvedValue({
-      aiConfig: { key: 'abc', expiresAt: null, model: 'anthropic/claude-haiku-4.5' },
-    });
-    chrome.tabs.create.mockResolvedValue({ id: 10 });
-    chrome.tabs.sendMessage.mockResolvedValue({});
-    chrome.windows.getCurrent.mockResolvedValue({ id: 1 });
-    chrome.tabGroups.query.mockResolvedValue([]);
+describe('runs over the organize page\'s port', () => {
+  test('a run starts straight from the page\'s message: no parked state to lose', async () => {
+    const port = makePort();
+    start(port, { instructions: 'by site' });
+    await settled(port);
+    expect(port.types()[0]).toBe('started');
+    expect(port.types()).toEqual(expect.arrayContaining(['ai-status', 'ai-debug', 'ai-proposal']));
+    expect(port.types().indexOf('ai-proposal')).toBeGreaterThan(port.types().indexOf('ai-debug'));
+    const proposal = port.last('ai-proposal');
+    expect(proposal.groups).toEqual([{ name: 'G', color: 'blue', tabIds: [20, 21] }]);
+    expect(proposal).toMatchObject({ windowId: 1, model: HAIKU, modelName: 'Claude Haiku 4.5' });
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body.messages[1].content).toContain('by site');
+    expect(body.max_tokens).toBe(maxTokensForTabs(2));
+    expect(global.fetch.mock.calls[0][1].headers['X-Title']).toBe('Huddle');
   });
 
-  test('all-pinned-tabs sends the respectGroups-specific error and skips callOpenRouter', async () => {
-    chrome.tabs.query.mockResolvedValue([
-      { id: 1, url: 'https://a.com', pinned: true, groupId: -1 },
-      { id: 2, url: 'https://b.com', pinned: true, groupId: -1 },
-    ]);
-    global.fetch = vi.fn();
-
-    const sendResponse = vi.fn();
-    const promise = handleAiGroupTabs({ respectGroups: true }, sendResponse);
-    await flushMicrotasks();
-    triggerAiProposalReady('');
-    await promise;
-
+  test('a page from another build is told to reload Huddle, and nothing runs', () => {
+    const port = makePort();
+    start(port, { protocol: AI_PROTOCOL - 1 });
+    expect(port.last('ai-error')).toMatchObject({ kind: 'stale' });
     expect(global.fetch).not.toHaveBeenCalled();
-    const errorCall = chrome.tabs.sendMessage.mock.calls.find(
-      (call) => call[1] && call[1].type === 'ai-error'
-    );
-    expect(errorCall[1]).toEqual({
-      type: 'ai-error',
-      error: 'No ungrouped tabs to organize. Switch to Flat to reorganize all tabs.',
-    });
   });
 
-  test('individual mode all-pinned-tabs error differs from tab-groups mode', async () => {
-    chrome.tabs.query.mockResolvedValue([{ id: 1, url: 'https://a.com', pinned: true, groupId: -1 }]);
-    global.fetch = vi.fn();
+  test('the page\'s model is for this run; no model means the saved default', async () => {
+    const a = makePort();
+    start(a, { model: 'openai/gpt-6-luna' });
+    await settled(a);
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body).model).toBe('openai/gpt-6-luna');
 
-    const sendResponse = vi.fn();
-    const promise = handleAiGroupTabs({ respectGroups: false }, sendResponse);
-    await flushMicrotasks();
-    triggerAiProposalReady('');
-    await promise;
-
-    const errorCall = chrome.tabs.sendMessage.mock.calls.find(
-      (call) => call[1] && call[1].type === 'ai-error'
-    );
-    expect(errorCall[1]).toEqual({
-      type: 'ai-error',
-      error: 'No unpinned tabs to organize.',
-    });
+    const b = makePort({ id: 11, windowId: 1 });
+    start(b);
+    await settled(b);
+    expect(JSON.parse(global.fetch.mock.calls[1][1].body).model).toBe(HAIKU);
   });
 
-  test('happy path sends ai-status, ai-debug, then ai-proposal in order', async () => {
+  test('Huddle\'s own pages are never sent to the model', async () => {
     chrome.tabs.query.mockResolvedValue([
-      { id: 20, url: 'https://x.com', title: 'X', pinned: false, groupId: -1 },
-      { id: 21, url: 'https://y.com', title: 'Y', pinned: false, groupId: -1 },
+      ...TABS,
+      { id: 30, url: 'chrome-extension://test-id/ai-proposal.html?respectGroups=true', title: 'Organize with AI', pinned: false, groupId: -1 },
+      { id: 31, url: 'chrome-extension://test-id/options.html', title: 'Settings', pinned: false, groupId: -1 },
     ]);
-    const content = JSON.stringify({
-      groups: [{ name: 'Group', color: 'blue', tabIds: [20, 21] }],
+    const port = makePort();
+    start(port);
+    await settled(port);
+    const prompt = port.last('ai-debug').messages[1].content;
+    expect(prompt).not.toContain('[id:30]');
+    expect(prompt).not.toContain('[id:31]');
+  });
+
+  test('no key asks the page for one, with no network call', async () => {
+    mockConfig(null);
+    const port = makePort();
+    start(port);
+    await settled(port);
+    expect(port.last('ai-error')).toMatchObject({ kind: 'key', needsKey: 'missing' });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('Groups mode with every tab grouped offers Flat', async () => {
+    chrome.tabs.query.mockResolvedValue([{ id: 20, url: 'https://x.com', pinned: false, groupId: 7 }]);
+    const port = makePort();
+    start(port);
+    await settled(port);
+    expect(port.last('ai-error')).toMatchObject({ kind: 'no-tabs' });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('a batch model is refused before any request', async () => {
+    const port = makePort();
+    start(port, { model: 'openai/gpt-6-luna-batch' });
+    await settled(port);
+    expect(port.last('ai-error').error).toMatch(/batch models can't organize tabs/);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('closing the port (Stop, reload, tab closed) aborts the request', async () => {
+    let signal;
+    global.fetch = vi.fn((_url, init) => {
+      signal = init.signal;
+      return new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      });
     });
+    const port = makePort();
+    start(port);
+    await vi.waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    port.close();
+    expect(signal.aborted).toBe(true);
+    await new Promise((r) => setTimeout(r, 0));
+    // Nobody is told: the page is gone or stopped it itself.
+    expect(port.types()).not.toContain('ai-error');
+  });
+
+  test('a new run in the same tab aborts the one before, and only the new one reports', async () => {
+    const signals = [];
+    global.fetch = vi.fn((_url, init) => {
+      signals.push(init.signal);
+      if (signals.length === 1) {
+        return new Promise((_resolve, reject) => {
+          init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        });
+      }
+      return Promise.resolve(jsonAnswer(groupsFor([20])));
+    });
+    const first = makePort();
+    start(first);
+    await vi.waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+    const second = makePort();
+    start(second);
+    await settled(second);
+    expect(signals[0].aborted).toBe(true);
+    expect(first.types()).not.toContain('ai-proposal');
+    expect(first.types()).not.toContain('ai-error');
+  });
+
+  test('closing the tab aborts its run', async () => {
+    let signal;
+    global.fetch = vi.fn((_url, init) => {
+      signal = init.signal;
+      return new Promise(() => {});
+    });
+    const port = makePort({ id: 77, windowId: 1 });
+    start(port);
+    await vi.waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    chrome.tabs.onRemoved.callListeners(77);
+    expect(signal.aborted).toBe(true);
+  });
+
+  test('a provider 401 is about the model, not the key', async () => {
+    global.fetch = vi.fn().mockResolvedValue(errorAnswer(401, 'User not found.', 'DeepInfra'));
+    const port = makePort();
+    start(port, { model: 'deepseek/deepseek-v4-flash' });
+    await settled(port);
+    const err = port.last('ai-error');
+    expect(err.kind).toBe('model');
+    // The same model gets the same refusal: Change model leads, not Retry.
+    expect(err.retryable).toBe(false);
+    expect(err.error).toMatch(/^DeepInfra, the provider serving deepseek\/deepseek-v4-flash, refused the request \(401: User not found\)\. Your key works/);
+  });
+
+  test('a bare 401 checks the key: rejected means the key form', async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(errorAnswer(401, 'User not found.'))
+      .mockResolvedValueOnce({ ok: false, status: 401 });
+    const port = makePort();
+    start(port);
+    await settled(port);
+    expect(global.fetch.mock.calls[1][0]).toBe('https://openrouter.ai/api/v1/key');
+    expect(port.last('ai-error')).toMatchObject({ kind: 'key', needsKey: 'rejected' });
+    expect(port.last('ai-error').error).toMatch(/rejected your saved key/);
+  });
+
+  test('a bare 401 with a key OpenRouter accepts is about the model', async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(errorAnswer(401, ''))
+      .mockResolvedValueOnce({ ok: true, status: 200 });
+    const port = makePort();
+    start(port);
+    await settled(port);
+    expect(port.last('ai-error')).toMatchObject({ kind: 'model', retryable: false });
+    expect(port.last('ai-error').error).toMatch(/Your key works; pick another model/);
+  });
+
+  test('a network failure says OpenRouter could not be reached', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const port = makePort();
+    start(port);
+    await settled(port);
+    expect(port.last('ai-error')).toMatchObject({
+      kind: 'network',
+      error: 'Couldn\'t reach OpenRouter. Check your connection, then Retry.',
+    });
+  });
+
+  test('an empty answer and a plan with no groups are errors, not proposals', async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       headers: { get: () => 'application/json' },
-      json: async () => ({ choices: [{ message: { content } }] }),
+      json: async () => ({ choices: [{ message: { content: '' }, finish_reason: 'length' }] }),
     });
+    const a = makePort();
+    start(a);
+    await settled(a);
+    expect(a.last('ai-error').error).toBe('Claude Haiku 4.5 returned an empty answer (stopped: length). Try again or pick another model.');
 
-    const sendResponse = vi.fn();
-    const promise = handleAiGroupTabs({ respectGroups: true }, sendResponse);
-    await flushMicrotasks();
-    triggerAiProposalReady('');
-    await promise;
-
-    const types = chrome.tabs.sendMessage.mock.calls.map((call) => call[1].type);
-    expect(types).not.toContain('ai-error');
-    expect(types.indexOf('ai-debug')).toBeGreaterThan(-1);
-    expect(types.indexOf('ai-proposal')).toBeGreaterThan(types.indexOf('ai-debug'));
-    expect(types[0]).toBe('ai-status');
-
-    const proposalCall = chrome.tabs.sendMessage.mock.calls.find(
-      (call) => call[1].type === 'ai-proposal'
-    );
-    expect(proposalCall[1].groups).toEqual([{ name: 'Group', color: 'blue', tabIds: [20, 21] }]);
-    expect(proposalCall[1].windowId).toBe(1);
-  });
-
-  // The proposal tab lives at ai-proposal.html?respectGroups=..., so the error
-  // must go to the id tabs.create returned. This tabs.query mock behaves like
-  // Chrome's exact-URL match (no query string means no match), so a lookup by
-  // the bare page URL cannot pass here again.
-  function mockProposalTabInQuery() {
-    const proposalUrl = 'chrome-extension://test-id/ai-proposal.html?respectGroups=true';
-    chrome.tabs.query.mockImplementation(async (query) => {
-      if (query && query.url) return query.url === proposalUrl ? [{ id: 10 }] : [];
-      return [{ id: 20, url: 'https://x.com', title: 'X', pinned: false, groupId: -1 }];
-    });
-  }
-
-  test('catch path posts ai-error to the proposal tab it opened', async () => {
-    chrome.windows.getCurrent.mockRejectedValue(new Error('window fetch failed'));
-    mockProposalTabInQuery();
-
-    const sendResponse = vi.fn();
-    const promise = handleAiGroupTabs({ respectGroups: true }, sendResponse);
-    await flushMicrotasks();
-    triggerAiProposalReady('');
-    await promise;
-
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(10, {
-      type: 'ai-error',
-      error: 'window fetch failed',
-    });
-    // The popup was already answered when the tab opened, and only once.
-    expect(sendResponse).toHaveBeenCalledTimes(1);
-    expect(sendResponse).toHaveBeenCalledWith({ success: true, action: 'proposal' });
-  });
-
-  test('an OpenRouter rejection (invalid key) reaches the proposal tab', async () => {
-    mockProposalTabInQuery();
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 401,
-      headers: { get: () => 'application/json' },
-      json: async () => ({ error: { message: 'No auth credentials found' } }),
-      text: async () => '{"error":{"message":"No auth credentials found"}}',
-    });
-
-    const promise = handleAiGroupTabs({ respectGroups: true }, vi.fn());
-    await flushMicrotasks();
-    triggerAiProposalReady('');
-    await promise;
-
-    const errorCall = chrome.tabs.sendMessage.mock.calls.find(
-      (call) => call[1] && call[1].type === 'ai-error'
-    );
-    expect(errorCall).toBeDefined();
-    expect(errorCall[0]).toBe(10);
-    expect(errorCall[1].error).toMatch(/No auth credentials found/);
-  });
-
-  test('a proposal tab closed mid-run does not raise an unhandled rejection', async () => {
-    chrome.windows.getCurrent.mockRejectedValue(new Error('window fetch failed'));
-    chrome.tabs.sendMessage.mockRejectedValue(new Error('No tab with id: 10'));
-
-    const promise = handleAiGroupTabs({ respectGroups: true }, vi.fn());
-    await flushMicrotasks();
-    triggerAiProposalReady('');
-    await expect(promise).resolves.toBeUndefined();
-    await flushMicrotasks();
+    global.fetch = vi.fn().mockResolvedValue(jsonAnswer(JSON.stringify({ groups: [{ name: 'G', color: 'blue', tabIds: [999] }] })));
+    const b = makePort({ id: 11, windowId: 1 });
+    start(b);
+    await settled(b);
+    expect(b.last('ai-error').error).toMatch(/didn't put any of your tabs in a group/);
   });
 });
 
-describe('aiProposalReady - runs keyed by proposal tab', () => {
-  beforeEach(() => {
-    chrome.storage.local.get.mockResolvedValue({
-      aiConfig: { key: 'abc', expiresAt: null, model: 'anthropic/claude-haiku-4.5' },
-    });
-    chrome.tabs.sendMessage.mockResolvedValue({});
-    chrome.windows.getCurrent.mockResolvedValue({ id: 1 });
-    chrome.tabGroups.query.mockResolvedValue([]);
-    chrome.tabs.query.mockResolvedValue([{ id: 1, url: 'https://a.com', pinned: true, groupId: -1 }]);
+describe('messages every action answers', () => {
+  test('an unknown action gets a reply instead of a closed port', () => {
+    const reply = vi.fn();
+    chrome.runtime.onMessage.callListeners({ action: 'aiRestartRun' }, {}, reply);
+    expect(reply).toHaveBeenCalledWith({ success: false, error: 'unknown-action', protocol: AI_PROTOCOL });
   });
 
-  test('replies pending:true to the tab a run is waiting for', async () => {
-    chrome.tabs.create.mockResolvedValue({ id: 10 });
-    const promise = handleAiGroupTabs({ respectGroups: true }, vi.fn());
-    await flushMicrotasks();
-
-    const reply = triggerAiProposalReady('', 10);
-    await promise;
-
-    expect(reply).toHaveBeenCalledWith({ success: true, pending: true });
-  });
-
-  test('replies pending:false when no run is waiting (refresh, restarted worker)', () => {
-    const reply = triggerAiProposalReady('', 999);
-    expect(reply).toHaveBeenCalledWith({ success: true, pending: false });
-  });
-
-  test('a second ready from the same tab gets pending:false', async () => {
-    chrome.tabs.create.mockResolvedValue({ id: 10 });
-    const promise = handleAiGroupTabs({ respectGroups: true }, vi.fn());
-    await flushMicrotasks();
-    triggerAiProposalReady('', 10);
-    await promise;
-
-    const again = triggerAiProposalReady('', 10);
-    expect(again).toHaveBeenCalledWith({ success: true, pending: false });
-  });
-
-  test('two proposal tabs each start only their own run', async () => {
-    chrome.tabs.create.mockResolvedValueOnce({ id: 31 }).mockResolvedValueOnce({ id: 32 });
-    const runA = handleAiGroupTabs({ respectGroups: true }, vi.fn());
-    await flushMicrotasks();
-    const runB = handleAiGroupTabs({ respectGroups: true }, vi.fn());
-    await flushMicrotasks();
-
-    triggerAiProposalReady('', 31);
-    await runA;
-
-    const targets = chrome.tabs.sendMessage.mock.calls.map((call) => call[0]);
-    expect(targets.length).toBeGreaterThan(0);
-    expect(targets.every((id) => id === 31)).toBe(true);
-
-    // Run B is still waiting for tab 32.
-    const replyB = triggerAiProposalReady('', 32);
-    await runB;
-    expect(replyB).toHaveBeenCalledWith({ success: true, pending: true });
-    expect(chrome.tabs.sendMessage.mock.calls.some((call) => call[0] === 32)).toBe(true);
-  });
-
-  test('closing the proposal tab before it is ready ends its run', async () => {
-    chrome.tabs.create.mockResolvedValue({ id: 41 });
-    const promise = handleAiGroupTabs({ respectGroups: true }, vi.fn());
-    await flushMicrotasks();
-
-    chrome.tabs.onRemoved.callListeners(41, { windowId: 1, isWindowClosing: false });
-    await promise;
-
-    expect(chrome.windows.getCurrent).not.toHaveBeenCalled();
-    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
-    const reply = triggerAiProposalReady('', 41);
-    expect(reply).toHaveBeenCalledWith({ success: true, pending: false });
+  test('loadAiConfig answers with the config at once, without the catalog', async () => {
+    const reply = vi.fn();
+    chrome.runtime.onMessage.callListeners({ action: 'loadAiConfig' }, {}, reply);
+    await vi.waitFor(() => expect(reply).toHaveBeenCalled());
+    expect(reply.mock.calls[0][0]).toMatchObject({ protocol: AI_PROTOCOL, config: expect.objectContaining({ model: HAIKU }) });
+    expect(reply.mock.calls[0][0].models).toBeUndefined();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 
@@ -412,7 +348,7 @@ describe('handleApplyAiProposal', () => {
     expect(chrome.tabs.remove).toHaveBeenCalledWith(55);
     expect(chrome.tabs.group.mock.invocationCallOrder[0])
       .toBeLessThan(chrome.tabs.remove.mock.invocationCallOrder[0]);
-    expect(sendResponse).toHaveBeenCalledWith({ success: true });
+    expect(sendResponse).toHaveBeenCalledWith({ success: true, grouped: 1, groups: 1, skipped: 0, closing: true });
   });
 
   test('keeps the proposal tab open when applying fails', async () => {
@@ -427,16 +363,31 @@ describe('handleApplyAiProposal', () => {
     expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'group failed' });
   });
 
-  test('leaves out tabs closed since the proposal was made', async () => {
+  test('leaves out tabs closed since the proposal was made, says so and keeps the page', async () => {
+    const sendResponse = vi.fn();
     await handleApplyAiProposal(
       { groups: [{ name: 'G', color: 'blue', tabIds: [1, 99] }], windowId: 5 },
-      {},
-      vi.fn()
+      { tab: { id: 55 } },
+      sendResponse
     );
     expect(chrome.tabs.group).toHaveBeenCalledWith({
       tabIds: [1],
       createProperties: { windowId: 5 },
     });
+    expect(sendResponse).toHaveBeenCalledWith({ success: true, grouped: 1, groups: 1, skipped: 1, closing: false });
+    expect(chrome.tabs.remove).not.toHaveBeenCalled();
+  });
+
+  test('with every proposed tab gone it groups nothing, says so and closes nothing', async () => {
+    const sendResponse = vi.fn();
+    await handleApplyAiProposal(
+      { groups: [{ name: 'G', color: 'blue', tabIds: [98, 99] }], windowId: 5 },
+      { tab: { id: 55 } },
+      sendResponse
+    );
+    expect(chrome.tabs.group).not.toHaveBeenCalled();
+    expect(chrome.tabs.remove).not.toHaveBeenCalled();
+    expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'None of the proposed tabs are still in this window.' });
   });
 
   test('Flat mode ungroups the tabs left in Ungrouped', async () => {
@@ -535,93 +486,6 @@ describe('handleApplyAiProposal', () => {
   });
 });
 
-describe('the model for one run, and Run again in the same tab', () => {
-  const okResponse = (tabIds) => {
-    const content = JSON.stringify({ groups: [{ name: 'G', color: 'blue', tabIds }] });
-    return {
-      ok: true,
-      status: 200,
-      headers: { get: () => 'application/json' },
-      json: async () => ({ choices: [{ message: { content } }] }),
-    };
-  };
-
-  beforeEach(() => {
-    chrome.storage.local.get.mockResolvedValue({
-      aiConfig: { key: btoa('sk-or-k'), expiresAt: null, model: 'anthropic/claude-haiku-4.5' },
-    });
-    chrome.storage.local.set.mockResolvedValue();
-    chrome.tabs.create.mockResolvedValue({ id: 10 });
-    chrome.tabs.sendMessage.mockResolvedValue({});
-    chrome.windows.getCurrent.mockResolvedValue({ id: 1 });
-    chrome.tabGroups.query.mockResolvedValue([]);
-    chrome.tabs.query.mockResolvedValue([{ id: 20, url: 'https://x.com', title: 'X', pinned: false, groupId: -1 }]);
-    global.fetch = vi.fn().mockResolvedValue(okResponse([20]));
-  });
-
-  const requestedModel = () => JSON.parse(global.fetch.mock.calls[0][1].body).model;
-
-  test('the page\'s model applies to the run without changing the saved default', async () => {
-    const promise = handleAiGroupTabs({ respectGroups: true }, vi.fn());
-    await flushMicrotasks();
-    triggerAiProposalReady('', 10, 'qwen/qwen3.5-flash-20260224');
-    await promise;
-
-    expect(requestedModel()).toBe('qwen/qwen3.5-flash-20260224');
-    const debug = chrome.tabs.sendMessage.mock.calls.find((call) => call[1].type === 'ai-debug');
-    expect(debug[1].model).toBe('qwen/qwen3.5-flash-20260224');
-    // Nothing was written: the default stays what it was.
-    expect(chrome.storage.local.set).not.toHaveBeenCalledWith(
-      expect.objectContaining({ aiConfig: expect.anything() })
-    );
-  });
-
-  test('no model from the page means the saved default', async () => {
-    const promise = handleAiGroupTabs({ respectGroups: true }, vi.fn());
-    await flushMicrotasks();
-    triggerAiProposalReady('', 10, null);
-    await promise;
-
-    expect(requestedModel()).toBe('anthropic/claude-haiku-4.5');
-  });
-
-  test('aiRestartRun parks a new run for the sender tab, in that tab\'s window', async () => {
-    const reply = vi.fn();
-    chrome.runtime.onMessage.callListeners(
-      { action: 'aiRestartRun', respectGroups: false },
-      { tab: { id: 77, windowId: 3 } },
-      reply
-    );
-    expect(reply).toHaveBeenCalledWith({ success: true });
-    expect(chrome.tabs.create).not.toHaveBeenCalled();
-
-    const ready = triggerAiProposalReady('by topic', 77, 'google/gemini-3.1-flash-lite-preview-20260303');
-    expect(ready).toHaveBeenCalledWith({ success: true, pending: true });
-    await vi.waitFor(() => {
-      expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(77, expect.objectContaining({ type: 'ai-proposal', windowId: 3 }));
-    });
-    expect(chrome.tabs.query).toHaveBeenCalledWith({ windowId: 3 });
-    expect(chrome.windows.getCurrent).not.toHaveBeenCalled();
-    expect(requestedModel()).toBe('google/gemini-3.1-flash-lite-preview-20260303');
-  });
-
-  test('aiRestartRun from outside a tab is refused', () => {
-    const reply = vi.fn();
-    chrome.runtime.onMessage.callListeners({ action: 'aiRestartRun' }, {}, reply);
-    expect(reply).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
-  });
-
-  test('a second restart drops the run the tab was still waiting on', async () => {
-    const first = runAiOrganizeInTab(88, true, 1);
-    runAiOrganizeInTab(88, true, 1);
-    await expect(first).resolves.toBeUndefined();
-    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
-    // Only one run is left to start.
-    expect(triggerAiProposalReady('', 88)).toHaveBeenCalledWith({ success: true, pending: true });
-    expect(triggerAiProposalReady('', 88)).toHaveBeenCalledWith({ success: true, pending: false });
-  });
-});
-
 describe('default model and key storage', () => {
   let stored;
   beforeEach(() => {
@@ -631,9 +495,10 @@ describe('default model and key storage', () => {
   });
 
   test('saveAiDefaultModel changes only the model, keeping the key and its deadline', async () => {
-    stored = { key: btoa('sk-or-k'), model: 'a/one', expiresAt: 12345, expiryDuration: 3600000, setupComplete: true };
+    const deadline = Date.now() + 3600000;
+    stored = { key: btoa('sk-or-k'), model: 'a/one', expiresAt: deadline, expiryDuration: 3600000, setupComplete: true };
     const saved = await saveAiDefaultModel('b/two');
-    expect(saved).toMatchObject({ key: btoa('sk-or-k'), model: 'b/two', expiresAt: 12345, expiryDuration: 3600000 });
+    expect(saved).toMatchObject({ key: btoa('sk-or-k'), model: 'b/two', expiresAt: deadline, expiryDuration: 3600000 });
   });
 
   test('saveAiDefaultModel works before any key is on file', async () => {
@@ -641,6 +506,22 @@ describe('default model and key storage', () => {
     expect(saved.model).toBe('b/two');
     expect(saved.key).toBeNull();
     expect(isKeyExpired(saved)).toBe(true);
+  });
+
+  test('saveAiDefaultModel refuses an id the catalog does not list, unless confirmed', async () => {
+    chrome.storage.local.get.mockImplementation(async (keys) => {
+      const list = Array.isArray(keys) ? keys : [keys];
+      const out = {};
+      if (list.includes('aiConfig') && stored) out.aiConfig = stored;
+      if (list.includes(MODELS_CACHE_KEY)) {
+        out[MODELS_CACHE_KEY] = { v: MODELS_CACHE_VERSION, models: [{ id: 'b/two', name: 'Two' }], fetchedAt: Date.now() };
+      }
+      return out;
+    });
+    await expect(saveAiDefaultModel('acme/typo-model')).rejects.toMatchObject({ unlisted: true });
+    expect(stored).toBeNull();
+    expect((await saveAiDefaultModel('acme/typo-model', { allowUnlisted: true })).model).toBe('acme/typo-model');
+    await expect(saveAiDefaultModel('openai/gpt-6-luna:batch', { allowUnlisted: true })).rejects.toThrow(/Batch models/);
   });
 
   test('saveAiDefaultModel refuses an empty model', async () => {
@@ -659,6 +540,24 @@ describe('default model and key storage', () => {
     const saved = await saveAiConfig({ key: 'sk-or-new', expiryDuration: 86400000 });
     expect(saved.model).toBe('b/two');
     expect(saved.key).toBe(btoa('sk-or-new'));
+  });
+
+  test('a newly typed key restarts its countdown even when it is the same key', async () => {
+    stored = { key: btoa('sk-or-k'), model: 'a/one', expiresAt: Date.now() + 5 * 60000, expiryDuration: 86400000, setupComplete: true };
+    const kept = await saveAiConfig({ key: 'sk-or-k', expiryDuration: 86400000 });
+    expect(kept.expiresAt - Date.now()).toBeLessThan(6 * 60000);
+    const renewed = await saveAiConfig({ key: 'sk-or-k', expiryDuration: 86400000, renew: true });
+    expect(renewed.expiresAt - Date.now()).toBeGreaterThan(23 * 3600000);
+    expect(chrome.alarms.create).toHaveBeenCalledWith(AI_KEY_ALARM, { when: renewed.expiresAt });
+  });
+
+  test('an expired key is removed from storage when read, keeping the model and a marker', async () => {
+    const at = Date.now() - 60000;
+    stored = { key: btoa('sk-or-k'), model: 'a/one', expiresAt: at, expiryDuration: 3600000, setupComplete: true };
+    const config = await loadAiConfig();
+    expect(config).toMatchObject({ key: null, model: 'a/one', keyExpiredAt: at, expiryDuration: 3600000 });
+    expect(stored.key).toBeNull();
+    expect(aiKeyState(config)).toBe('expired');
   });
 
   test('the saveAiDefaultModel and deleteAiKey messages answer with the new config', async () => {

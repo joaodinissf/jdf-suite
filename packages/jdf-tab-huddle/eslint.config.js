@@ -31,7 +31,12 @@ export default [
         String: 'readonly',
         Date: 'readonly',
         parseInt: 'readonly',
-        TextDecoder: 'readonly'
+        TextDecoder: 'readonly',
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        Event: 'readonly'
       }
     },
     rules: {
@@ -39,7 +44,7 @@ export default [
       // Relaxed rules for Chrome extension development
       'no-unused-vars': ['warn', {
         argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_|^(lexHost|getRespectGroups|setRespectGroups|AI_MODELS|DEFAULT_MODEL|EXPIRY_PRESETS|DEFAULT_EXPIRY|VALID_TAB_GROUP_COLORS|encodeKey|decodeKey|isKeyExpired|saveAiConfig|loadAiConfig|stripQueryParams|buildAiPrompt|callOpenRouter|parseAiResponse|handleAiGroupTabs|handleApplyAiProposal|aiOrganize|COLOR_MAP|handleMessage|clumperResetStateForTest|clumperGetStateForTest|napFormatClock|napDayInfo|napNextWakeSummary|napRowTitle|napRowUrl|napGroupBadge|napGroupByDay)$',
+        varsIgnorePattern: '^_|^(lexHost|getRespectGroups|setRespectGroups|AI_MODELS|DEFAULT_MODEL|EXPIRY_PRESETS|DEFAULT_EXPIRY|VALID_TAB_GROUP_COLORS|encodeKey|decodeKey|isKeyExpired|saveAiConfig|loadAiConfig|stripQueryParams|buildAiPrompt|callOpenRouter|parseAiResponse|handleAiGroupTabs|handleApplyAiProposal|aiOrganize|COLOR_MAP|clumperResetStateForTest|clumperGetStateForTest|napFormatClock|napDayInfo|napNextWakeSummary|napRowTitle|napRowUrl|napGroupBadge|napGroupByDay)$',
         caughtErrorsIgnorePattern: '^_' // Ignore unused error parameters prefixed with _
       }],
       'no-console': 'off', // Console is used for debugging in extensions
@@ -89,7 +94,15 @@ export default [
         // Node.js globals for test setup
         eval: 'readonly',
         
+        DOMException: 'readonly',
+
         // Extension functions (loaded by setup.js)
+        AI_KEY_ALARM: 'readonly',
+        AI_PROTOCOL: 'readonly',
+        MODELS_CACHE_VERSION: 'readonly',
+        aiKeyState: 'readonly',
+        maxTokensForTabs: 'readonly',
+        modelInfo: 'readonly',
         lexHost: 'readonly',
         getTabGroupsInfo: 'readonly',
         getTabsWithGroupInfo: 'readonly',
@@ -165,10 +178,8 @@ export default [
         curatedModelsAsPickerEntries: 'readonly',
         getOpenRouterModels: 'readonly',
         fetchOpenRouterModels: 'readonly',
-        modelSupportsStructuredOutputs: 'readonly',
         buildTabGroupsJsonSchema: 'readonly',
         buildOpenRouterRequestBody: 'readonly',
-        resolveModelDisplayName: 'readonly',
         MODELS_CACHE_KEY: 'readonly',
         MODELS_CACHE_TTL_MS: 'readonly',
         aiOrganize: 'readonly',
@@ -233,11 +244,9 @@ export default [
         escapeHtml: 'readonly',
         moveTab: 'readonly',
         renderGroup: 'readonly',
-        handleMessage: 'readonly',
         setupActionButtons: 'readonly',
         callOpenRouter: 'readonly',
         handleAiGroupTabs: 'readonly',
-        runAiOrganizeInTab: 'readonly',
         handleApplyAiProposal: 'readonly',
         saveAiDefaultModel: 'readonly',
         deleteAiKey: 'readonly',
