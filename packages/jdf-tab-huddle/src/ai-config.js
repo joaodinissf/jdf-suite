@@ -13,6 +13,13 @@ const HuddleAi = (() => {
   // reloaded. After a git checkout the two disagree; this is what we say.
   const STALE_MESSAGE = 'Huddle was updated, but Chrome is still running the old version in the background. Reload Huddle to continue (this page closes; open it again from the popup).';
 
+  // Models Huddle used to recommend and OpenRouter has since dropped, so a
+  // default saved back then is named, not shown as a bare id.
+  const FORMER_MODEL_NAMES = [
+    ['qwen/qwen3.5-flash-20260224', 'Qwen 3.5 Flash'],
+    ['google/gemini-3.1-flash-lite-preview-20260303', 'Gemini 3.1 Flash Lite Preview'],
+  ];
+
   const EYE_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">'
     + '<path d="M1.5 8S3.9 3.5 8 3.5 14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8Z" fill="none" '
     + 'stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>'
@@ -329,8 +336,9 @@ const HuddleAi = (() => {
     let modelsMeta = null;
     let loaded = false;
     let selectedId = null;
-    // Names of models a refresh dropped, so the page can still name them.
-    const goneNames = new Map();
+    // Names of models a refresh dropped (or Huddle once recommended), so the
+    // page can still name them.
+    const goneNames = new Map(FORMER_MODEL_NAMES);
 
     function findModel(id) {
       if (!id) return null;
@@ -350,6 +358,19 @@ const HuddleAi = (() => {
 
     function getModelId() {
       return customEl.value.trim() || selectedId || '';
+    }
+
+    // The ids of a live (or cached) catalog, or null while none has loaded
+    // (offline, Huddle has only its own recommendations).
+    function catalogIds() {
+      if (!loaded || !modelsMeta || modelsMeta.fallback || models.length === 0) return null;
+      return new Set(models.map((m) => m.id));
+    }
+
+    // The first recommended model the catalog lists (the worker drops the
+    // ones it does not), or null.
+    function firstRecommended() {
+      return models.find((m) => m.curated && !isBatchId(m.id)) || null;
     }
 
     function matches(m, filter) {
@@ -434,7 +455,7 @@ const HuddleAi = (() => {
         hintEl.textContent = '';
       } else if (isBatchId(id)) {
         hintEl.textContent = 'Batch models can\'t organize tabs: they only take offline batch jobs. Pick another model.';
-      } else if (!model && goneNames.has(id)) {
+      } else if (!model && goneNames.has(id) && catalogIds()) {
         hintEl.textContent = `OpenRouter no longer lists ${goneNames.get(id)}. Pick another model.`;
       } else if (!model) {
         hintEl.textContent = loaded && modelsMeta && !modelsMeta.fallback
@@ -563,12 +584,38 @@ const HuddleAi = (() => {
 
     return {
       load, refresh, setModelId, getModelId, findModel, modelName, isListed, fitRows,
+      catalogIds, firstRecommended,
       focus: () => {
         fitRows();
         filterEl.focus();
       },
       select, filterEl, customEl,
     };
+  }
+
+  // The model a run uses when none is picked, as the worker works it out
+  // (resolveDefaultModel in background.js): the saved default, else Huddle's;
+  // when the loaded catalog lacks it, the first recommended model it lists.
+  // { model, missing (the id replaced, or null), mine (the user saved it) }.
+  function resolveDefaultModel(config, builtInDefault, picker) {
+    const saved = (config && typeof config.model === 'string' && config.model) || null;
+    const wanted = saved || builtInDefault || null;
+    const keep = { model: wanted, missing: null, mine: !!saved };
+    const ids = picker && picker.catalogIds ? picker.catalogIds() : null;
+    if (!wanted || !ids || ids.has(wanted)) return keep;
+    if (saved && config.unlistedModel === saved) return keep;
+    const first = picker.firstRecommended();
+    if (!first || first.id === wanted) return keep;
+    return { model: first.id, missing: wanted, mine: !!saved };
+  }
+
+  // "Your default Qwen 3.5 Flash is no longer on OpenRouter; using Claude
+  // Haiku 4.5." or '' when nothing was replaced.
+  function defaultFallbackNote(resolved, picker) {
+    if (!resolved || !resolved.missing) return '';
+    const name = (id) => (picker ? picker.modelName(id) : '') || id;
+    const whose = resolved.mine ? 'Your default' : 'Huddle\'s default';
+    return `${whose} ${name(resolved.missing)} is no longer on OpenRouter; using ${name(resolved.model)}.`;
   }
 
   return {
@@ -588,5 +635,7 @@ const HuddleAi = (() => {
     formatModelsStatus,
     optionLabel,
     createModelPicker,
+    resolveDefaultModel,
+    defaultFallbackNote,
   };
 })();

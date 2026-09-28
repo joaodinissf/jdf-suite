@@ -297,3 +297,27 @@ describe('Settings: AI section', () => {
     expect($('ai-model-status').textContent).toBe('Default model: acme/model');
   });
 });
+
+describe('Settings: a default the catalog no longer lists', () => {
+  beforeEach(() => {
+    chrome.runtime.lastError = null;
+  });
+
+  test('says so, and shows the model organize uses instead', async () => {
+    loadSettingsPage({ loadAiConfig: loadResponse({ key: null, model: 'qwen/qwen3.5-flash-20260224' }) });
+    await flushPromises();
+    await flushPromises();
+    expect($('aiDefaultNote').hidden).toBe(false);
+    expect($('aiDefaultNote').textContent)
+      .toBe('Your default Qwen 3.5 Flash is no longer on OpenRouter; using Model One. Save a default model to keep one.');
+    expect($('settingsSelect').value).toBe('m1');
+  });
+
+  test('a listed default has no note', async () => {
+    loadSettingsPage({ loadAiConfig: loadResponse({ key: null, model: 'm2' }) });
+    await flushPromises();
+    await flushPromises();
+    expect($('aiDefaultNote').hidden).toBe(true);
+    expect($('settingsSelect').value).toBe('m2');
+  });
+});

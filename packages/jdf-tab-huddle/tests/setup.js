@@ -181,6 +181,10 @@ const backgroundWrapper = `
   if (typeof splitModelName !== 'undefined') global.splitModelName = splitModelName;
   if (typeof canHuddleUseModel !== 'undefined') global.canHuddleUseModel = canHuddleUseModel;
   if (typeof modelInfo !== 'undefined') global.modelInfo = modelInfo;
+  if (typeof resolveDefaultModel !== 'undefined') global.resolveDefaultModel = resolveDefaultModel;
+  if (typeof resolveDefaultModelFromCache !== 'undefined') global.resolveDefaultModelFromCache = resolveDefaultModelFromCache;
+  if (typeof describeRequestTried !== 'undefined') global.describeRequestTried = describeRequestTried;
+  if (typeof DEFAULT_MODEL !== 'undefined') global.DEFAULT_MODEL = DEFAULT_MODEL;
   if (typeof mapOpenRouterHttpError !== 'undefined') global.mapOpenRouterHttpError = mapOpenRouterHttpError;
   if (typeof readOpenRouterResponse !== 'undefined') global.readOpenRouterResponse = readOpenRouterResponse;
   if (typeof maxTokensForTabs !== 'undefined') global.maxTokensForTabs = maxTokensForTabs;

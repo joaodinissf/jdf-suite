@@ -16,16 +16,19 @@ const AI_RUN_PORT = 'huddle-ai-run';
 const APP_TITLE = 'Huddle';
 const OPENROUTER_API = 'https://openrouter.ai/api/v1';
 
-// Curated defaults, always offered when the live catalog lists them, and on
-// their own when the catalog cannot be loaded. Prices are OpenRouter's, per
-// token, and only used offline; the catalog's own prices win.
+// Curated defaults, in the order the picker recommends them; the first is the
+// default model. Offered while the live catalog lists them, and on their own
+// when the catalog cannot be loaded. Prices are OpenRouter's, per token, and
+// only used offline; the catalog's own prices win.
 const AI_MODELS = [
   { id: 'anthropic/claude-haiku-4.5', name: 'Claude Haiku 4.5', provider: 'Anthropic',
     pricing: { prompt: '0.000001', completion: '0.000005' } },
-  { id: 'google/gemini-3.1-flash-lite-preview-20260303', name: 'Gemini 3.1 Flash Lite', provider: 'Google',
+  { id: 'deepseek/deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash', provider: 'DeepSeek',
+    pricing: { prompt: '0.0000003', completion: '0.0000012' } },
+  { id: 'google/gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', provider: 'Google',
     pricing: { prompt: '0.00000025', completion: '0.0000015' } },
-  { id: 'qwen/qwen3.5-flash-20260224', name: 'Qwen 3.5 Flash', provider: 'Qwen',
-    pricing: { prompt: '0.000000065', completion: '0.0000003' } },
+  { id: 'openai/gpt-6-luna', name: 'GPT-6 Luna', provider: 'OpenAI',
+    pricing: { prompt: '0.0000001', completion: '0.0000005' } },
 ];
 const DEFAULT_MODEL = AI_MODELS[0].id;
 
@@ -43,9 +46,10 @@ const VALID_TAB_GROUP_COLORS = ['grey', 'blue', 'red', 'yellow', 'green', 'pink'
 
 // OpenRouter model catalog cache (chrome.storage.local). The version changes
 // whenever the rules for which models Huddle keeps change, so a cache an
-// older build wrote (with image, batch or no-JSON models in it) is dropped.
+// older build wrote (with image, batch or no-JSON models in it, or without
+// each model's supported parameters) is dropped.
 const MODELS_CACHE_KEY = 'openRouterModelsCache';
-const MODELS_CACHE_VERSION = 3;
+const MODELS_CACHE_VERSION = 4;
 const MODELS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const MODELS_FETCH_TIMEOUT_MS = 10000;
 
@@ -141,6 +145,9 @@ function normalizeOpenRouterModel(raw) {
     provider,
     cost: formatModelCost(raw.pricing),
     supportsStructuredOutputs: params.includes('structured_outputs'),
+    // What the model accepts, so a request only carries parameters some
+    // provider of it takes (see buildOpenRouterRequestBody).
+    supportedParameters: params.filter((p) => typeof p === 'string'),
     curated: false,
   };
 }
@@ -330,8 +337,9 @@ function catalogReply(catalog) {
   };
 }
 
-// What Huddle knows about a model id: its display name and whether it takes
-// a strict JSON schema (only the cached catalog knows; curated alone: no).
+// What Huddle knows about a model id: its display name, whether it takes a
+// strict JSON schema, and the parameters it accepts (params: null when only
+// the cached catalog could say and it does not list the id).
 async function modelInfo(modelId) {
   const curated = AI_MODELS.find((m) => m.id === modelId);
   const cache = modelId ? await readModelsCache() : null;
@@ -342,7 +350,30 @@ async function modelInfo(modelId) {
     listed: !!hit,
     catalogKnown: !!cache,
     supportsStructuredOutputs: !!(hit && hit.supportsStructuredOutputs),
+    params: hit && Array.isArray(hit.supportedParameters) ? hit.supportedParameters : null,
   };
+}
+
+// The model a run uses when none is picked: the saved default, else
+// DEFAULT_MODEL. When a catalog is known and does not list it, the first
+// recommended model it does list stands in, and `missing` names the one it
+// replaces (mine: the user saved it). An id the user kept although the
+// catalog did not list it (config.unlistedModel) is theirs to keep. With no
+// catalog there is nothing to check against.
+function resolveDefaultModel(config, catalogIds) {
+  const saved = (config && typeof config.model === 'string' && config.model) || null;
+  const wanted = saved || DEFAULT_MODEL;
+  const keep = { model: wanted, missing: null, mine: !!saved };
+  if (!catalogIds || catalogIds.has(wanted)) return keep;
+  if (saved && config.unlistedModel === saved) return keep;
+  const first = AI_MODELS.find((m) => catalogIds.has(m.id));
+  if (!first || first.id === wanted) return keep;
+  return { model: first.id, missing: wanted, mine: !!saved };
+}
+
+async function resolveDefaultModelFromCache(config) {
+  const cache = await readModelsCache();
+  return resolveDefaultModel(config, cache ? new Set(cache.models.map((m) => m.id)) : null);
 }
 
 function buildTabGroupsJsonSchema(tabIds) {
@@ -442,9 +473,11 @@ async function saveAiConfig(config) {
 
   // A key saved without a model (the organize page's inline key form) keeps
   // the default model already chosen in Settings.
+  const model = config.model || (previous && previous.model) || DEFAULT_MODEL;
   const aiConfig = {
     key,
-    model: config.model || (previous && previous.model) || DEFAULT_MODEL,
+    model,
+    unlistedModel: previous && previous.unlistedModel === model ? model : null,
     expiresAt,
     expiryDuration,
     keyExpiredAt: null,
@@ -488,10 +521,13 @@ async function saveAiDefaultModel(model, { allowUnlisted = false } = {}) {
       throw err;
     }
   }
+  // A kept unlisted id is never swapped for a recommended model later (see
+  // resolveDefaultModel): the user chose it knowing the catalog lacked it.
+  const unlistedModel = allowUnlisted ? id : null;
   const previous = await loadAiConfig();
   const aiConfig = previous
-    ? { ...previous, model: id }
-    : { key: null, model: id, expiresAt: null, expiryDuration: DEFAULT_EXPIRY, setupComplete: false };
+    ? { ...previous, model: id, unlistedModel }
+    : { key: null, model: id, unlistedModel, expiresAt: null, expiryDuration: DEFAULT_EXPIRY, setupComplete: false };
   await chrome.storage.local.set({ aiConfig });
   return aiConfig;
 }
@@ -575,28 +611,51 @@ function maxTokensForTabs(tabCount) {
   return Math.min(16000, 2000 + 100 * Math.max(0, tabCount || 0));
 }
 
-function buildOpenRouterRequestBody(model, messages, { useJsonSchema = false, jsonSchema = null, maxTokens = null } = {}) {
+// The request carries only parameters the model accepts, as the catalog lists
+// them (params; null when unknown, as for a custom id). OpenRouter treats a
+// parameter no provider of a model takes as a reason to route nowhere once
+// require_parameters is on, so Huddle sends no sampling settings at all
+// (GPT-6 Luna, for one, takes no temperature).
+//   structured_outputs listed: the exact json_schema, and only providers
+//     that honor it (require_parameters)
+//   response_format listed, or unknown: json_object, any provider
+// strict: false drops the json_schema and require_parameters (the fallback).
+function buildOpenRouterRequestBody(model, messages, { params = null, jsonSchema = null, strict = true, maxTokens = null } = {}) {
+  const known = Array.isArray(params);
+  const takes = (name) => !known || params.includes(name);
   const body = {
     model,
     messages,
-    temperature: 0.3,
     stream: true,
   };
-  if (Number.isFinite(maxTokens) && maxTokens > 0) body.max_tokens = maxTokens;
+  if (Number.isFinite(maxTokens) && maxTokens > 0 && takes('max_tokens')) body.max_tokens = maxTokens;
 
-  if (useJsonSchema && jsonSchema) {
+  if (strict && jsonSchema && known && params.includes('structured_outputs')) {
     body.response_format = {
       type: 'json_schema',
       json_schema: jsonSchema,
     };
-    // Only route to providers that honor structured outputs for this model.
     body.provider = { require_parameters: true };
-  } else {
+  } else if (takes('response_format')) {
     body.response_format = { type: 'json_object' };
   }
 
   return body;
 }
+
+// What a request asked OpenRouter for, in words, for an error that says so.
+function describeRequestTried(tried) {
+  const strict = tried.includes('strict');
+  const plain = tried.includes('plain');
+  if (strict && plain) return 'Huddle asked for its exact JSON answer format, then for any JSON answer';
+  if (strict) return 'Huddle asked for its exact JSON answer format';
+  return 'Huddle asked for a JSON answer';
+}
+
+// A refusal about the request's parameters or routing, not the model itself:
+// "No endpoints found that can handle the requested parameters", "...that
+// support the provided 'response_format' parameter", provider routing.
+const ROUTING_REFUSAL_TEXT = /parameter|require_parameters|routing|no endpoints found (that|matching)/i;
 
 function aiError(message, kind, extra = {}) {
   const error = new Error(message);
@@ -619,7 +678,7 @@ function statusWithDetail(status, said) {
 //   auth      a 401 not yet pinned on the key or the model (see classifyAuthError)
 //   credits   the account needs credits
 //   transient try again (rate limits, timeouts, server errors)
-// ctx: { model, modelName }
+// ctx: { model, modelName, tried: ['strict'?, 'plain'?] (what was sent) }
 function mapOpenRouterHttpError(status, detail = {}, ctx = {}) {
   const said = detail.message || '';
   const provider = detail.provider || '';
@@ -636,6 +695,10 @@ function mapOpenRouterHttpError(status, detail = {}, ctx = {}) {
   } else if (status === 403) {
     // Moderation or a region/provider block: the same request is refused again.
     error = aiError(`OpenRouter refused this request for ${who} (${code}). Pick another model.`, 'model', { retryable: false });
+  } else if ((status === 404 || status === 400) && ROUTING_REFUSAL_TEXT.test(said)) {
+    // The model exists; no provider of it takes what the request asked for.
+    const tried = Array.isArray(ctx.tried) && ctx.tried.length ? ` ${describeRequestTried(ctx.tried)}.` : '';
+    error = aiError(`OpenRouter found no provider that can run ${who} with Huddle's request (${code}).${tried} Pick another model.`, 'model', { retryable: false });
   } else if (status === 404) {
     // Retrying the same model finds no endpoint again: Change model leads.
     error = aiError(`${who} isn't available on OpenRouter right now (${code}). Pick another model.`, 'model', { retryable: false });
@@ -756,24 +819,18 @@ async function readOpenRouterResponse(response, onChunk, { onActivity = () => {}
   return { text: fullText, finishReason };
 }
 
-// Statuses an endpoint uses to refuse the request itself — the only ones that
-// can mean "this provider won't take the json_schema". 401/402/429 describe the
-// account, not the payload: they would fail identically without the schema.
-const SCHEMA_REJECTION_STATUSES = new Set([400, 404, 422, 501]);
-// ...and only when the refusal is about the schema (or says nothing at all):
-// a batch model, an unknown id or a context overflow fail the same either way.
-const SCHEMA_REJECTION_TEXT = /response_format|json_schema|structured|require_parameters|support the (requested|provided) parameters?/i;
+// Statuses OpenRouter uses to refuse the request itself. After a strict
+// request (json_schema with require_parameters) any of them earns one retry
+// with plain json_object on any provider, whatever the message says: its
+// wording changes, and a refusal of the strict request is exactly what the
+// plain one avoids. 401/402/429 describe the account, not the payload: they
+// would fail identically, so they are never retried.
+const STRICT_REFUSAL_STATUSES = new Set([400, 404, 422, 501]);
 
-function isSchemaRejection(error) {
-  if (!SCHEMA_REJECTION_STATUSES.has(error.status)) return false;
-  const said = (error.openRouterError && error.openRouterError.message) || '';
-  return !said || SCHEMA_REJECTION_TEXT.test(said);
-}
-
-// options: { useJsonSchema, jsonSchema, maxTokens, signal, ctx, onFinish,
+// options: { params, jsonSchema, maxTokens, signal, ctx, onFinish,
 //            firstByteMs, idleMs }
-// Resolves with the model's text. When the endpoint refuses the json_schema
-// outright, retries once with plain json_object so organize still works there.
+// Resolves with the model's text. See buildOpenRouterRequestBody for what is
+// sent, and STRICT_REFUSAL_STATUSES for the one retry.
 // Rejects with an error carrying .kind; an abort through `signal` rejects
 // with an AbortError.
 async function callOpenRouter(apiKey, model, messages, onChunk, options = {}) {
@@ -797,7 +854,12 @@ async function callOpenRouter(apiKey, model, messages, onChunk, options = {}) {
     }, ms);
   };
 
+  const tried = [];
+  ctx.tried = tried;
   const postRequest = async (opts) => {
+    const body = buildOpenRouterRequestBody(model, messages, opts);
+    const strict = !!(body.provider && body.provider.require_parameters);
+    tried.push(strict ? 'strict' : 'plain');
     arm(firstByteMs);
     const response = await fetch(`${OPENROUTER_API}/chat/completions`, {
       method: 'POST',
@@ -805,7 +867,7 @@ async function callOpenRouter(apiKey, model, messages, onChunk, options = {}) {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       }),
-      body: JSON.stringify(buildOpenRouterRequestBody(model, messages, opts)),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
 
@@ -814,24 +876,30 @@ async function callOpenRouter(apiKey, model, messages, onChunk, options = {}) {
       console.error('[Huddle] OpenRouter request failed:', {
         status: response.status,
         model,
-        responseFormat: opts.useJsonSchema ? 'json_schema' : 'json_object',
+        responseFormat: body.response_format ? body.response_format.type : 'none',
+        requireParameters: strict,
         detail,
       });
-      throw mapOpenRouterHttpError(response.status, detail, ctx);
+      const error = mapOpenRouterHttpError(response.status, detail, ctx);
+      error.strictRequest = strict;
+      throw error;
     }
     return response;
   };
 
   try {
-    const wantSchema = !!(options.useJsonSchema && options.jsonSchema);
-    const base = { maxTokens: options.maxTokens || null };
+    const base = {
+      params: Array.isArray(options.params) ? options.params : null,
+      jsonSchema: options.jsonSchema || null,
+      maxTokens: options.maxTokens || null,
+    };
     let response;
     try {
-      response = await postRequest({ ...base, useJsonSchema: wantSchema, jsonSchema: options.jsonSchema || null });
+      response = await postRequest(base);
     } catch (error) {
-      if (!wantSchema || !isSchemaRejection(error)) throw error;
-      console.warn('[Huddle] Endpoint refused the JSON schema; retrying with json_object:', error.message);
-      response = await postRequest({ ...base, useJsonSchema: false, jsonSchema: null });
+      if (!error || !error.strictRequest || !STRICT_REFUSAL_STATUSES.has(error.status)) throw error;
+      console.warn('[Huddle] OpenRouter refused the strict request; retrying with json_object on any provider:', error.message);
+      response = await postRequest({ ...base, strict: false });
     }
 
     // Past this point the response is streaming into onChunk, and the page has
@@ -994,9 +1062,8 @@ async function runAiOrganize({ tabId, windowId, start, signal, post }) {
       });
       return;
     }
-    const model = (typeof start.model === 'string' && start.model.trim())
-      || config.model
-      || DEFAULT_MODEL;
+    const picked = typeof start.model === 'string' && start.model.trim();
+    const model = picked || (await resolveDefaultModelFromCache(config)).model;
     const info = await modelInfo(model);
     ctx = { model, modelName: info.name };
     if (isBatchModel({ id: model, name: info.name })) {
@@ -1030,7 +1097,7 @@ async function runAiOrganize({ tabId, windowId, start, signal, post }) {
     }
 
     const messages = buildAiPrompt(unpinnedTabs, start.instructions || '');
-    const useJsonSchema = info.supportsStructuredOutputs;
+    const useJsonSchema = !!(info.params && info.params.includes('structured_outputs'));
     const tabIds = unpinnedTabs.map((t) => t.id);
     const jsonSchema = useJsonSchema ? buildTabGroupsJsonSchema(tabIds) : null;
     post({
@@ -1051,7 +1118,7 @@ async function runAiOrganize({ tabId, windowId, start, signal, post }) {
       messages,
       (chunk) => post({ type: 'ai-chunk', text: chunk }),
       {
-        useJsonSchema,
+        params: info.params,
         jsonSchema,
         maxTokens: maxTokensForTabs(unpinnedTabs.length),
         signal,

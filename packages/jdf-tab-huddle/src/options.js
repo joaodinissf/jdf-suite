@@ -259,7 +259,22 @@ async function saveAiDefaultModel() {
   }
   aiUnlistedConfirm = null;
   aiConfig = response.config || aiConfig;
+  renderAiDefaultNote();
   showStatus(`Default model: ${aiModelPicker.modelName(model)}`, { target: 'ai-model-status' });
+}
+
+// When the catalog no longer lists the default, organize runs with the first
+// recommended model it does list: the picker shows that one, and a note
+// says so until another default is saved. Returns the model to show.
+function renderAiDefaultNote() {
+  const resolved = HuddleAi.resolveDefaultModel(aiConfig, aiBuiltInDefault, aiModelPicker);
+  const note = document.getElementById('aiDefaultNote');
+  if (note) {
+    const text = HuddleAi.defaultFallbackNote(resolved, aiModelPicker);
+    note.textContent = text ? `${text} Save a default model to keep one.` : '';
+    note.hidden = !text;
+  }
+  return resolved.model;
 }
 
 // Another page (the organize page's key form or Make default) changed it.
@@ -268,8 +283,9 @@ function onAiStorageChanged(changes, area) {
   const before = aiConfig && aiConfig.model;
   aiConfig = changes.aiConfig.newValue || null;
   renderAiKeyState();
+  const shown = renderAiDefaultNote();
   const after = (aiConfig && aiConfig.model) || aiBuiltInDefault;
-  if (after !== before && aiModelPicker) aiModelPicker.setModelId(after);
+  if (after !== before && aiModelPicker) aiModelPicker.setModelId(shown);
 }
 
 // Buttons stay off until the config has loaded: an empty expiry select would
@@ -282,7 +298,7 @@ async function initAiSection() {
   });
   aiModelPicker = HuddleAi.createModelPicker(document.getElementById('aiModelPicker'), {
     idPrefix: 'settings',
-    onChange: () => { aiUnlistedConfirm = null; showAiError('aiModelError', ''); },
+    onChange: () => { aiUnlistedConfirm = null; showAiError('aiModelError', ''); renderAiDefaultNote(); },
   });
   document.getElementById('aiKeyCard').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -320,6 +336,8 @@ async function initAiSection() {
   document.getElementById('aiSaveModel').disabled = false;
   aiModelPicker.setModelId((aiConfig && aiConfig.model) || aiBuiltInDefault);
   await aiModelPicker.load();
+  const shown = renderAiDefaultNote();
+  if (shown && shown !== ((aiConfig && aiConfig.model) || aiBuiltInDefault)) aiModelPicker.setModelId(shown);
 }
 
 async function init() {

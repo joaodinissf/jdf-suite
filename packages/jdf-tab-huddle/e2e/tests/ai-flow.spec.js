@@ -295,6 +295,44 @@ test.describe('Organize with AI', () => {
     expect(stored).toBe(GOOD_KEY);
   });
 
+  test('GPT-6 Luna (no temperature) organizes: the request carries only what it takes', async ({ context, sw, extensionId }) => {
+    const fake = await installFakeOpenRouter(context);
+    await seed(sw, context, { model: 'openai/gpt-6-luna' });
+    const page = await openOrganize(context, extensionId);
+
+    await page.click('#startOrganize');
+    await expect(groupNames(page)).toHaveCount(3);
+    await expect(page.locator('.proposal-head')).toContainText('GPT-6 Luna');
+    expect(fake.chats).toHaveLength(1);
+    expect(fake.chats[0]).toMatchObject({ model: 'openai/gpt-6-luna', responseFormat: 'json_schema', requireParameters: true });
+    expect(fake.chats[0].params).not.toContain('temperature');
+  });
+
+  test('a strict request OpenRouter routes nowhere is retried once without it, and organizes', async ({ context, sw, extensionId }) => {
+    const fake = await installFakeOpenRouter(context);
+    await seed(sw, context, { model: 'huddle-test/no-strict' });
+    const page = await openOrganize(context, extensionId);
+
+    await page.click('#startOrganize');
+    await expect(groupNames(page)).toHaveCount(3);
+    expect(fake.chats.map((c) => [c.responseFormat, c.requireParameters])).toEqual([
+      ['json_schema', true],
+      ['json_object', false],
+    ]);
+  });
+
+  test('a default OpenRouter no longer lists: the page says so and organizes with the first recommended model', async ({ context, sw, extensionId }) => {
+    const fake = await installFakeOpenRouter(context);
+    await seed(sw, context, { model: 'qwen/qwen3.5-flash-20260224' });
+    const page = await openOrganize(context, extensionId);
+
+    await expect(page.locator('#modelName')).toHaveText('Claude Haiku 4.5');
+    await expect(page.locator('#modelNote')).toHaveText('Your default Qwen 3.5 Flash is no longer on OpenRouter; using Claude Haiku 4.5.');
+    await page.click('#startOrganize');
+    await expect(groupNames(page)).toHaveCount(3);
+    expect(fake.chats.map((c) => c.model)).toEqual(['anthropic/claude-haiku-4.5']);
+  });
+
   test('O again brings back the organize page already open', async ({ context, sw, extensionId }) => {
     await installFakeOpenRouter(context);
     await seed(sw, context);

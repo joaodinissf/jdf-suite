@@ -176,6 +176,7 @@ describe('normalizeOpenRouterModel', () => {
       provider: 'Acme',
       cost: '$1.00 in per M',
       supportsStructuredOutputs: true,
+      supportedParameters: ['temperature', 'response_format', 'structured_outputs'],
       curated: false,
     });
   });
@@ -464,7 +465,7 @@ describe('buildOpenRouterRequestBody', () => {
   test('json_schema when requested', () => {
     const jsonSchema = buildTabGroupsJsonSchema([1]);
     const body = buildOpenRouterRequestBody('m', [], {
-      useJsonSchema: true,
+      params: ['response_format', 'structured_outputs'],
       jsonSchema,
     });
     expect(body.response_format).toEqual({
@@ -496,6 +497,7 @@ describe('curated structured-output support is unknown, not false', () => {
 
 describe('callOpenRouter schema fallback', () => {
   const schema = { name: 'tab_groups', strict: true, schema: {} };
+  const STRICT = ['max_tokens', 'response_format', 'structured_outputs'];
   const sseResponse = (text) => ({
     ok: true,
     headers: { get: () => 'application/json' },
@@ -514,7 +516,7 @@ describe('callOpenRouter schema fallback', () => {
       .mockResolvedValueOnce(sseResponse('{"groups":[]}'));
 
     const text = await callOpenRouter('k', 'm', [], null, {
-      useJsonSchema: true,
+      params: STRICT,
       jsonSchema: schema,
     });
 
@@ -532,7 +534,7 @@ describe('callOpenRouter schema fallback', () => {
     global.fetch.mockResolvedValue({ ok: false, status });
 
     await expect(
-      callOpenRouter('k', 'm', [], null, { useJsonSchema: true, jsonSchema: schema })
+      callOpenRouter('k', 'm', [], null, { params: STRICT, jsonSchema: schema })
     ).rejects.toThrow();
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
@@ -548,7 +550,7 @@ describe('callOpenRouter schema fallback', () => {
     global.fetch
       .mockResolvedValueOnce(errorResponse(404, 'No endpoints found that support the provided \'response_format\' parameter (json_schema).'))
       .mockResolvedValueOnce(sseResponse('{"groups":[]}'));
-    await callOpenRouter('k', 'm', [], null, { useJsonSchema: true, jsonSchema: schema });
+    await callOpenRouter('k', 'm', [], null, { params: STRICT, jsonSchema: schema });
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
@@ -556,12 +558,13 @@ describe('callOpenRouter schema fallback', () => {
     ['a batch model', 400, 'openai/x-batch is a batch model and cannot serve chat completions'],
     ['an unknown id', 400, 'acme/typo is not a valid model ID'],
     ['a context overflow', 400, 'This endpoint\'s maximum context length is 8192 tokens'],
-  ])('does not retry %s: it fails the same without the schema', async (_label, status, message) => {
+  ])('retries %s once, then reports what OpenRouter said', async (_label, status, message) => {
     global.fetch.mockResolvedValue(errorResponse(status, message));
     await expect(
-      callOpenRouter('k', 'm', [], null, { useJsonSchema: true, jsonSchema: schema })
+      callOpenRouter('k', 'm', [], null, { params: STRICT, jsonSchema: schema })
     ).rejects.toThrow(message.replace(/\.$/, ''));
-    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(bodyOf(1).provider).toBeUndefined();
   });
 
   test('does not re-request once the response is already streaming', async () => {
@@ -574,7 +577,7 @@ describe('callOpenRouter schema fallback', () => {
     });
 
     await expect(
-      callOpenRouter('k', 'm', [], null, { useJsonSchema: true, jsonSchema: schema })
+      callOpenRouter('k', 'm', [], null, { params: STRICT, jsonSchema: schema })
     ).rejects.toThrow(/isn't an API response/);
 
     // A retry here would append a second generation to chunks already on screen.
