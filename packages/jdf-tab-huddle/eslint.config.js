@@ -211,7 +211,6 @@ export default [
         handleRestoreSnoozed: 'readonly',
         handleSnoozeAlarm: 'readonly',
         wakeSnoozedRecord: 'readonly',
-        restoreSnoozedRecord: 'readonly',
         reconcileSnoozeAlarms: 'readonly',
         SNOOZE_PRESETS: 'readonly',
         formatWakeTime: 'readonly',
@@ -224,6 +223,7 @@ export default [
         discardSnooze: 'readonly',
         showDiscardNotice: 'readonly',
         undoDiscard: 'readonly',
+        discardNoticeText: 'readonly',
 
         // Keyboard shortcut functions (loaded by setup.js)
         buildHotkeyMap: 'readonly',
@@ -247,6 +247,9 @@ export default [
         napDiscard: 'readonly',
         napShowDiscardNotice: 'readonly',
         napUndoDiscard: 'readonly',
+        napLoadAndRender: 'readonly',
+        napHandleVisibilityChange: 'readonly',
+        napHandleStorageChange: 'readonly',
 
         // ai-proposal.js / callOpenRouter / handleAiGroupTabs exposures (loaded by setup.js)
         escapeHtml: 'readonly',

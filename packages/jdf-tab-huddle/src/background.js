@@ -2831,14 +2831,15 @@ function withSnoozeLock(fn) {
   return run;
 }
 
+// Reads the sleeping list. A failed read throws, for every caller: the
+// callers that change the list write it back, and writing back an empty list
+// read from a failure would erase every snooze. Nothing stored yet reads as [].
 async function loadSnoozedItems() {
-  try {
-    const result = await chrome.storage.local.get([SNOOZE_STORAGE_KEY]);
-    const items = result && result[SNOOZE_STORAGE_KEY];
-    return Array.isArray(items) ? items : [];
-  } catch (_e) {
-    return [];
-  }
+  const result = await chrome.storage.local.get([SNOOZE_STORAGE_KEY]);
+  const items = result && result[SNOOZE_STORAGE_KEY];
+  if (items === undefined || items === null) return [];
+  if (!Array.isArray(items)) throw new Error('The sleeping tabs could not be read');
+  return items;
 }
 
 async function saveSnoozedItems(items) {
@@ -3149,10 +3150,180 @@ async function handleSnoozeGroup(message, sendResponse) {
 // ============================================================
 // Tab Snoozing — Wake Path
 // ============================================================
+//
+// A snoozed record stays in storage until its wake has finished: its tabs
+// exist nowhere else, so removing it first (as Huddle did up to 0.6.0) lost
+// every tab not yet reopened when the worker died, the extension reloaded or
+// the browser quit mid-wake. While a record wakes it carries a claim:
+//
+//   record.waking = { by, boot, since, attempts, stalled,
+//                     opened: [{ i, tabId, windowId }], failed: [i],
+//                     windowId, placeholderTabId, groupId, baseline }
+//
+// - `by` is WAKER_ID, this worker instance; `boot` is BOOT_ID, this browser
+//   session and extension load (see getBootId).
+// - `opened[k].i` indexes record.tabs; a tab is written to `opened` right
+//   after it is created, so an interruption leaves at most the one tab created
+//   but not yet saved to open twice.
+// - `baseline[url]` counts the tabs already showing that URL when the wake
+//   began, so a restart never mistakes them for tabs the wake reopened.
+// - `attempts` counts claims. Automatic retries stop after
+//   WAKE_MAX_ATTEMPTS: the claim is then `stalled` and waits for Wake now.
+//
+// A record whose wake reopened nothing keeps no claim but `wakeFailedAt`, and
+// also waits for Wake now. specs/tab-snoozing.md ("Waking") has the full
+// protocol and the bounds it keeps.
 
 // notificationId -> { windowId, tabId } for best-effort click focusing. This
 // map is memory-resident and lossy across service-worker respawns (documented).
 const snoozeNotificationTargets = new Map();
+
+// This worker instance. A claim whose `by` is another id belongs to a worker
+// that has since stopped.
+const WAKER_ID = generateSnoozeId();
+// Ids of the records this instance is waking right now (or has marked to
+// resume). A claimed record in here is "active"; one that is not is
+// "interrupted", whoever claimed it.
+const wakingNow = new Set();
+const WAKE_MAX_ATTEMPTS = 3;
+// Timings, in one object so the unit harness can shorten them.
+const WAKE_TIMING = {
+  retryMs: 60000,
+  settlePollMs: 1000,
+  settleQuietPolls: 5,
+  settleMaxMs: 20000,
+};
+const BOOT_ID_KEY = 'huddleBootId';
+const BOOT_KIND_KEY = 'huddleBootKind';
+const RESTORE_SETTLED_KEY = 'huddleRestoreSettled';
+
+// A checkpoint in a wake. It does nothing unless a test or the audit's
+// wake-stage build defines globalThis.__huddleWakeHook, which can then stop
+// the wake at exactly this point. Stages: 'claimed', 'after-window-create',
+// 'after-create:<i>', 'after-progress:<i>', 'before-group', 'before-remove'.
+async function wakeStage(name, detail) {
+  const hook = globalThis.__huddleWakeHook;
+  if (typeof hook === 'function') {
+    await hook(detail === undefined ? name : `${name}:${detail}`);
+  }
+}
+
+// storage.session survives a worker restart and is cleared by a browser
+// restart and by an extension reload, update or re-enable, so its id names
+// "this boot": within one boot, tab and window ids keep their meaning.
+let bootIdPromise = null;
+function getBootId() {
+  if (!bootIdPromise) {
+    bootIdPromise = (async () => {
+      const got = await chrome.storage.session.get(BOOT_ID_KEY);
+      if (got && typeof got[BOOT_ID_KEY] === 'string') return got[BOOT_ID_KEY];
+      const id = generateSnoozeId();
+      await chrome.storage.session.set({ [BOOT_ID_KEY]: id });
+      return id;
+    })();
+    bootIdPromise.catch(() => { bootIdPromise = null; });
+  }
+  return bootIdPromise;
+}
+
+// How this boot began, as the runtime's own events said: 'restart' after
+// runtime.onStartup or onInstalled 'chrome_update' / 'install' (every id from
+// before is meaningless), 'reload' after onInstalled 'update' (ids are still
+// valid). null while none has arrived. Kept in storage.session so every
+// worker instance of this boot knows it.
+async function getBootKind() {
+  const got = await chrome.storage.session.get(BOOT_KIND_KEY);
+  const kind = got && got[BOOT_KIND_KEY];
+  return kind === 'restart' || kind === 'reload' ? kind : null;
+}
+
+// A restart outranks a reload: Chrome can apply an update as it starts.
+async function setBootKind(kind) {
+  if (kind === 'reload' && (await getBootKind()) === 'restart') return 'restart';
+  await chrome.storage.session.set({ [BOOT_KIND_KEY]: kind });
+  return kind;
+}
+
+function snoozeAlarmName(id) {
+  return SNOOZE_ALARM_PREFIX + id;
+}
+
+// The recovery alarm: if this worker stops, it starts a new one within a
+// minute, which resumes the wake.
+async function armRecoveryAlarm(id) {
+  try {
+    await chrome.alarms.create(snoozeAlarmName(id), { when: Date.now() + WAKE_TIMING.retryMs });
+  } catch (error) {
+    console.warn('[Huddle] Could not arm the wake recovery alarm:', error && error.message);
+  }
+}
+
+async function clearSnoozeAlarm(id) {
+  try {
+    await chrome.alarms.clear(snoozeAlarmName(id));
+  } catch (_e) {
+    // harmless if already cleared
+  }
+}
+
+// Stalled claims, and records none of whose tabs could be reopened, wait for
+// the user: no alarm, reconciler or worker start retries them.
+function isWakeHeld(record) {
+  return !!(record.wakeFailedAt || (record.waking && record.waking.stalled));
+}
+
+// 'active' | 'interrupted' | null, as listSnoozed reports it.
+function wakeStateOf(record) {
+  if (wakingNow.has(record.id)) return 'active';
+  return record.waking ? 'interrupted' : null;
+}
+
+async function windowExists(windowId) {
+  if (windowId === undefined || windowId === null) return false;
+  try {
+    return !!(await chrome.windows.get(windowId));
+  } catch (_e) {
+    return false;
+  }
+}
+
+async function getTabOrNull(tabId) {
+  if (typeof tabId !== 'number') return null;
+  try {
+    return (await chrome.tabs.get(tabId)) || null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+// Tabs in regular (normal, non-incognito) windows, in window then tab order.
+async function regularWindowTabs() {
+  const windows = await chrome.windows.getAll({ populate: false, windowTypes: ['normal'] });
+  const regular = new Map();
+  (windows || []).forEach((w, n) => { if (!w.incognito) regular.set(w.id, n); });
+  const tabs = (await chrome.tabs.query({})) || [];
+  return tabs
+    .filter((t) => regular.has(t.windowId))
+    .sort((a, b) => (regular.get(a.windowId) - regular.get(b.windowId)) || (a.index - b.index));
+}
+
+function tabShowsUrl(tab, url) {
+  return !!tab && (tab.url === url || tab.pendingUrl === url);
+}
+
+// How many regular-window tabs already show each of the record's URLs.
+async function snoozeBaseline(record) {
+  const baseline = {};
+  try {
+    const tabs = await regularWindowTabs();
+    for (const url of new Set(record.tabs.map((t) => t.url))) {
+      baseline[url] = tabs.filter((t) => tabShowsUrl(t, url)).length;
+    }
+  } catch (_e) {
+    // no baseline: a restart then reserves nothing for this record
+  }
+  return baseline;
+}
 
 // Find the window to restore tab/tabs/group records into: the last-focused
 // normal window, creating one if none exists.
@@ -3182,139 +3353,717 @@ async function getRestoreTargetWindowId() {
   }
 }
 
-// Recreate the tabs/window/group in the background. Never throws — per-tab
-// failures are counted. Returns { createdCount, failedCount, windowId, firstTabId }.
-async function restoreSnoozedRecord(record) {
-  let createdCount = 0;
-  let failedCount = 0;
-  let windowId;
-  let firstTabId;
+// ---- Claiming ----
 
-  if (record.type === 'window') {
-    const urls = record.tabs.map((t) => t.url);
-    // createdTabs[i] is the tab reopened from record.tabs[i], or null when
-    // that one could not be reopened; pinning and groups follow this mapping.
-    let createdTabs;
-    let win;
+// Writes a claim, under the lock. `prepare(record)` returns the new claim
+// for the stored record, or a { status } to stop with. The recovery alarm is
+// armed before the claim is written: if the worker stops in between, the
+// record is unclaimed and that alarm wakes it, a minute late.
+async function writeClaim(id, prepare) {
+  return withSnoozeLock(async () => {
+    const items = await loadSnoozedItems();
+    const record = items.find((r) => r.id === id);
+    if (!record) return { status: 'missing' };
+    const next = await prepare(record);
+    if (next.status) return next;
+    await armRecoveryAlarm(id);
+    await wakeStage('claimed');
+    delete record.wakeFailedAt;
+    record.waking = next.waking;
+    await saveSnoozedItems(items);
+    return { status: 'claimed', record };
+  });
+}
+
+// Stops automatic retries of a claim: it waits, visibly, for Wake now.
+async function stallClaim(id) {
+  let stalled = null;
+  await withSnoozeLock(async () => {
+    const items = await loadSnoozedItems();
+    const record = items.find((r) => r.id === id);
+    if (!record || !record.waking || record.waking.stalled) return;
+    record.waking.stalled = true;
+    await saveSnoozedItems(items);
+    stalled = record;
+  });
+  if (stalled) {
+    await clearSnoozeAlarm(id);
+    notifyStalled(stalled);
+  }
+  return stalled;
+}
+
+// Claim a record of this boot: a fresh wake, or a resume of an interrupted
+// one. `trigger` is 'alarm', 'reconcile', 'resume' (worker start) or
+// 'wakeNow'; only Wake now resets the attempts and wakes a held record.
+async function claimInThisBoot(id, bootId, trigger) {
+  const automatic = trigger !== 'wakeNow';
+  const baselineFor = async (record) => (record.waking && record.waking.baseline) || snoozeBaseline(record);
+  const result = await writeClaim(id, async (record) => {
+    if (automatic && isWakeHeld(record)) return { status: 'held' };
+    const w = record.waking;
+    if (w && w.boot !== bootId) return { status: 'earlier-boot' };
+    if (automatic && w && (w.attempts || 0) >= WAKE_MAX_ATTEMPTS) return { status: 'stall' };
+    const waking = {
+      by: WAKER_ID,
+      boot: bootId,
+      since: w ? w.since : Date.now(),
+      attempts: w && automatic ? (w.attempts || 0) + 1 : 1,
+      stalled: false,
+      opened: w && Array.isArray(w.opened) ? w.opened : [],
+      failed: [],
+      windowId: w ? w.windowId : null,
+      placeholderTabId: w ? w.placeholderTabId : null,
+      groupId: w ? w.groupId : null,
+      baseline: await baselineFor(record),
+      // New Tabs a restart resume found in a reused group or window: still
+      // to close when this wake ends.
+      ...(w && Array.isArray(w.strayTabIds) && w.strayTabIds.length ? { strayTabIds: w.strayTabIds } : {}),
+    };
+    return { waking };
+  });
+  if (result.status === 'stall') {
+    await stallClaim(id);
+    return { status: 'held' };
+  }
+  return result;
+}
+
+// ---- Resuming a claim from an earlier boot ----
+
+// How many tabs per URL session restore should bring back for `records`: the
+// most any record found already open (its baseline), plus every tab the
+// records had reopened with that URL. A URL showing only in a tab that was
+// already open must not end the wait early.
+function expectedRestoreCounts(records) {
+  const need = {};
+  for (const r of records) {
+    const baseline = (r.waking && r.waking.baseline) || {};
+    for (const e of (r.waking && r.waking.opened) || []) {
+      const url = r.tabs[e.i] && r.tabs[e.i].url;
+      if (!url) continue;
+      need[url] = Math.max(need[url] || 0, baseline[url] || 0);
+    }
+  }
+  for (const r of records) {
+    for (const e of (r.waking && r.waking.opened) || []) {
+      const url = r.tabs[e.i] && r.tabs[e.i].url;
+      if (url) need[url] += 1;
+    }
+  }
+  return need;
+}
+
+// Wait for the browser to finish restoring the last session: poll the tab
+// count until every URL shows in as many tabs as `need` expects, the count
+// stops changing, or settleMaxMs passes. Once per boot.
+async function waitForSessionRestore(need) {
+  const settled = await chrome.storage.session.get(RESTORE_SETTLED_KEY);
+  if (settled && settled[RESTORE_SETTLED_KEY]) return;
+  const start = Date.now();
+  let lastCount = -1;
+  let quiet = 0;
+  while (Date.now() - start < WAKE_TIMING.settleMaxMs) {
+    let tabs = [];
     try {
-      win = await chrome.windows.create({ url: urls, focused: false });
-      windowId = win && win.id;
-      createdTabs = record.tabs.map((_t, i) => (win && win.tabs && win.tabs[i]) || null);
+      tabs = await regularWindowTabs();
     } catch (_e) {
-      // Chrome refuses the whole list when it refuses one URL (a file:// page
-      // without file access, say). Open an empty window and reopen the tabs
-      // one by one instead, so every other tab still comes back.
-      win = await chrome.windows.create({ focused: false });
-      windowId = win && win.id;
-      const placeholder = win && win.tabs && win.tabs[0];
-      createdTabs = [];
-      for (const t of record.tabs) {
-        try {
-          createdTabs.push(await chrome.tabs.create({ windowId, url: t.url, active: false }));
-        } catch (e) {
-          createdTabs.push(null);
-          console.warn('[Huddle] Failed to restore snoozed tab:', t.url, e && e.message);
-        }
+      tabs = [];
+    }
+    if (Object.entries(need).every(([u, n]) => tabs.filter((t) => tabShowsUrl(t, u)).length >= n)) break;
+    if (tabs.length === lastCount) {
+      quiet++;
+      if (quiet >= WAKE_TIMING.settleQuietPolls) break;
+    } else {
+      quiet = 0;
+      lastCount = tabs.length;
+    }
+    await new Promise((resolve) => setTimeout(resolve, WAKE_TIMING.settlePollMs));
+  }
+  await chrome.storage.session.set({ [RESTORE_SETTLED_KEY]: true });
+}
+
+// After an extension reload ids are still valid: an opened entry is done when
+// its tab still exists and still shows the record's URL (ids can collide
+// with an unrelated tab when this was in fact a browser restart).
+async function verifyAfterReload(record) {
+  const w = record.waking;
+  const opened = [];
+  for (const entry of w.opened || []) {
+    const tab = await getTabOrNull(entry.tabId);
+    const want = record.tabs[entry.i] && record.tabs[entry.i].url;
+    if (tab && tabShowsUrl(tab, want)) opened.push({ i: entry.i, tabId: tab.id, windowId: tab.windowId });
+  }
+  const windowId = (await windowExists(w.windowId)) ? w.windowId : null;
+  let groupId = null;
+  if (w.groupId !== undefined && w.groupId !== null) {
+    try {
+      await chrome.tabGroups.get(w.groupId);
+      groupId = w.groupId;
+    } catch (_e) {
+      groupId = null;
+    }
+  }
+  const placeholder = windowId !== null ? await getTabOrNull(w.placeholderTabId) : null;
+  return { opened, windowId, groupId, placeholderTabId: placeholder ? placeholder.id : null };
+}
+
+// After a browser restart ids mean nothing. Only tabs a record had already
+// reopened can be matched, by exact URL, in regular windows; each open tab is
+// used once across all records (oldest claim first), and for each URL the
+// first baseline[url] tabs are left alone as tabs that were open before.
+// `verified` holds, per record, the entries the reload check already
+// confirmed by id: those are kept as they are, their tabs are used by no
+// other entry, and only the rest are matched by URL.
+async function matchAfterRestart(records, verified = new Map()) {
+  const tabs = await regularWindowTabs();
+  const groups = await chrome.tabGroups.query({}).then((g) => g || [], () => []);
+  const used = new Set();
+  for (const v of verified.values()) for (const e of v.opened) used.add(e.tabId);
+  const adoptedGroups = new Set();
+  const results = new Map();
+  for (const record of [...records].sort((a, b) => (a.waking.since || 0) - (b.waking.since || 0))) {
+    const w = record.waking;
+    const baseline = w.baseline || {};
+    const kept = verified.has(record.id) ? verified.get(record.id).opened : [];
+    const opened = [...kept];
+    for (const entry of w.opened || []) {
+      if (kept.some((e) => e.i === entry.i)) continue;
+      const url = record.tabs[entry.i] && record.tabs[entry.i].url;
+      const showing = tabs.filter((t) => tabShowsUrl(t, url));
+      const free = showing.slice(baseline[url] || 0).find((t) => !used.has(t.id));
+      if (free) {
+        used.add(free.id);
+        opened.push({ i: entry.i, tabId: free.id, windowId: free.windowId });
       }
-      const opened = createdTabs.some(Boolean);
+    }
+    const mine = new Set(opened.map((e) => e.tabId));
+    const matched = tabs.filter((t) => mine.has(t.id));
+    // Session restore brings back a tab whose first page had not committed
+    // yet as a New Tab. Those are this wake's own leftovers, so they don't
+    // stop a group or window from being reused, and they are closed at the end.
+    const isNewTab = (t) => tabShowsUrl(t, 'chrome://newtab/');
+    let groupId = null;
+    let strayTabIds = [];
+    if (record.type === 'group' && matched.length > 0) {
+      const gid = matched[0].groupId;
+      const others = tabs.filter((t) => t.groupId === gid && !mine.has(t.id));
+      const sameGroup = gid !== undefined && gid !== chrome.tabGroups.TAB_GROUP_ID_NONE
+        && matched.every((t) => t.groupId === gid) && others.every(isNewTab);
+      if (sameGroup) {
+        groupId = gid;
+        strayTabIds = others.map((t) => t.id);
+      }
+    }
+    if (record.type === 'group' && groupId === null && record.group) {
+      // Nothing matched inside a group: a restored group with the record's
+      // title and colour that holds only New Tabs is this wake's own group,
+      // restored before any of its pages committed. Reuse it.
+      const own = groups.find((g) => !adoptedGroups.has(g.id)
+        && g.title === (record.group.title || '') && g.color === (record.group.color || 'grey')
+        && tabs.some((t) => t.groupId === g.id)
+        && tabs.filter((t) => t.groupId === g.id).every((t) => mine.has(t.id) || isNewTab(t)));
+      if (own) {
+        groupId = own.id;
+        strayTabIds = tabs.filter((t) => t.groupId === own.id && !mine.has(t.id)).map((t) => t.id);
+      }
+    }
+    if (groupId !== null) adoptedGroups.add(groupId);
+    let windowId = null;
+    let placeholderTabId = null;
+    if (record.type === 'window' && matched.length > 0) {
+      const wid = matched[0].windowId;
+      const others = tabs.filter((t) => t.windowId === wid && !mine.has(t.id));
+      if (matched.every((t) => t.windowId === wid) && others.every(isNewTab)) {
+        windowId = wid;
+        placeholderTabId = others.length > 0 ? others[0].id : null;
+        strayTabIds = others.slice(1).map((t) => t.id);
+      }
+    }
+    results.set(record.id, { opened, windowId, groupId, placeholderTabId, strayTabIds });
+  }
+  return results;
+}
+
+// Reload mode, for the opened entries the reload check could not confirm by
+// id: they fall to the restart rule (URL matching). This boot may in fact be
+// a browser restart whose onInstalled('update') came before onStartup (Chrome
+// applying a pending update as it starts), and then every id is stale while
+// session restore brings the reopened tabs back. The records whose entries
+// all passed are left exactly as the reload check found them.
+async function matchUnverifiedAfterReload(candidates, verified) {
+  const unverified = candidates.filter((r) => (r.waking.opened || []).length > verified.get(r.id).opened.length);
+  if (unverified.length === 0) return verified;
+  // Verified records' tabs are open too and take their share of each URL.
+  await waitForSessionRestore(expectedRestoreCounts(candidates));
+  const matched = await matchAfterRestart(unverified, verified);
+  const merged = new Map(verified);
+  for (const r of unverified) {
+    const v = verified.get(r.id);
+    const m = matched.get(r.id);
+    // A group or window the reload check found by id wins; otherwise the
+    // matcher's (with the New Tabs it found in it, closed at the end).
+    const groupId = v.groupId !== null ? v.groupId : m.groupId;
+    const windowId = v.windowId !== null ? v.windowId : m.windowId;
+    const fromMatcher = (v.groupId === null && m.groupId !== null) || (v.windowId === null && m.windowId !== null);
+    merged.set(r.id, {
+      opened: m.opened,
+      windowId,
+      groupId,
+      placeholderTabId: v.windowId !== null ? v.placeholderTabId : m.placeholderTabId,
+      strayTabIds: fromMatcher ? m.strayTabIds : [],
+    });
+  }
+  return merged;
+}
+
+// Resume every claim made in an earlier boot, in one batch. `mode` is
+// 'restart' or 'reload'. Before any tab is created, all of them are
+// re-stamped in one write with this boot, this instance and only the opened
+// entries that were verified or matched (with their current ids), so any
+// later interruption is a same-boot resume where `opened` is authoritative.
+// `reserved` are ids the caller already put in wakingNow for this resume.
+// `wakeNowId` is the record you pressed Wake now on: it is resumed even when
+// it waits for you (stalled, or none of its tabs reopened), and only its
+// attempts start again from 1. Every other held record keeps waiting.
+let earlierBootResume = null;
+// Resolves once the running resume has re-stamped its records (or given up).
+let earlierBootRestamped = Promise.resolve();
+function resumeEarlierBoot(mode, { reserved = [], wakeNowId = null } = {}) {
+  if (earlierBootResume) {
+    // One resume at a time. Records the caller reserved, or a Wake now the
+    // running resume leaves out, run in the next one.
+    if (reserved.length === 0 && wakeNowId === null) return earlierBootResume;
+    return earlierBootResume.then((previous) => (reserved.length === 0 && previous.has(wakeNowId)
+      ? previous
+      : resumeEarlierBoot(mode, { reserved, wakeNowId })));
+  }
+  let restampDone;
+  earlierBootRestamped = new Promise((resolve) => { restampDone = resolve; });
+  earlierBootResume = (async () => {
+    const results = new Map();
+    const restamped = [];
+    let ids = [...reserved];
+    try {
+      const bootId = await getBootId();
+      const items = await loadSnoozedItems();
+      const candidates = items.filter((r) => r.waking && r.waking.boot !== bootId
+        && (reserved.includes(r.id) || !wakingNow.has(r.id))
+        && (r.id === wakeNowId || !isWakeHeld(r)));
+      for (const id of reserved) if (!candidates.some((r) => r.id === id)) wakingNow.delete(id);
+      ids = candidates.map((r) => r.id);
+      for (const id of ids) wakingNow.add(id);
+      if (candidates.length === 0) return results;
+      let found;
+      if (mode === 'restart') {
+        await waitForSessionRestore(expectedRestoreCounts(candidates));
+        found = await matchAfterRestart(candidates);
+      } else {
+        found = new Map();
+        for (const r of candidates) found.set(r.id, await verifyAfterReload(r));
+        found = await matchUnverifiedAfterReload(candidates, found);
+      }
+      const stall = [];
+      await withSnoozeLock(async () => {
+        const current = await loadSnoozedItems();
+        for (const id of ids) await armRecoveryAlarm(id);
+        await wakeStage('claimed');
+        for (const record of current) {
+          const w = record.waking;
+          const seen = candidates.find((c) => c.id === record.id);
+          if (!seen || !w || w.boot !== seen.waking.boot || w.by !== seen.waking.by) continue;
+          const pressed = record.id === wakeNowId;
+          const attempts = pressed ? 1 : (w.attempts || 0) + 1;
+          const f = found.get(record.id);
+          record.waking = {
+            by: WAKER_ID,
+            boot: bootId,
+            since: w.since,
+            attempts,
+            stalled: false,
+            opened: f.opened,
+            failed: [],
+            windowId: f.windowId,
+            placeholderTabId: f.placeholderTabId,
+            groupId: f.groupId,
+            baseline: w.baseline || {},
+            ...(f.strayTabIds && f.strayTabIds.length ? { strayTabIds: f.strayTabIds } : {}),
+          };
+          if (!pressed && attempts > WAKE_MAX_ATTEMPTS) stall.push(record.id);
+          else restamped.push(record.id);
+        }
+        await saveSnoozedItems(current);
+      });
+      restampDone();
+      for (const id of stall) {
+        wakingNow.delete(id);
+        await stallClaim(id);
+        results.set(id, { held: true });
+      }
+    } catch (error) {
+      console.error('[Huddle] Could not resume the wakes of an earlier session:', error);
+      for (const id of ids) {
+        if (restamped.includes(id)) continue;
+        wakingNow.delete(id);
+        results.set(id, { interrupted: true, error: error.message });
+      }
+    } finally {
+      restampDone();
+    }
+    for (const id of restamped) {
+      results.set(id, await runClaimedWake(id, { notify: true }));
+    }
+    return results;
+  })();
+  earlierBootResume.finally(() => { earlierBootResume = null; }).catch(() => {});
+  return earlierBootResume;
+}
+
+// ---- Waking ----
+
+// Wakes one record: claims it, reopens what is not open yet, then removes it.
+// Returns null when there is no such record, { waking: 'active' } when this
+// instance is already waking it, { held } for a record that waits for Wake
+// now, { deferred } for a claim from an earlier boot whose kind is not known
+// yet, { interrupted, error } when the wake stopped early (a recovery alarm
+// then resumes it), and otherwise { record, createdCount, failedCount, kept }.
+async function wakeSnoozedRecord(id, { notify = false, trigger = 'wakeNow' } = {}) {
+  if (wakingNow.has(id)) {
+    if (trigger === 'alarm') await armRecoveryAlarm(id);
+    return { waking: 'active' };
+  }
+  wakingNow.add(id);
+  let claim;
+  try {
+    const bootId = await getBootId();
+    claim = await claimInThisBoot(id, bootId, trigger);
+  } catch (error) {
+    wakingNow.delete(id);
+    // Try again in a minute (a no-op if there is no such record by then).
+    if (trigger !== 'wakeNow') await armRecoveryAlarm(id);
+    throw error;
+  }
+  if (claim.status === 'claimed') return runClaimedWake(id, { notify });
+  wakingNow.delete(id);
+  if (claim.status === 'missing') return null;
+  if (claim.status === 'held') return { held: true };
+  // A claim from an earlier boot.
+  const kind = await getBootKind();
+  if (kind || trigger === 'wakeNow') {
+    // With no startup event yet, Wake now uses the reload check (tab id and
+    // URL), which never counts a tab that is not there as reopened.
+    const results = await resumeEarlierBoot(kind || 'reload', { wakeNowId: trigger === 'wakeNow' ? id : null });
+    return results.get(id) || (wakingNow.has(id) ? { waking: 'active' } : { held: true });
+  }
+  return deferEarlierBootClaim(id);
+}
+
+// Neither onStartup nor onInstalled has told this boot how it began (they may
+// still be on their way, or the extension was re-enabled, which fires
+// neither). Wait one alarm period; if the claim is still from an earlier boot
+// then, resume it with the reload check.
+async function deferEarlierBootClaim(id) {
+  const bootId = await getBootId();
+  let seenBefore = false;
+  await withSnoozeLock(async () => {
+    const items = await loadSnoozedItems();
+    const record = items.find((r) => r.id === id);
+    if (!record || !record.waking) return;
+    if (record.waking.deferredIn === bootId) {
+      seenBefore = true;
+      return;
+    }
+    record.waking.deferredIn = bootId;
+    await saveSnoozedItems(items);
+  });
+  if (seenBefore) {
+    const results = await resumeEarlierBoot('reload');
+    return results.get(id) || { deferred: true };
+  }
+  await armRecoveryAlarm(id);
+  return { deferred: true };
+}
+
+// Saves wake progress into the claim, under the lock. Throws when the claim
+// is no longer this instance's (the record is gone), which ends the wake.
+async function saveWakeProgress(id, patch) {
+  await withSnoozeLock(async () => {
+    const items = await loadSnoozedItems();
+    const record = items.find((r) => r.id === id);
+    if (!record || !record.waking || record.waking.by !== WAKER_ID) {
+      throw new Error('This wake is no longer claimed');
+    }
+    Object.assign(record.waking, patch);
+    await saveSnoozedItems(items);
+  });
+}
+
+// Runs a wake this instance has claimed (the id is in wakingNow).
+async function runClaimedWake(id, { notify }) {
+  let result = null;
+  try {
+    const items = await loadSnoozedItems();
+    const record = items.find((r) => r.id === id);
+    if (!record || !record.waking) return null;
+    const progress = {
+      opened: [...(record.waking.opened || [])],
+      failed: [],
+      windowId: record.waking.windowId ?? null,
+      placeholderTabId: record.waking.placeholderTabId ?? null,
+      groupId: record.waking.groupId ?? null,
+      strayTabIds: record.waking.strayTabIds || [],
+    };
+    if (record.type === 'window') {
+      await reopenWindowRecord(record, progress);
+    } else {
+      await reopenTabsRecord(record, progress);
+    }
+    await closeStrayTabs(progress.strayTabIds);
+    await wakeStage('before-remove');
+    result = await completeWake(id, progress, { notify });
+    return result;
+  } catch (error) {
+    console.error('[Huddle] A wake stopped before it finished; it will be resumed:', error);
+    return { interrupted: true, error: error.message };
+  } finally {
+    wakingNow.delete(id);
+    if (!result) await afterUnfinishedWake(id);
+  }
+}
+
+// The claim is still there but this wake did not finish: retry in a minute,
+// or, after the last attempt, stop and wait for Wake now.
+async function afterUnfinishedWake(id) {
+  try {
+    const items = await loadSnoozedItems();
+    const record = items.find((r) => r.id === id);
+    if (!record || !record.waking || record.waking.by !== WAKER_ID || record.waking.stalled) return;
+    if ((record.waking.attempts || 0) >= WAKE_MAX_ATTEMPTS) {
+      await stallClaim(id);
+    } else {
+      await armRecoveryAlarm(id);
+    }
+  } catch (error) {
+    // The alarm armed with the claim is still set, and resumes the wake.
+    console.error('[Huddle] Could not check an unfinished wake:', error);
+  }
+}
+
+// tab / tabs / group: reopen each tab not yet done into one window, saving
+// after each. A group record creates its group with its first new tab, in the
+// same save, and later tabs join it.
+async function reopenTabsRecord(record, progress) {
+  const done = new Set(progress.opened.map((e) => e.i));
+  let windowId = (await windowExists(progress.windowId)) ? progress.windowId : null;
+  if (windowId === null) windowId = await getRestoreTargetWindowId();
+
+  let groupId = null;
+  let adopt = [];
+  if (record.type === 'group') {
+    if (progress.groupId !== null && progress.groupId !== undefined) {
       try {
-        if (opened && placeholder) {
-          // The window's New Tab is not one of the snoozed tabs.
-          await chrome.tabs.remove(placeholder.id);
-        } else if (!opened && windowId !== undefined) {
-          // Nothing came back: do not leave an empty window behind.
-          await chrome.windows.remove(windowId);
-          windowId = undefined;
-        }
+        await chrome.tabGroups.get(progress.groupId);
+        groupId = progress.groupId;
       } catch (_e) {
-        // best effort
+        groupId = null;
       }
     }
-    createdCount = createdTabs.filter(Boolean).length;
-    failedCount = record.tabs.length - createdCount;
-    const firstCreated = createdTabs.find(Boolean);
-    if (firstCreated) firstTabId = firstCreated.id;
-
-    // Re-pin tabs whose stored entry was pinned.
-    for (let i = 0; i < record.tabs.length; i++) {
-      if (record.tabs[i].pinned && createdTabs[i]) {
-        try {
-          await chrome.tabs.update(createdTabs[i].id, { pinned: true });
-        } catch (_e) {
-          // best effort
-        }
+    if (groupId === null) {
+      // The group went away: the new one also takes the reopened tabs that
+      // are still open and in no group.
+      for (const entry of progress.opened) {
+        const tab = await getTabOrNull(entry.tabId);
+        if (tab && (tab.groupId === undefined || tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE)) adopt.push(tab.id);
       }
     }
-
-    // Recreate each stored group over the new tabs.
-    if (record.groups && record.groups.length > 0) {
-      for (let gi = 0; gi < record.groups.length; gi++) {
-        const memberTabIds = [];
-        for (let i = 0; i < record.tabs.length; i++) {
-          if (record.tabs[i].groupIndex === gi && createdTabs[i]) {
-            memberTabIds.push(createdTabs[i].id);
-          }
-        }
-        if (memberTabIds.length > 0) {
-          try {
-            const newGroupId = await chrome.tabs.group({
-              tabIds: memberTabIds,
-              createProperties: { windowId },
-            });
-            await chrome.tabGroups.update(newGroupId, {
-              title: record.groups[gi].title || '',
-              color: record.groups[gi].color || 'grey',
-            });
-          } catch (_e) {
-            // best effort
-          }
-        }
-      }
-    }
-
-    return { createdCount, failedCount, windowId, firstTabId };
   }
 
-  // tab / tabs / group — recreate into the last-focused normal window.
-  windowId = await getRestoreTargetWindowId();
-  const createdTabIds = [];
-  for (const t of record.tabs) {
+  for (let i = 0; i < record.tabs.length; i++) {
+    if (done.has(i)) continue;
+    const t = record.tabs[i];
+    let created;
     try {
       // No `index` here: chrome.tabs.create (unlike tabs.move) does not accept
       // -1 as "append at the end" — it throws "index: Value must be at least
       // 0". Omitting `index` already appends the tab as the last one in the
       // window, which is the behavior we want.
-      const created = await chrome.tabs.create({
-        windowId,
-        url: t.url,
-        pinned: !!t.pinned,
-        active: false,
-      });
-      createdCount++;
-      createdTabIds.push(created.id);
-      if (firstTabId === undefined) firstTabId = created.id;
+      created = await chrome.tabs.create({ windowId, url: t.url, pinned: !!t.pinned, active: false });
     } catch (e) {
-      failedCount++;
+      progress.failed.push(i);
       console.warn('[Huddle] Failed to restore snoozed tab:', t.url, e && e.message);
+      continue;
+    }
+    await wakeStage('after-create', i);
+    if (record.type === 'group') {
+      groupId = await joinOrCreateWakeGroup(record, groupId, [created.id, ...adopt], windowId);
+      adopt = [];
+      progress.groupId = groupId;
+    }
+    progress.opened.push({ i, tabId: created.id, windowId: created.windowId ?? windowId });
+    progress.windowId = windowId;
+    await saveWakeProgress(record.id, {
+      opened: progress.opened, failed: progress.failed, windowId, groupId: progress.groupId,
+    });
+    await wakeStage('after-progress', i);
+  }
+}
+
+async function joinOrCreateWakeGroup(record, groupId, tabIds, windowId) {
+  if (groupId !== null && groupId !== undefined) {
+    try {
+      await chrome.tabs.group({ groupId, tabIds });
+      return groupId;
+    } catch (_e) {
+      // the group went away: make a new one
+    }
+  }
+  try {
+    const newGroupId = await chrome.tabs.group({ tabIds, createProperties: { windowId } });
+    await chrome.tabGroups.update(newGroupId, {
+      title: (record.group && record.group.title) || '',
+      color: (record.group && record.group.color) || 'grey',
+    });
+    return newGroupId;
+  } catch (_e) {
+    return null; // best effort: the tab stays where it is, and the next one tries again
+  }
+}
+
+// window (D18): open an empty window and save its id first, then reopen the
+// tabs into it one by one with a save after each, then remove the New Tab,
+// pin, and recreate the groups. At worst an interruption leaves one tab
+// twice and one empty window, never a second copy of the whole window.
+async function reopenWindowRecord(record, progress) {
+  const done = new Set(progress.opened.map((e) => e.i));
+  let windowId = (await windowExists(progress.windowId)) ? progress.windowId : null;
+  if (windowId === null) {
+    const win = await chrome.windows.create({ focused: false });
+    await wakeStage('after-window-create');
+    windowId = win.id;
+    progress.windowId = windowId;
+    progress.placeholderTabId = (win.tabs && win.tabs[0] && win.tabs[0].id) ?? null;
+    await saveWakeProgress(record.id, { windowId, placeholderTabId: progress.placeholderTabId });
+  }
+
+  for (let i = 0; i < record.tabs.length; i++) {
+    if (done.has(i)) continue;
+    const t = record.tabs[i];
+    let created;
+    try {
+      created = await chrome.tabs.create({ windowId, url: t.url, active: false });
+    } catch (e) {
+      // Chrome refuses some URLs (a file:// page without file access, say);
+      // every other tab still comes back.
+      progress.failed.push(i);
+      console.warn('[Huddle] Failed to restore snoozed tab:', t.url, e && e.message);
+      continue;
+    }
+    await wakeStage('after-create', i);
+    progress.opened.push({ i, tabId: created.id, windowId: created.windowId ?? windowId });
+    await saveWakeProgress(record.id, { opened: progress.opened, failed: progress.failed });
+    await wakeStage('after-progress', i);
+  }
+
+  await wakeStage('before-group');
+  await finishWindowRecord(record, progress, windowId);
+}
+
+async function finishWindowRecord(record, progress, windowId) {
+  const live = new Map();
+  for (const entry of progress.opened) {
+    const tab = await getTabOrNull(entry.tabId);
+    if (tab) live.set(entry.i, tab);
+  }
+  try {
+    const inWindow = ((await chrome.tabs.query({ windowId })) || [])
+      .filter((t) => t.id !== progress.placeholderTabId);
+    if (inWindow.length === 0) {
+      // Nothing came back into this window: do not leave it empty.
+      await chrome.windows.remove(windowId);
+    } else if (progress.placeholderTabId !== null && progress.placeholderTabId !== undefined) {
+      // The window's New Tab is not one of the snoozed tabs.
+      await chrome.tabs.remove(progress.placeholderTabId);
+    }
+  } catch (_e) {
+    // best effort
+  }
+
+  for (const [i, tab] of live) {
+    if (record.tabs[i].pinned) {
+      try {
+        await chrome.tabs.update(tab.id, { pinned: true });
+      } catch (_e) {
+        // best effort
+      }
     }
   }
 
-  if (record.type === 'group' && createdTabIds.length > 0) {
+  if (Array.isArray(record.groups)) {
+    for (let gi = 0; gi < record.groups.length; gi++) {
+      const members = [...live].filter(([i]) => record.tabs[i].groupIndex === gi).map(([, tab]) => tab);
+      if (members.length === 0) continue;
+      try {
+        const newGroupId = await chrome.tabs.group({
+          tabIds: members.map((t) => t.id),
+          createProperties: { windowId: members[0].windowId ?? windowId },
+        });
+        await chrome.tabGroups.update(newGroupId, {
+          title: record.groups[gi].title || '',
+          color: record.groups[gi].color || 'grey',
+        });
+      } catch (_e) {
+        // best effort
+      }
+    }
+  }
+}
+
+// Closes the New Tabs a restart left in a reused group or window.
+async function closeStrayTabs(tabIds) {
+  for (const id of tabIds || []) {
+    const tab = await getTabOrNull(id);
+    if (!tab || !tabShowsUrl(tab, 'chrome://newtab/')) continue;
     try {
-      const newGroupId = await chrome.tabs.group({
-        tabIds: createdTabIds,
-        createProperties: { windowId },
-      });
-      await chrome.tabGroups.update(newGroupId, {
-        title: (record.group && record.group.title) || '',
-        color: (record.group && record.group.color) || 'grey',
-      });
+      await chrome.tabs.remove(id);
     } catch (_e) {
       // best effort
     }
   }
+}
 
-  return { createdCount, failedCount, windowId, firstTabId };
+// Removes the woken record, clears its alarm and notifies once with the
+// totals over every attempt. A record none of whose tabs came back is kept,
+// with no alarm, until you wake or discard it.
+async function completeWake(id, progress, { notify }) {
+  const outcome = await withSnoozeLock(async () => {
+    const items = await loadSnoozedItems();
+    const idx = items.findIndex((r) => r.id === id);
+    if (idx === -1) return null;
+    const record = items[idx];
+    const createdCount = progress.opened.length;
+    const failedCount = record.tabs.length - createdCount;
+    if (createdCount === 0 && failedCount > 0) {
+      delete record.waking;
+      record.wakeFailedAt = Date.now();
+      await saveSnoozedItems(items);
+      return { record, createdCount, failedCount, kept: true };
+    }
+    items.splice(idx, 1);
+    await saveSnoozedItems(items);
+    return { record, createdCount, failedCount, kept: false };
+  });
+  if (!outcome) return null;
+  await clearSnoozeAlarm(id);
+  const { record, createdCount, failedCount } = outcome;
+  const first = progress.opened[0];
+  if (notify) {
+    notifyWake(record, createdCount, failedCount, {
+      windowId: record.type === 'window' ? progress.windowId : first && first.windowId,
+      firstTabId: first && first.tabId,
+    });
+  }
+  const { waking: _w, ...stored } = record;
+  return { ...outcome, record: stored, windowId: progress.windowId, firstTabId: first && first.tabId };
 }
 
 // Fire the wake notification and register it in the best-effort click map.
@@ -3329,7 +4078,7 @@ function notifyWake(record, createdCount, failedCount, location = {}) {
   let title;
   let message;
   if (n === 0 && failedCount > 0) {
-    // Nothing reopened: say so, and that the record was kept (restorePoppedRecord).
+    // Nothing reopened: say so, and that the record was kept (completeWake).
     title = 'Huddle — tabs could not wake';
     switch (record.type) {
       case 'tab':
@@ -3373,6 +4122,12 @@ function notifyWake(record, createdCount, failedCount, location = {}) {
 
   const notificationId = 'snooze-wake:' + record.id;
   try {
+    // A stalled notice for this record is out of date once it has woken.
+    chrome.notifications.clear('snooze-stalled:' + record.id);
+  } catch (_e) {
+    // best effort
+  }
+  try {
     chrome.notifications.create(notificationId, {
       type: 'basic',
       iconUrl: 'icons/icon128.png',
@@ -3388,102 +4143,53 @@ function notifyWake(record, createdCount, failedCount, location = {}) {
   }
 }
 
-// Post-pop half of the wake flow: clear the alarm, restore, optionally
-// notify. On a restore throw the already-popped record is re-persisted with a
-// near-future retry alarm so snoozed tabs are never permanently lost. Shared
-// by wakeSnoozedRecord (single pop) and reconcileSnoozeAlarms (batched pop).
-async function restorePoppedRecord(record, options = {}) {
-  const notify = options.notify === true;
-
+// Said once, when automatic retries give up on a wake.
+function notifyStalled(record) {
   try {
-    await chrome.alarms.clear(SNOOZE_ALARM_PREFIX + record.id);
+    chrome.notifications.create('snooze-stalled:' + record.id, {
+      type: 'basic',
+      iconUrl: 'icons/icon128.png',
+      title: 'Huddle — tabs didn\'t finish waking',
+      message: `${record.summary || 'Some tabs'} didn't finish waking — open the nap room to try again`,
+    });
   } catch (_e) {
-    // harmless if already fired/cleared
+    // notifications are best-effort
   }
-
-  let restoreResult;
-  try {
-    restoreResult = await restoreSnoozedRecord(record);
-  } catch (error) {
-    // restoreSnoozedRecord already try/catches every per-tab create; a throw
-    // here means something failed outside that loop (e.g. chrome.windows.create
-    // / getLastFocused for a window-type record). The record was already
-    // popped from storage — without this recovery it would be gone for good.
-    // Re-persist it (under the same lock used everywhere else) and arm a
-    // near-future retry so the tabs are never permanently lost.
-    console.error('[Huddle] restoreSnoozedRecord failed; re-persisting snoozed record to avoid data loss:', error);
-    await withSnoozeLock(async () => {
-      const items = await loadSnoozedItems();
-      items.push(record);
-      await saveSnoozedItems(items);
-    });
-    try {
-      await chrome.alarms.create(SNOOZE_ALARM_PREFIX + record.id, { when: Date.now() + 60000 });
-    } catch (_alarmErr) {
-      // best effort — reconcileSnoozeAlarms re-arms it on next startup/install
-    }
-    return { record, requeued: true };
-  }
-
-  // Not one tab reopened although there were tabs to reopen: they now exist
-  // only in this record, so put it back instead of dropping it. No retry
-  // alarm: a URL Chrome refuses now (a file:// page without file access, a
-  // removed extension's page) is refused again a minute later. The record
-  // waits in the nap room, overdue, to be woken again or discarded.
-  let kept = false;
-  if (restoreResult.createdCount === 0 && restoreResult.failedCount > 0) {
-    await withSnoozeLock(async () => {
-      const items = await loadSnoozedItems();
-      if (!items.some((r) => r.id === record.id)) items.push(record);
-      await saveSnoozedItems(items);
-    });
-    kept = true;
-  }
-
-  if (notify) {
-    notifyWake(record, restoreResult.createdCount, restoreResult.failedCount, {
-      windowId: restoreResult.windowId,
-      firstTabId: restoreResult.firstTabId,
-    });
-  }
-
-  return { record, ...restoreResult, kept };
-}
-
-// Atomically pop the record, clear its alarm, restore it, optionally notify.
-// Idempotent: a missing id is a silent no-op (handles duplicate alarm fires).
-async function wakeSnoozedRecord(id, options = {}) {
-  const record = await withSnoozeLock(async () => {
-    const items = await loadSnoozedItems();
-    const idx = items.findIndex((r) => r.id === id);
-    if (idx === -1) return null;
-    const [popped] = items.splice(idx, 1);
-    await saveSnoozedItems(items);
-    return popped;
-  });
-
-  if (!record) return null;
-
-  return restorePoppedRecord(record, options);
 }
 
 function handleSnoozeAlarm(alarm) {
   if (!alarm || typeof alarm.name !== 'string' || !alarm.name.startsWith(SNOOZE_ALARM_PREFIX)) {
-    return;
+    return undefined;
   }
   const id = alarm.name.slice(SNOOZE_ALARM_PREFIX.length);
-  wakeSnoozedRecord(id, { notify: true });
+  return wakeSnoozedRecord(id, { notify: true, trigger: 'alarm' }).catch((error) => {
+    // The alarm armed with the claim, if any, tries again.
+    console.error('[Huddle] Error waking a snoozed record:', error);
+    return null;
+  });
 }
 
 async function handleWakeNow(message, sendResponse) {
   try {
-    const result = await wakeSnoozedRecord(message.id, { notify: false });
+    const result = await wakeSnoozedRecord(message.id, { notify: false, trigger: 'wakeNow' });
     if (!result) {
-      sendResponse({ success: false, error: 'Snooze not found' });
+      // It woke on its own, or was discarded, meanwhile.
+      sendResponse({ success: false, notFound: true, error: 'Snooze not found' });
       return;
     }
-    if (result.requeued) {
-      sendResponse({ success: false, error: 'Could not restore right now — will retry automatically' });
+    if (result.waking === 'active') {
+      sendResponse({ success: false, waking: 'active' });
+      return;
+    }
+    if (result.interrupted || result.held || result.deferred) {
+      // A held record has no alarm: nothing retries it until you do.
+      sendResponse({
+        success: false,
+        waking: 'interrupted',
+        error: result.held
+          ? 'These tabs didn\'t finish waking — try Wake now again, or Discard them'
+          : 'These tabs didn\'t finish waking — Huddle will try again in a minute',
+      });
       return;
     }
     const { createdCount, failedCount } = result;
@@ -3506,23 +4212,48 @@ async function handleWakeNow(message, sendResponse) {
 
 // Discard a snooze: drop the record and its alarm without reopening the tabs.
 // The tabs were closed when they were snoozed, so this is the destructive
-// action; the removed record is returned so the UI can offer an Undo.
+// action; the removed record is returned so the UI can offer an Undo. A wake
+// in progress is not discarded. A wake that was interrupted discards only
+// the tabs that had not reopened: the reply's record holds just those, with
+// no claim, so Undo puts back an ordinary snooze.
 async function handleCancelSnooze(message, sendResponse) {
   try {
-    const removed = await withSnoozeLock(async () => {
+    const outcome = await withSnoozeLock(async () => {
       const items = await loadSnoozedItems();
       const idx = items.findIndex((r) => r.id === message.id);
       if (idx === -1) return null;
+      if (wakingNow.has(message.id)) return { active: true };
       const [record] = items.splice(idx, 1);
       await saveSnoozedItems(items);
-      return record;
+      if (!record.waking) return { record };
+      const reopened = new Set((record.waking.opened || []).map((e) => e.i));
+      const { waking: _w, ...rest } = record;
+      const tabs = record.tabs.filter((_t, i) => !reopened.has(i));
+      return {
+        record: { ...rest, tabs, summary: buildSnoozeSummary(record.type, tabs, record.group) },
+        interrupted: true,
+      };
     });
-    try {
-      await chrome.alarms.clear(SNOOZE_ALARM_PREFIX + message.id);
-    } catch (_e) {
-      // harmless if already cleared
+    if (outcome && outcome.active) {
+      sendResponse({ success: false, waking: 'active' });
+      return;
     }
-    sendResponse({ success: removed !== null, record: removed || undefined });
+    await clearSnoozeAlarm(message.id);
+    if (!outcome) {
+      sendResponse({ success: false, record: undefined });
+      return;
+    }
+    if (outcome.interrupted) {
+      const n = outcome.record.tabs.length;
+      sendResponse({
+        success: true,
+        record: n > 0 ? outcome.record : undefined,
+        interrupted: true,
+        discardedCount: n,
+      });
+      return;
+    }
+    sendResponse({ success: true, record: outcome.record });
   } catch (error) {
     console.error('[Huddle] Error in cancelSnoozed:', error);
     sendResponse({ success: false, error: error.message });
@@ -3538,14 +4269,16 @@ async function handleRestoreSnoozed(message, sendResponse) {
       sendResponse({ success: false, error: 'Invalid snooze record' });
       return;
     }
+    // An Undo puts back a snooze, never a wake in progress.
+    const { waking: _w, ...restoredRecord } = record;
     const restored = await withSnoozeLock(async () => {
       const items = await loadSnoozedItems();
-      if (items.some((r) => r.id === record.id)) return false;
-      items.push(record);
+      if (items.some((r) => r.id === restoredRecord.id)) return false;
+      items.push(restoredRecord);
       await saveSnoozedItems(items);
       return true;
     });
-    if (restored) await scheduleSnoozeAlarm(record);
+    if (restored) await scheduleSnoozeAlarm(restoredRecord);
     sendResponse({ success: restored });
   } catch (error) {
     console.error('[Huddle] Error in restoreSnoozed:', error);
@@ -3553,9 +4286,22 @@ async function handleRestoreSnoozed(message, sendResponse) {
   }
 }
 
+// The list the popup and the nap room show. A claimed record says whether it
+// is waking now ('active') or didn't finish ('interrupted'); the claim's
+// internals stay in the worker.
+function listedSnoozeRecord(record) {
+  const { waking, ...rest } = record;
+  const state = wakeStateOf(record);
+  if (!state) return rest;
+  return { ...rest, waking: state, stalled: !!(waking && waking.stalled) };
+}
+
 async function handleListSnoozed(sendResponse) {
   try {
-    const items = await loadSnoozedItems();
+    // Wakes this worker resumes on start are marked active first, so none of
+    // them shows as interrupted for the moment in between.
+    await wakeResumeKickoff;
+    const items = (await loadSnoozedItems()).map(listedSnoozeRecord);
     items.sort((a, b) => a.wakeAt - b.wakeAt);
     sendResponse({ success: true, items });
   } catch (error) {
@@ -3571,7 +4317,17 @@ async function handleWakeNotificationClicked(notificationId) {
   } catch (_e) {
     // best effort
   }
-  if (!target) return; // worker was respawned; click is a silent no-op
+  if (!target) {
+    // "Tabs didn't finish waking": its text sends you to the nap room.
+    if (notificationId.startsWith('snooze-stalled:')) {
+      try {
+        await chrome.tabs.create({ url: chrome.runtime.getURL('nap-room.html') });
+      } catch (_e) {
+        // best effort
+      }
+    }
+    return; // otherwise the worker was respawned; the click is a silent no-op
+  }
   snoozeNotificationTargets.delete(notificationId);
   try {
     if (target.windowId !== undefined && target.windowId !== null) {
@@ -3589,24 +4345,25 @@ async function handleWakeNotificationClicked(notificationId) {
 // Tab Snoozing — Reconciler (startup / install)
 // ============================================================
 
-// Belt-and-braces on browser startup / extension install/update: wake every
-// past-due record and re-arm alarms for future records that lost their timer.
+// On browser startup and extension install/update: wake every past-due
+// record, one at a time (each stays in storage until its own wake finishes),
+// then re-arm alarms that went missing. Claimed and held records are left to
+// the resume logic; an alarm scheduled earlier than a record's wakeAt is a
+// recovery alarm and is kept.
 async function reconcileSnoozeAlarms() {
   try {
+    await wakeResumeKickoff;
     const now = Date.now();
-
-    // Pop ALL past-due records in one locked storage transaction (a single
-    // read-modify-write instead of one per record), then restore each.
-    const pastDue = await withSnoozeLock(async () => {
-      const items = await loadSnoozedItems();
-      const due = items.filter((r) => r.wakeAt <= now);
-      if (due.length > 0) {
-        await saveSnoozedItems(items.filter((r) => r.wakeAt > now));
-      }
-      return due;
-    });
-    for (const r of pastDue) {
-      await restorePoppedRecord(r, { notify: true });
+    const items = await loadSnoozedItems();
+    const due = items.filter((r) => !r.waking && !isWakeHeld(r) && r.wakeAt <= now);
+    // Every due record gets an alarm before the first wake starts: if the
+    // worker stops part-way through, those alarms wake the rest.
+    if (due.length > 0) {
+      const armed = new Set(((await chrome.alarms.getAll().catch(() => [])) || []).map((a) => a.name));
+      for (const r of due) if (!armed.has(snoozeAlarmName(r.id))) await armRecoveryAlarm(r.id);
+    }
+    for (const r of due) {
+      await wakeSnoozedRecord(r.id, { notify: true, trigger: 'reconcile' });
     }
 
     const remaining = await loadSnoozedItems();
@@ -3616,11 +4373,16 @@ async function reconcileSnoozeAlarms() {
     } catch (_e) {
       existingAlarms = [];
     }
-    const existingNames = new Set(existingAlarms.map((a) => a.name));
+    const scheduled = new Map(existingAlarms.map((a) => [a.name, a.scheduledTime]));
 
     for (const r of remaining) {
-      if (r.wakeAt > now && !existingNames.has(SNOOZE_ALARM_PREFIX + r.id)) {
-        await scheduleSnoozeAlarm(r);
+      if (isWakeHeld(r) || wakingNow.has(r.id)) continue;
+      const name = snoozeAlarmName(r.id);
+      if (r.waking) {
+        if (!scheduled.has(name)) await armRecoveryAlarm(r.id);
+      } else if (r.wakeAt > now) {
+        // A later alarm is stale; an earlier one is a recovery alarm, kept.
+        if (!scheduled.has(name) || scheduled.get(name) > r.wakeAt) await scheduleSnoozeAlarm(r);
       }
     }
   } catch (error) {
@@ -3629,10 +4391,117 @@ async function reconcileSnoozeAlarms() {
 }
 
 // ============================================================
+// Worker start
+// ============================================================
+
+// Runs on every start of this worker (the top level runs once per instance).
+// Resumes wakes a stopped instance of this boot left unfinished, and wakes
+// from an earlier boot once this boot's kind is known; the rest wait for
+// runtime.onStartup / onInstalled, or for their recovery alarm. Also re-arms
+// the AI key's expiry alarm (L12), which an update or reload clears.
+let wakeResumeKickoff = Promise.resolve();
+
+function onWorkerStart() {
+  let marked;
+  wakeResumeKickoff = new Promise((resolve) => { marked = resolve; });
+  const run = (async () => {
+    let sameBoot = [];
+    const earlier = [];
+    try {
+      const bootId = await getBootId();
+      const kind = await getBootKind();
+      const items = await loadSnoozedItems();
+      for (const r of items) {
+        if (!r.waking || isWakeHeld(r) || wakingNow.has(r.id)) continue;
+        if (r.waking.boot === bootId) {
+          sameBoot.push(r.id);
+          wakingNow.add(r.id);
+        } else if (kind) {
+          earlier.push(r.id);
+          wakingNow.add(r.id);
+        } else {
+          // Its recovery alarm resumes it if no startup event does.
+          const alarm = await chrome.alarms.get(snoozeAlarmName(r.id));
+          if (!alarm) await armRecoveryAlarm(r.id);
+        }
+      }
+      if (earlier.length > 0) {
+        resumeEarlierBoot(kind, { reserved: earlier })
+          .catch((error) => console.error('[Huddle] Could not resume a wake:', error));
+      }
+    } catch (error) {
+      for (const id of sameBoot) wakingNow.delete(id);
+      sameBoot = [];
+      console.error('[Huddle] Could not check for unfinished wakes:', error);
+    } finally {
+      marked();
+    }
+    for (const id of sameBoot) {
+      wakingNow.delete(id);
+      await wakeSnoozedRecord(id, { notify: true, trigger: 'resume' }).catch((error) => {
+        console.error('[Huddle] Could not resume a wake:', error);
+      });
+    }
+  })();
+  const ai = (async () => {
+    try {
+      const config = await loadAiConfig();
+      if (config && config.key && typeof config.expiresAt === 'number') {
+        const alarm = await chrome.alarms.get(AI_KEY_ALARM);
+        if (!alarm) scheduleKeyExpiryAlarm(config);
+      }
+    } catch (error) {
+      console.error('[Huddle] Could not check the AI key expiry:', error);
+    }
+  })();
+  return Promise.all([run, ai]);
+}
+
+async function handleBrowserStartup() {
+  try {
+    await setBootKind('restart');
+    await wakeResumeKickoff;
+    // Match the tabs session restore brings back before the reconciler opens
+    // any: its tabs must not be taken for ones a record had reopened.
+    const resumed = resumeEarlierBoot('restart');
+    await earlierBootRestamped;
+    await reconcileSnoozeAlarms();
+    await resumed;
+  } catch (error) {
+    console.error('[Huddle] Error on browser startup:', error);
+  }
+}
+
+async function handleInstalled(details) {
+  try {
+    const reason = details && details.reason;
+    // 'update' is an extension reload or update in a running browser.
+    // 'chrome_update' means Chrome restarted. 'install' with claims in storage
+    // is an extension loaded from the command line starting with the browser:
+    // such a relaunch fires onInstalled('install') and no onStartup, and
+    // clears the alarms (probe-events, Chrome for Testing 151). A real first
+    // install has nothing claimed, so treating it as a restart changes nothing.
+    const kind = reason === 'update' ? 'reload' : (reason === 'chrome_update' || reason === 'install') ? 'restart' : null;
+    await wakeResumeKickoff;
+    let resumed = Promise.resolve();
+    if (kind) {
+      const effective = await setBootKind(kind);
+      resumed = resumeEarlierBoot(effective);
+      await earlierBootRestamped;
+    }
+    await reconcileSnoozeAlarms();
+    await resumed;
+  } catch (error) {
+    console.error('[Huddle] Error on install or update:', error);
+  }
+}
+
+// ============================================================
 // Tab Snoozing — Top-level listener registrations (MV3: sync at top level)
 // ============================================================
 
 chrome.alarms.onAlarm.addListener(handleSnoozeAlarm);
-chrome.runtime.onStartup.addListener(reconcileSnoozeAlarms);
-chrome.runtime.onInstalled.addListener(reconcileSnoozeAlarms);
+chrome.runtime.onStartup.addListener(handleBrowserStartup);
+chrome.runtime.onInstalled.addListener(handleInstalled);
 chrome.notifications.onClicked.addListener(handleWakeNotificationClicked);
+onWorkerStart();

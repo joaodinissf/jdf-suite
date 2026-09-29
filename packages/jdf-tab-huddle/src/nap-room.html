@@ -298,6 +298,21 @@
       }
     }
 
+    /* A row whose wake started shows where it stands in the wake time's place. */
+    .nap-row[data-waking] .nap-when {
+      font-family: var(--ui);
+    }
+
+    .nap-load-error {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 60px;
+      color: var(--tx);
+      font-size: 14px;
+    }
+
     .empty-state {
       margin-top: 60px;
       text-align: center;
@@ -315,7 +330,7 @@
           <span class="nap-moon" aria-hidden="true"><svg viewBox="0 0 20 20" focusable="false"><path d="M15.5 12.6A6.5 6.5 0 0 1 7.4 4.5a6.5 6.5 0 1 0 8.1 8.1Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
           <div>
             <h1>Nap room</h1>
-            <p id="napSummary">Nothing sleeping right now</p>
+            <p id="napSummary">Loading…</p>
           </div>
         </div>
         <div class="nap-actions">

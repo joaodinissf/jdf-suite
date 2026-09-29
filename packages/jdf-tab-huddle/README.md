@@ -66,7 +66,7 @@ The link-clumping feature is inspired by [linkclump](https://github.com/benblack
 ### For Developers
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (792 tests)
+pnpm test              # Run unit tests (876 tests)
 pnpm test:e2e          # Run E2E tests (119 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
@@ -97,13 +97,15 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Confirmation dialog for large operations
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (792 tests in 21 files)
+├── tests/                         # Vitest unit tests (876 tests in 22 files)
 │   ├── setup.js                   # Chrome API mock, page scripts loaded, dispatch() to the worker
 │   ├── senders.js                 # The sender each caller (popup, pages, content script) arrives with
 │   ├── routing.test.js            # Every worker action, routed from its real caller
 │   ├── background.test.js         # Background script logic tests
 │   ├── popup.test.js              # Popup UI tests
 │   ├── snooze.test.js             # Snoozing and waking, through the worker's handlers
+│   ├── snooze-wake.test.js        # The wake protocol across worker stops, reloads and restarts
+│   ├── helpers/fake-browser.js    # Stateful windows, tabs, storage and alarms across worker instances
 │   ├── confirmation-dialog.test.js
 │   └── simple.test.js             # Framework verification
 ├── e2e/                           # Playwright E2E tests (119 tests)
@@ -120,7 +122,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ## Testing
 
 ### Unit Tests (Vitest + jest-chrome shim)
-792 tests across 21 files covering core logic with mocked Chrome APIs:
+876 tests across 22 files covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report

@@ -1,6 +1,10 @@
 // Unit tests for the Tab Snoozing feature (background + popup helpers).
 // Globals are exposed via tests/setup.js. Storage is mocked with an in-memory
 // object; `now` is always passed explicitly to date helpers for determinism.
+// Window wakes, which need tabs and windows that behave, run in the fake
+// browser (tests/helpers/fake-browser.js), as does the wake protocol itself
+// (tests/snooze-wake.test.js).
+import { createBrowser } from './helpers/fake-browser.js';
 
 // Wire chrome.storage.local.{get,set} to an in-memory object. Like
 // chrome.storage, it copies on the way in and on the way out: a change the
@@ -19,6 +23,23 @@ function useMemoryStore(initial = {}) {
     return Promise.resolve();
   });
   return store;
+}
+
+// A fake browser with one open window, the given records asleep, and a worker.
+async function fakeWithRecords(records) {
+  const b = createBrowser();
+  b.openWindow(['https://home.example/']);
+  b.local.snoozedItems = structuredClone(records);
+  const w = b.startWorker();
+  await b.settle();
+  return { b, w };
+}
+
+// The one window that holds `url`.
+function restoredWindow(b, url) {
+  const ids = [...b.windows.keys()].filter((id) => b.tabsIn(id).some((t) => t.url === url));
+  expect(ids).toHaveLength(1);
+  return ids[0];
 }
 
 // Reference dates in January 2024. 2024-01-01 is a Monday, so:
@@ -444,22 +465,30 @@ describe('Tab Snoozing', () => {
   });
 
   describe('handleWakeNow', () => {
-    test('a requeued (restore-failed) wake reports a retry message, not "Snooze not found"', async () => {
+    test('a wake that could not finish says it will try again, not "Snooze not found"', async () => {
       const record = {
         id: 'r8', type: 'tab', summary: 'A', wakeAt: at(4, 9), preset: 'tomorrow',
         windowId: 1, tabs: [{ url: 'https://example.com/a', title: 'A', pinned: false, index: 0 }],
       };
-      useMemoryStore({ snoozedItems: [record] });
+      const store = useMemoryStore({ snoozedItems: [record] });
       chrome.windows.getLastFocused.mockRejectedValue(new Error('no window'));
       chrome.windows.create.mockRejectedValue(new Error('cannot create window'));
+      vi.spyOn(console, 'error').mockImplementation(() => {});
 
       const sendResponse = vi.fn();
       await handleWakeNow({ id: 'r8' }, sendResponse);
 
       expect(sendResponse).toHaveBeenCalledWith({
         success: false,
-        error: 'Could not restore right now — will retry automatically',
+        waking: 'interrupted',
+        error: 'These tabs didn\'t finish waking — Huddle will try again in a minute',
       });
+      // Still stored, still claimed, with its retry alarm.
+      expect(store.snoozedItems).toHaveLength(1);
+      expect(store.snoozedItems[0].tabs).toEqual(record.tabs);
+      expect(store.snoozedItems[0].waking).toMatchObject({ attempts: 1, stalled: false, opened: [] });
+      expect(chrome.alarms.create).toHaveBeenLastCalledWith('snooze:r8', { when: expect.any(Number) });
+      console.error.mockRestore();
     });
 
     test('a wake that reopens nothing reports it and keeps the record', async () => {
@@ -480,9 +509,12 @@ describe('Tab Snoozing', () => {
         createdCount: 0,
         failedCount: 1,
       });
-      expect(store.snoozedItems).toEqual([record]);
-      // No retry alarm: the same URL would be refused again.
-      expect(chrome.alarms.create).not.toHaveBeenCalled();
+      expect(store.snoozedItems).toEqual([{ ...record, wakeFailedAt: expect.any(Number) }]);
+      // No retry alarm: the same URL would be refused again. (The claim armed
+      // one; the kept record clears it.)
+      expect(chrome.alarms.clear).toHaveBeenLastCalledWith('snooze:r9');
+      const lastCreate = Math.max(...chrome.alarms.create.mock.invocationCallOrder);
+      expect(Math.max(...chrome.alarms.clear.mock.invocationCallOrder)).toBeGreaterThan(lastCreate);
     });
 
     test('a partial wake reports how many tabs reopened and how many failed', async () => {
@@ -590,7 +622,7 @@ describe('Tab Snoozing', () => {
     });
   });
 
-  describe('wakeSnoozedRecord / restoreSnoozedRecord', () => {
+  describe('wakeSnoozedRecord', () => {
     test('restores tab records with active:false in the last-focused window, notifies when asked', async () => {
       const record = {
         id: 'r1', type: 'tab', summary: 'A', wakeAt: at(4, 9), preset: 'tomorrow',
@@ -646,14 +678,16 @@ describe('Tab Snoozing', () => {
 
       // Pinned tab created with pinned:true.
       expect(chrome.tabs.create).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://a/', pinned: true }));
-      // Regrouped with the stored title/color.
-      expect(chrome.tabs.group).toHaveBeenCalledWith(
-        expect.objectContaining({ tabIds: [100, 101], createProperties: { windowId: 5 } })
-      );
+      // The group is made with the first tab, saved with it, and the second
+      // tab joins it; it gets the stored title/color.
+      expect(chrome.tabs.group.mock.calls).toEqual([
+        [{ tabIds: [100], createProperties: { windowId: 5 } }],
+        [{ groupId: 7, tabIds: [101] }],
+      ]);
       expect(chrome.tabGroups.update).toHaveBeenCalledWith(7, { title: 'Research', color: 'blue' });
     });
 
-    test('window records recreate a window via windows.create({ url: [...], focused: false })', async () => {
+    test('window records open an empty background window, then reopen each tab into it (D18)', async () => {
       const record = {
         id: 'r4', type: 'window', summary: 'Window (2 tabs)', wakeAt: at(4, 9), preset: 'custom',
         windowId: 9,
@@ -662,19 +696,20 @@ describe('Tab Snoozing', () => {
           { url: 'https://two/', title: 'Two', pinned: true, index: 1 },
         ],
       };
-      useMemoryStore({ snoozedItems: [record] });
-      chrome.windows.create.mockResolvedValue({ id: 77, tabs: [{ id: 1 }, { id: 2 }] });
-      chrome.tabs.update.mockResolvedValue(undefined);
+      const { b, w } = await fakeWithRecords([record]);
 
-      const result = await wakeSnoozedRecord('r4', { notify: false });
+      const reply = await w.send({ action: 'wakeSnoozed', id: 'r4' });
 
-      expect(chrome.windows.create).toHaveBeenCalledWith({
-        url: ['https://one/', 'https://two/'],
-        focused: false,
-      });
-      // The pinned tab is re-pinned after window creation.
-      expect(chrome.tabs.update).toHaveBeenCalledWith(2, { pinned: true });
-      expect(result.createdCount).toBe(2);
+      expect(reply).toEqual({ success: true, createdCount: 2, failedCount: 0 });
+      // One empty window, never a window made from the whole URL list.
+      expect(b.windowCreates).toEqual([{ focused: false }]);
+      expect(b.createCalls.map((c) => c.url)).toEqual(['https://one/', 'https://two/']);
+      const restored = restoredWindow(b, 'https://one/');
+      // The New Tab is gone and the pinned tab is pinned again.
+      expect(b.tabsIn(restored).map((t) => [t.url, t.pinned])).toEqual([
+        ['https://two/', true],
+        ['https://one/', false],
+      ]);
     });
 
     test('unknown id → silent no-op (no creates, no notification)', async () => {
@@ -744,29 +779,32 @@ describe('Tab Snoozing', () => {
       chrome.tabs.create.mockReset();
     });
 
-    test('a throw outside the per-tab loop (e.g. window creation) re-persists the popped record — no data loss', async () => {
+    test('a throw outside the per-tab loop (e.g. window creation) leaves the record stored and claimed — no data loss', async () => {
       const record = {
         id: 'r6', type: 'tab', summary: 'A', wakeAt: at(4, 9), preset: 'tomorrow',
         windowId: 1, tabs: [{ url: 'https://example.com/a', title: 'A', pinned: false, index: 0 }],
       };
       const store = useMemoryStore({ snoozedItems: [record] });
       // Both the primary lookup and the create-a-window fallback fail, so
-      // getRestoreTargetWindowId (and therefore restoreSnoozedRecord) throws.
+      // getRestoreTargetWindowId throws.
       chrome.windows.getLastFocused.mockRejectedValue(new Error('no window'));
       chrome.windows.create.mockRejectedValue(new Error('cannot create window'));
+      vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      const result = await wakeSnoozedRecord('r6', { notify: true });
+      const result = await wakeSnoozedRecord('r6', { notify: true, trigger: 'alarm' });
 
-      // The record survives — it's back in storage, not lost.
-      expect(store.snoozedItems).toEqual([record]);
-      expect(result).toEqual({ record, requeued: true });
-      // A near-future retry alarm was armed under the same alarm name.
-      expect(chrome.alarms.create).toHaveBeenCalledWith(
+      // The record never left storage.
+      expect(store.snoozedItems.map((r) => r.tabs)).toEqual([record.tabs]);
+      expect(store.snoozedItems[0].waking.attempts).toBe(1);
+      expect(result).toEqual({ interrupted: true, error: 'cannot create window' });
+      // A near-future retry alarm is armed under the same alarm name.
+      expect(chrome.alarms.create).toHaveBeenLastCalledWith(
         'snooze:r6',
         expect.objectContaining({ when: expect.any(Number) })
       );
       // A failed restore must never fire the "tabs are back" notification.
       expect(chrome.notifications.create).not.toHaveBeenCalled();
+      console.error.mockRestore();
     });
 
     test('notifyWake reports the ACTUAL restored count (createdCount), not the intended tab count', async () => {
@@ -810,7 +848,7 @@ describe('Tab Snoozing', () => {
       const result = await wakeSnoozedRecord('r11', { notify: true });
 
       expect(result.kept).toBe(true);
-      expect(store.snoozedItems).toEqual([record]);
+      expect(store.snoozedItems).toEqual([{ ...record, wakeFailedAt: expect.any(Number) }]);
       expect(chrome.notifications.create).toHaveBeenCalledWith(
         'snooze-wake:r11',
         expect.objectContaining({ message: '"Local page" could not be reopened — it is still in the nap room' })
@@ -861,7 +899,7 @@ describe('Tab Snoozing', () => {
       );
     });
 
-    test('a window Chrome refuses as a whole reopens its other tabs one by one', async () => {
+    test('a window tab Chrome refuses is skipped; the others come back into the window, pinned and grouped', async () => {
       const record = {
         id: 'r13', type: 'window', summary: 'Window (3 tabs)', wakeAt: at(4, 9), preset: 'custom',
         windowId: 9,
@@ -869,37 +907,25 @@ describe('Tab Snoozing', () => {
         tabs: [
           { url: 'https://one/', title: 'One', pinned: false, index: 0, groupIndex: 0 },
           { url: 'file:///two.html', title: 'Two', pinned: false, index: 1 },
-          { url: 'https://three/', title: 'Three', pinned: true, index: 2, groupIndex: 0 },
+          { url: 'https://three/', title: 'Three', pinned: true, index: 2 },
         ],
       };
-      useMemoryStore({ snoozedItems: [record] });
-      chrome.windows.create
-        .mockRejectedValueOnce(new Error('Cannot access file URLs'))
-        .mockResolvedValueOnce({ id: 77, tabs: [{ id: 900 }] }); // the New Tab placeholder
-      chrome.tabs.create
-        .mockResolvedValueOnce({ id: 1 })
-        .mockRejectedValueOnce(new Error('Cannot access file URLs'))
-        .mockResolvedValueOnce({ id: 3 });
-      chrome.tabs.update.mockResolvedValue(undefined);
-      chrome.tabs.remove.mockResolvedValue(undefined);
-      chrome.tabs.group.mockResolvedValue(40);
+      const { b, w } = await fakeWithRecords([record]);
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-      const result = await wakeSnoozedRecord('r13', { notify: true });
+      await w.alarm('snooze:r13');
+      await b.settle();
 
-      for (const url of ['https://one/', 'file:///two.html', 'https://three/']) {
-        expect(chrome.tabs.create).toHaveBeenCalledWith(expect.objectContaining({ windowId: 77, url }));
-      }
-      expect(result.createdCount).toBe(2);
-      expect(result.failedCount).toBe(1);
+      expect(b.createCalls.map((c) => c.url)).toEqual(['https://one/', 'file:///two.html', 'https://three/']);
+      const restored = restoredWindow(b, 'https://one/');
+      const tabs = b.tabsIn(restored);
       // The placeholder New Tab goes, and is never pinned or grouped.
-      expect(chrome.tabs.remove).toHaveBeenCalledWith(900);
-      expect(chrome.tabs.update).toHaveBeenCalledTimes(1);
-      expect(chrome.tabs.update).toHaveBeenCalledWith(3, { pinned: true });
-      expect(chrome.tabs.group).toHaveBeenCalledWith(expect.objectContaining({ tabIds: [1, 3] }));
-      expect(chrome.notifications.create).toHaveBeenCalledWith(
-        'snooze-wake:r13',
-        expect.objectContaining({ message: 'Window restored (2 tabs) — 1 could not be reopened' })
-      );
+      expect(tabs.map((t) => t.url)).toEqual(['https://three/', 'https://one/']);
+      expect(tabs[0].pinned).toBe(true);
+      expect(b.groups.get(tabs[1].groupId)).toMatchObject({ title: 'Work', color: 'blue' });
+      expect(b.notifications.map((n) => n.message)).toEqual(['Window restored (2 tabs) — 1 could not be reopened']);
+      expect(b.records()).toEqual([]);
+      console.warn.mockRestore();
     });
 
     test('a window whose every tab is refused closes the empty window and keeps the record', async () => {
@@ -907,18 +933,16 @@ describe('Tab Snoozing', () => {
         id: 'r14', type: 'window', summary: 'Window (1 tab)', wakeAt: at(4, 9), preset: 'custom',
         windowId: 9, tabs: [{ url: 'file:///two.html', title: 'Two', pinned: false, index: 0 }],
       };
-      const store = useMemoryStore({ snoozedItems: [record] });
-      chrome.windows.create
-        .mockRejectedValueOnce(new Error('Cannot access file URLs'))
-        .mockResolvedValueOnce({ id: 78, tabs: [{ id: 901 }] });
-      chrome.windows.remove.mockResolvedValue(undefined);
-      chrome.tabs.create.mockRejectedValue(new Error('Cannot access file URLs'));
+      const { b, w } = await fakeWithRecords([record]);
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-      const result = await wakeSnoozedRecord('r14', { notify: false });
+      const reply = await w.send({ action: 'wakeSnoozed', id: 'r14' });
 
-      expect(result.createdCount).toBe(0);
-      expect(chrome.windows.remove).toHaveBeenCalledWith(78);
-      expect(store.snoozedItems).toEqual([record]);
+      expect(reply).toMatchObject({ success: false, createdCount: 0, failedCount: 1 });
+      expect(b.windowCreates).toHaveLength(1);
+      expect(b.windows.size).toBe(1); // only the one that was already open
+      expect(b.records()).toEqual([{ ...record, wakeFailedAt: expect.any(Number) }]);
+      console.warn.mockRestore();
     });
   });
 
@@ -994,26 +1018,16 @@ describe('Tab Snoozing', () => {
           { url: 'https://b/', title: 'B', pinned: false, index: 1, groupIndex: 1 },
         ],
       };
-      useMemoryStore({ snoozedItems: [record] });
-      // Chrome refuses the whole URL list over the file: page, so the tabs
-      // are reopened one by one, and the file: one fails.
-      chrome.windows.create
-        .mockRejectedValueOnce(new Error('Cannot access file URLs'))
-        .mockResolvedValueOnce({ id: 72, tabs: [{ id: 720 }] });
-      chrome.tabs.create.mockImplementation(({ url }) => (url.startsWith('file:')
-        ? Promise.reject(new Error('Cannot access file URLs'))
-        : Promise.resolve({ id: 721 })));
-      chrome.tabs.remove.mockResolvedValue(undefined);
-      chrome.tabs.group.mockResolvedValue(91);
-      chrome.tabGroups.update.mockResolvedValue(undefined);
+      const { b, w } = await fakeWithRecords([record]);
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-      const result = await wakeSnoozedRecord('w3', { notify: false });
+      const reply = await w.send({ action: 'wakeSnoozed', id: 'w3' });
 
-      expect(result.createdCount).toBe(1);
-      expect(chrome.tabs.group.mock.calls).toEqual([[{ tabIds: [721], createProperties: { windowId: 72 } }]]);
-      expect(chrome.tabGroups.update.mock.calls).toEqual([[91, { title: 'Web', color: 'blue' }]]);
-      chrome.tabs.create.mockReset();
-      chrome.windows.create.mockReset();
+      expect(reply.createdCount).toBe(1);
+      expect([...b.groups.values()].map((g) => [g.title, g.color])).toEqual([['Web', 'blue']]);
+      const [web] = b.groups.values();
+      expect(b.allTabs().filter((t) => t.groupId === web.id).map((t) => t.url)).toEqual(['https://b/']);
+      console.warn.mockRestore();
     });
 
     test('a window with no groups stores none', async () => {
@@ -1031,30 +1045,30 @@ describe('Tab Snoozing', () => {
     test('waking it recreates both groups with their titles, colours and exact members', async () => {
       const { store } = await snoozeGroupedWindow();
       const [record] = store.snoozedItems;
-      chrome.windows.create.mockResolvedValue({
-        id: 70, tabs: [{ id: 700 }, { id: 701 }, { id: 702 }, { id: 703 }, { id: 704 }],
-      });
-      chrome.tabs.update.mockResolvedValue(undefined);
-      let nextGroup = 80;
-      chrome.tabs.group.mockImplementation(() => Promise.resolve(nextGroup++));
-      chrome.tabGroups.update.mockResolvedValue(undefined);
+      const { b, w } = await fakeWithRecords([record]);
 
-      const result = await wakeSnoozedRecord(record.id, { notify: false });
+      const reply = await w.send({ action: 'wakeSnoozed', id: record.id });
 
-      expect(result.createdCount).toBe(5);
-      expect(chrome.windows.create).toHaveBeenCalledWith({
-        url: ['https://a.example/', 'https://b.example/', 'https://c.example/', 'https://d.example/', 'https://e.example/'],
-        focused: false,
-      });
-      expect(chrome.tabs.group.mock.calls).toEqual([
-        [{ tabIds: [701, 702], createProperties: { windowId: 70 } }],
-        [{ tabIds: [704], createProperties: { windowId: 70 } }],
+      expect(reply).toEqual({ success: true, createdCount: 5, failedCount: 0 });
+      // D18: an empty window first, then the tabs one by one, in order.
+      expect(b.windowCreates).toEqual([{ focused: false }]);
+      expect(b.createCalls.map((c) => c.url)).toEqual([
+        'https://a.example/', 'https://b.example/', 'https://c.example/', 'https://d.example/', 'https://e.example/',
       ]);
-      expect(chrome.tabGroups.update.mock.calls).toEqual([
-        [80, { title: 'Work', color: 'blue' }],
-        [81, { title: '', color: 'grey' }],
+      const tabs = b.tabsIn(restoredWindow(b, 'https://a.example/'));
+      expect(tabs.map((t) => t.url)).toEqual([
+        'https://a.example/', 'https://b.example/', 'https://c.example/', 'https://d.example/', 'https://e.example/',
       ]);
-      expect(chrome.tabs.update).toHaveBeenCalledWith(700, { pinned: true });
+      // Exact members: B and C in "Work" (blue), E alone in the unnamed grey
+      // group, A (pinned) and D in no group.
+      const groupOf = (u) => tabs.find((t) => t.url === u).groupId;
+      expect(b.groups.get(groupOf('https://b.example/'))).toMatchObject({ title: 'Work', color: 'blue' });
+      expect(groupOf('https://c.example/')).toBe(groupOf('https://b.example/'));
+      expect(b.groups.get(groupOf('https://e.example/'))).toMatchObject({ title: '', color: 'grey' });
+      expect(groupOf('https://e.example/')).not.toBe(groupOf('https://b.example/'));
+      expect(b.groups.size).toBe(2);
+      expect(tabs.filter((t) => t.groupId === -1).map((t) => t.url)).toEqual(['https://a.example/', 'https://d.example/']);
+      expect(tabs[0].pinned).toBe(true);
     });
 
     test('a stored group with no title or colour comes back unnamed and grey', async () => {
@@ -1067,15 +1081,13 @@ describe('Tab Snoozing', () => {
           { url: 'https://b/', title: 'B', pinned: false, index: 1 },
         ],
       };
-      useMemoryStore({ snoozedItems: [record] });
-      chrome.windows.create.mockResolvedValue({ id: 71, tabs: [{ id: 710 }, { id: 711 }] });
-      chrome.tabs.group.mockResolvedValue(90);
-      chrome.tabGroups.update.mockResolvedValue(undefined);
+      const { b, w } = await fakeWithRecords([record]);
 
-      await wakeSnoozedRecord('w2', { notify: false });
+      await w.send({ action: 'wakeSnoozed', id: 'w2' });
 
-      expect(chrome.tabs.group.mock.calls).toEqual([[{ tabIds: [710], createProperties: { windowId: 71 } }]]);
-      expect(chrome.tabGroups.update.mock.calls).toEqual([[90, { title: '', color: 'grey' }]]);
+      const tabs = b.tabsIn(restoredWindow(b, 'https://a/'));
+      expect([...b.groups.values()].map((g) => [g.title, g.color])).toEqual([['', 'grey']]);
+      expect(tabs.filter((t) => t.groupId !== -1).map((t) => t.url)).toEqual(['https://a/']);
     });
   });
 
@@ -1163,7 +1175,7 @@ describe('Tab Snoozing', () => {
       expect(chrome.alarms.create).not.toHaveBeenCalledWith('snooze:live', expect.anything());
     });
 
-    test('pops all past-due records in a single storage write (batched)', async () => {
+    test('wakes past-due records one at a time: none leaves storage before its own wake finishes (M2)', async () => {
       const now = Date.now();
       const mkPast = (id) => ({
         id, type: 'tab', summary: id, wakeAt: now - 1000, preset: 'tomorrow',
@@ -1172,15 +1184,22 @@ describe('Tab Snoozing', () => {
       const store = useMemoryStore({ snoozedItems: [mkPast('p1'), mkPast('p2'), mkPast('p3')] });
 
       chrome.windows.getLastFocused.mockResolvedValue({ id: 5 });
-      chrome.tabs.create.mockResolvedValue({ id: 50 });
+      // What storage held as each tab was created.
+      const storedAtCreate = [];
+      chrome.tabs.create.mockImplementation(({ url }) => {
+        storedAtCreate.push([url, store.snoozedItems.map((r) => r.id)]);
+        return Promise.resolve({ id: 50, windowId: 5 });
+      });
       chrome.alarms.getAll.mockResolvedValue([]);
 
       await reconcileSnoozeAlarms();
 
-      // All three woken, and the pop was one batched read-modify-write
-      // (previously one write per record).
+      expect(storedAtCreate).toEqual([
+        ['https://p1/', ['p1', 'p2', 'p3']],
+        ['https://p2/', ['p2', 'p3']],
+        ['https://p3/', ['p3']],
+      ]);
       expect(store.snoozedItems).toEqual([]);
-      expect(chrome.storage.local.set).toHaveBeenCalledTimes(1);
       expect(chrome.notifications.create).toHaveBeenCalledTimes(3);
     });
 
@@ -1205,6 +1224,79 @@ describe('Tab Snoozing', () => {
         'boom'
       );
       warnSpy.mockRestore();
+    });
+  });
+
+  describe('a failed read of the sleeping list (L67)', () => {
+    const earlier = {
+      id: 'kept', type: 'tab', summary: 'Kept', wakeAt: at(9, 9), preset: 'tomorrow',
+      windowId: 1, tabs: [{ url: 'https://kept.example/', title: 'Kept', pinned: false, index: 0 }],
+    };
+    const readFails = (store) => {
+      chrome.storage.local.get.mockImplementationOnce(() => Promise.reject(new Error('IO error: storage read failed')));
+      return store;
+    };
+    beforeEach(() => vi.spyOn(console, 'error').mockImplementation(() => {}));
+    afterEach(() => console.error.mockRestore());
+
+    test('a snooze is refused, nothing is written and the tab stays open', async () => {
+      const store = readFails(useMemoryStore({ snoozedItems: [earlier] }));
+      chrome.tabs.query.mockResolvedValue([{ id: 7, url: 'https://new.example/', title: 'New', index: 0, windowId: 1 }]);
+      const sendResponse = vi.fn();
+      await handleSnoozeTab({ wakeAt: Date.now() + 3600000, preset: 'tomorrow' }, sendResponse);
+      expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'IO error: storage read failed' });
+      expect(chrome.storage.local.set).not.toHaveBeenCalled();
+      expect(chrome.tabs.remove).not.toHaveBeenCalled();
+      expect(store.snoozedItems).toEqual([earlier]);
+    });
+
+    test('a stored value that is not a list is never written over', async () => {
+      const store = useMemoryStore({ snoozedItems: { not: 'a list' } });
+      chrome.tabs.query.mockResolvedValue([{ id: 7, url: 'https://new.example/', title: 'New', index: 0, windowId: 1 }]);
+      const sendResponse = vi.fn();
+      await handleSnoozeTab({ wakeAt: Date.now() + 3600000, preset: 'tomorrow' }, sendResponse);
+      expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'The sleeping tabs could not be read' });
+      expect(store.snoozedItems).toEqual({ not: 'a list' });
+    });
+
+    test('listSnoozed says the read failed instead of listing nothing', async () => {
+      readFails(useMemoryStore({ snoozedItems: [earlier] }));
+      const sendResponse = vi.fn();
+      await handleListSnoozed(sendResponse);
+      expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'IO error: storage read failed' });
+    });
+
+    test('Undo and Discard refuse, and write nothing', async () => {
+      const store = readFails(useMemoryStore({ snoozedItems: [earlier] }));
+      const undo = vi.fn();
+      await handleRestoreSnoozed({ record: { ...earlier, id: 'other' } }, undo);
+      expect(undo).toHaveBeenCalledWith({ success: false, error: 'IO error: storage read failed' });
+      readFails(store);
+      const discard = vi.fn();
+      await handleCancelSnooze({ id: 'kept' }, discard);
+      expect(discard).toHaveBeenCalledWith({ success: false, error: 'IO error: storage read failed' });
+      expect(chrome.storage.local.set).not.toHaveBeenCalled();
+      expect(store.snoozedItems).toEqual([earlier]);
+    });
+
+    test('a close that fails partway, then a failed read, keeps the whole record rather than erasing the list', async () => {
+      const store = useMemoryStore({ snoozedItems: [earlier] });
+      chrome.tabs.query.mockResolvedValue([
+        { id: 7, url: 'https://a.example/', title: 'A', index: 0, windowId: 1, highlighted: true },
+        { id: 8, url: 'https://b.example/', title: 'B', index: 1, windowId: 1, highlighted: true },
+      ]);
+      chrome.windows.getAll.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+      chrome.tabs.remove.mockRejectedValue(new Error('Tabs cannot be edited right now'));
+      chrome.tabs.get.mockImplementation((id) => (id === 7 ? Promise.reject(new Error('gone')) : Promise.resolve({ id })));
+      const sendResponse = vi.fn();
+      // The first read (persist) works; the second (keep only the closed tab) fails.
+      chrome.storage.local.get
+        .mockImplementationOnce((keys) => Promise.resolve({ snoozedItems: structuredClone(store.snoozedItems), keys }))
+        .mockImplementationOnce(() => Promise.reject(new Error('IO error: storage read failed')));
+      await handleSnoozeSelected({ wakeAt: Date.now() + 3600000, preset: 'tomorrow' }, sendResponse);
+      expect(sendResponse.mock.calls[0][0].success).toBe(false);
+      expect(store.snoozedItems.map((r) => r.id)).toContain('kept');
+      expect(store.snoozedItems).toHaveLength(2);
     });
   });
 

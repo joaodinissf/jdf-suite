@@ -77,6 +77,7 @@ global.chrome = {
     get: vi.fn(),
   },
   windows: {
+    get: vi.fn(),
     getAll: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -89,6 +90,7 @@ global.chrome = {
     clear: vi.fn().mockResolvedValue(true),
     clearAll: vi.fn().mockResolvedValue(true),
     getAll: vi.fn().mockResolvedValue([]),
+    get: vi.fn().mockResolvedValue(undefined),
     onAlarm: {
       addListener: vi.fn((fn) => alarmListeners.push(fn)),
       // Fires an alarm at every listener the worker registered, as Chrome does.
@@ -223,7 +225,6 @@ const backgroundWrapper = `
   if (typeof handleRestoreSnoozed !== 'undefined') global.handleRestoreSnoozed = handleRestoreSnoozed;
   if (typeof handleSnoozeAlarm !== 'undefined') global.handleSnoozeAlarm = handleSnoozeAlarm;
   if (typeof wakeSnoozedRecord !== 'undefined') global.wakeSnoozedRecord = wakeSnoozedRecord;
-  if (typeof restoreSnoozedRecord !== 'undefined') global.restoreSnoozedRecord = restoreSnoozedRecord;
   if (typeof reconcileSnoozeAlarms !== 'undefined') global.reconcileSnoozeAlarms = reconcileSnoozeAlarms;
   if (typeof SNOOZE_PRESETS !== 'undefined') global.SNOOZE_PRESETS = SNOOZE_PRESETS;
 
@@ -331,6 +332,7 @@ const popupWrapper = `
   if (typeof discardSnooze !== 'undefined') global.discardSnooze = discardSnooze;
   if (typeof showDiscardNotice !== 'undefined') global.showDiscardNotice = showDiscardNotice;
   if (typeof undoDiscard !== 'undefined') global.undoDiscard = undoDiscard;
+  if (typeof discardNoticeText !== 'undefined') global.discardNoticeText = discardNoticeText;
 
   // Keyboard shortcut exposures
   if (typeof buildHotkeyMap !== 'undefined') global.buildHotkeyMap = buildHotkeyMap;
@@ -459,6 +461,9 @@ const napRoomWrapper = `
   if (typeof napDiscard !== 'undefined') global.napDiscard = napDiscard;
   if (typeof napShowDiscardNotice !== 'undefined') global.napShowDiscardNotice = napShowDiscardNotice;
   if (typeof napUndoDiscard !== 'undefined') global.napUndoDiscard = napUndoDiscard;
+  if (typeof napLoadAndRender !== 'undefined') global.napLoadAndRender = napLoadAndRender;
+  if (typeof napHandleVisibilityChange !== 'undefined') global.napHandleVisibilityChange = napHandleVisibilityChange;
+  if (typeof napHandleStorageChange !== 'undefined') global.napHandleStorageChange = napHandleStorageChange;
 })();
 `;
 eval(napRoomWrapper);
