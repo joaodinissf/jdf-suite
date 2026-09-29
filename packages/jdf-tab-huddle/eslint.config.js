@@ -75,11 +75,16 @@ export default [
         window: 'readonly',
         URL: 'readonly',
         setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        structuredClone: 'readonly',
         Map: 'readonly',
         Promise: 'readonly',
         Object: 'readonly',
         Array: 'readonly',
         Set: 'readonly',
+
+        // Test helpers (defined by setup.js)
+        dispatch: 'readonly',
 
         // DOM globals (jsdom-provided at test time)
         KeyboardEvent: 'readonly',

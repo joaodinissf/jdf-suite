@@ -1,4 +1,4 @@
-import { vi, beforeEach } from 'vitest';
+import { vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -7,7 +7,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const messageListeners = [];
 const tabRemovedListeners = [];
+const tabDetachedListeners = [];
 const connectListeners = [];
+const alarmListeners = [];
 // chrome.storage.session keeps real values, so a test can drop the worker's
 // in-memory state and check what survives. Emptied before each test.
 const sessionStore = {};
@@ -19,6 +21,7 @@ const pickKeys = (keys) => {
 
 global.chrome = {
   runtime: {
+    id: 'test-id',
     sendMessage: vi.fn(),
     onMessage: {
       addListener: vi.fn((fn) => messageListeners.push(fn)),
@@ -28,7 +31,9 @@ global.chrome = {
       }),
       hasListener: (fn) => messageListeners.includes(fn),
       hasListeners: () => messageListeners.length > 0,
-      callListeners: (...args) => messageListeners.forEach(fn => fn(...args)),
+      // Returns each listener's result: `true` is how an async action keeps
+      // the channel open for its reply.
+      callListeners: (...args) => messageListeners.map(fn => fn(...args)),
     },
     getURL: vi.fn((path) => `chrome-extension://test-id/${path}`),
     onConnect: {
@@ -60,6 +65,10 @@ global.chrome = {
       addListener: vi.fn((fn) => tabRemovedListeners.push(fn)),
       callListeners: (...args) => tabRemovedListeners.forEach(fn => fn(...args)),
     },
+    onDetached: {
+      addListener: vi.fn((fn) => tabDetachedListeners.push(fn)),
+      callListeners: (...args) => tabDetachedListeners.forEach(fn => fn(...args)),
+    },
   },
   tabGroups: {
     TAB_GROUP_ID_NONE: -1,
@@ -81,7 +90,9 @@ global.chrome = {
     clearAll: vi.fn().mockResolvedValue(true),
     getAll: vi.fn().mockResolvedValue([]),
     onAlarm: {
-      addListener: vi.fn(),
+      addListener: vi.fn((fn) => alarmListeners.push(fn)),
+      // Fires an alarm at every listener the worker registered, as Chrome does.
+      callListeners: (...args) => alarmListeners.forEach(fn => fn(...args)),
     },
   },
   notifications: {
@@ -120,6 +131,7 @@ global.console.log = vi.fn();
 
 // Load and execute background script, exposing functions globally
 const backgroundJs = readFileSync(resolve(__dirname, '../src/background.js'), 'utf8');
+const listenersBeforeWorker = messageListeners.length;
 const backgroundWrapper = `
 (function() {
   ${backgroundJs}
@@ -222,6 +234,48 @@ const backgroundWrapper = `
 })();
 `;
 eval(backgroundWrapper);
+
+// The worker's own onMessage listeners (the pages loaded below register
+// theirs on the same mock). dispatch() sends a message to these only, the way
+// a page's chrome.runtime.sendMessage reaches the worker.
+const workerMessageListeners = messageListeners.slice(listenersBeforeWorker);
+
+// Sends `message` from `sender` to the worker and resolves with what the
+// worker passes to sendResponse. It fails when the worker has no listener,
+// when a listener replies twice, when an action that replies later did not
+// return true (Chrome would close the channel and the page would get
+// nothing), or when no reply comes within `timeoutMs`.
+// A second reply can't reject a promise the first reply already resolved, so
+// it is recorded here and fails the test that caused it (see afterEach below).
+const doubleReplies = [];
+afterEach(() => {
+  if (doubleReplies.length) throw new Error(doubleReplies.splice(0).join('; '));
+});
+
+global.dispatch = (message, sender = {}, { timeoutMs = 3000 } = {}) => new Promise((resolve, reject) => {
+  if (workerMessageListeners.length === 0) {
+    reject(new Error('the worker registered no chrome.runtime.onMessage listener'));
+    return;
+  }
+  let replied = false;
+  let timer = null;
+  const sendResponse = (value) => {
+    if (replied) {
+      doubleReplies.push(`the worker replied twice to ${JSON.stringify(message.action || message.type)}`);
+      return;
+    }
+    replied = true;
+    if (timer) clearTimeout(timer);
+    resolve(value);
+  };
+  const results = workerMessageListeners.map((fn) => fn(message, sender, sendResponse));
+  if (replied) return;
+  if (!results.includes(true)) {
+    reject(new Error(`${JSON.stringify(message.action || message.type)} replies later, but its listener did not return true`));
+    return;
+  }
+  timer = setTimeout(() => reject(new Error(`no reply to ${JSON.stringify(message.action || message.type)} within ${timeoutMs} ms`)), timeoutMs);
+});
 
 // Load and execute popup script, exposing functions globally
 const popupJs = readFileSync(resolve(__dirname, '../src/popup.js'), 'utf8');

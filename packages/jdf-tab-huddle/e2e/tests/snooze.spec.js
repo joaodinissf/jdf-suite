@@ -275,14 +275,40 @@ test('5: Snooze group and wake recreates the group with title, color and members
   expect(groupUrls.sort()).toEqual([URLS.MOZILLA_A, URLS.MOZILLA_B].sort());
 });
 
+// Opening popup.html as a page makes it the active tab, so each of these
+// re-activates the tab under test and has the popup read the window again.
+async function groupButtonFor(sw, popup, tabId) {
+  await activateTab(sw, tabId);
+  await popup.evaluate(() => loadBrowserSnapshot());
+  const active = await sw.evaluate(async () => {
+    const [t] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    return t.url || t.pendingUrl;
+  });
+  expect(active).not.toContain('popup.html');
+  return popup.locator('#snoozeGroup');
+}
+
 test('6: Group button is disabled when the active tab is not in a group', async ({ sw, context, extensionId }) => {
   const [tabId] = await createTabs(sw, [URLS.EXAMPLE_A]);
   await sleep(300);
-  await activateTab(sw, tabId);
 
   const popup = await openPopup(context, extensionId);
   await sleep(400);
-  await expect(popup.locator('#snoozeGroup')).toBeDisabled();
+  await expect(await groupButtonFor(sw, popup, tabId)).toBeDisabled();
+
+  await popup.close();
+});
+
+test('6b: Group button is enabled when the active tab is in a group', async ({ sw, context, extensionId }) => {
+  const [tabId, otherId] = await createTabs(sw, [URLS.EXAMPLE_A, URLS.GITHUB_A]);
+  await sleep(300);
+  await createTabGroup(sw, [tabId], 'Research', 'blue');
+
+  const popup = await openPopup(context, extensionId);
+  await sleep(400);
+  await expect(await groupButtonFor(sw, popup, tabId)).toBeEnabled();
+  // And back off again for an ungrouped tab in the same window.
+  await expect(await groupButtonFor(sw, popup, otherId)).toBeDisabled();
 
   await popup.close();
 });
