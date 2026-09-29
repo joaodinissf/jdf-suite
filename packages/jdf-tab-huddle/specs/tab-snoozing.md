@@ -53,6 +53,8 @@ Each list row (`<li class="snoozed-item" data-id="...">`) shows:
 - The wake time formatted by `formatWakeTime()` ("Today 18:00", "Tomorrow 09:00", "Sat 09:00", "12 Jul, 09:00"),
 - A **Wake now** button (`class="snoozed-wake"`, `data-action="wake"`) and a **Discard** button (`class="snoozed-discard"`, `data-action="discard"`). Discard never gets a hotkey. After a discard, a `role="status"` notice offers **Undo** (hotkey Z) for 10 seconds.
 
+Wake now's digit (1–9) is the row's place in the list. A row whose Wake now is disabled (its request is running, or it is waking) keeps its digit unbound, so pressing the same digit twice never wakes the next row; the digit comes back when the row is enabled again.
+
 Rows are sorted ascending by `wakeAt`. Clicks are handled by event delegation on `#snoozedList`. The section header shows a count: `Sleeping (<span id="sleepingCount">3</span>)`. The popup also subscribes to `chrome.storage.onChanged` for the `snoozedItems` key and re-renders the list, so an alarm firing while the popup is open updates the UI live.
 
 ### Preset time semantics
@@ -91,15 +93,54 @@ Per-unit collection rules:
 
 ### Wake flow
 
-`chrome.alarms.onAlarm` fires `handleSnoozeAlarm(alarm)`. Alarms not starting with `snooze:` are ignored. Otherwise it calls `wakeSnoozedRecord(id, { notify: true })`:
+`chrome.alarms.onAlarm` fires `handleSnoozeAlarm(alarm)`. Alarms not starting with `snooze:` are ignored. Otherwise it calls `wakeSnoozedRecord(id, { notify: true, trigger: 'alarm' })`. Wake now, the reconciler and a worker start call the same function with their own trigger.
 
-1. **Atomically pop** the record with matching `id` from `snoozedItems` (under the storage lock). If no record is found (already woken/cancelled, duplicate fire), return silently — this makes waking idempotent.
-2. `chrome.alarms.clear('snooze:' + id)` (harmless if already fired).
-3. **Restore** via `restoreSnoozedRecord(record)`:
-   - **`tab` / `tabs` / `group`** — find the target window: `chrome.windows.getLastFocused({ windowTypes: ['normal'] })`; if none exists, `chrome.windows.create({ focused: false })`. Create each tab in stored-index order with `chrome.tabs.create({ windowId, url, pinned, active: false })` — `index` is deliberately **omitted**, which appends the tab at the end of the window (`pinned: true` tabs are placed by Chrome after existing pinned tabs). Note: unlike `chrome.tabs.move`, `chrome.tabs.create` does **not** accept `index: -1` as "append at the end" — it throws `"index: Value must be at least 0"`. Omitting `index` entirely is the correct way to append. Relative order is preserved; absolute indices are not forced onto the target window. For `group`, after creating the tabs, `chrome.tabs.group({ tabIds, createProperties: { windowId } })` then `chrome.tabGroups.update(newGroupId, { title, color })` (same shape as the existing `recreateTabGroup()` helper).
-   - **`window`** — `chrome.windows.create({ url: urls, focused: false })` (all tabs in one call preserves order), then `chrome.tabs.update(tabId, { pinned: true })` for each tab whose record entry has `pinned: true`, then recreate each entry of `record.groups` over the new tabs via `chrome.tabs.group` + `chrome.tabGroups.update`. The stored `windowId` is only a provenance hint; the original window is gone by definition.
-   - Each `chrome.tabs.create` is wrapped in try/catch; failures (e.g. `file://` without file-access) are counted and logged, and restoration continues with the remaining tabs. Returns `{ createdCount, failedCount }`.
-4. **Notify** via `notifyWake(record, createdCount, failedCount)` — only when `notify: true` (alarm path). Manual "Wake now" from the popup does **not** notify (the user is watching it happen).
+**The record stays in storage until its wake has finished** (up to 0.6.0 it was popped first, and an interruption lost every tab not yet reopened: M1). While it wakes it carries a claim:
+
+```
+record.waking = { by, boot, since, attempts, stalled,
+                  opened: [{ i, tabId, windowId }], failed: [i],
+                  windowId, placeholderTabId, groupId, baseline: { <url>: n },
+                  strayTabIds? }
+```
+
+- `by` is `WAKER_ID`, a `crypto.randomUUID()` made when this worker instance starts. `wakingNow` is an in-memory `Set` of the ids this instance is waking (or has marked to resume).
+- `boot` is `storage.session.huddleBootId`, written when missing. `storage.session` survives a worker restart and is cleared by a browser restart and by an extension reload, update or re-enable, so tab and window ids keep their meaning within one boot.
+- `opened` lists the tabs reopened so far (`i` indexes `record.tabs`, which never changes). `baseline` counts, at the first claim, the regular-window tabs already showing each of the record's URLs.
+- `attempts` counts claims. After `WAKE_MAX_ATTEMPTS` (3) automatic attempts the claim is `stalled`.
+
+A record whose wake reopened **no** tab keeps no claim but `wakeFailedAt`, with no alarm. Stalled and `wakeFailedAt` records wait for you: no alarm, reconciler run or worker start retries them, and only Wake now (which resets `attempts`) wakes them again. Wake now acts on the row you pressed only: when it resumes a batch of earlier-boot claims, every other held record in storage keeps waiting, and only the pressed record's `attempts` start again from 1.
+
+**Claim (under `withSnoozeLock`):**
+1. Arm `snooze:<id>` at now + 60 s, the recovery alarm. If the worker dies before step 2, the record is still unclaimed and that alarm wakes it, a minute late. An extension reload or a command-line relaunch between the two steps clears that alarm as well: the record then sleeps on to its own `wakeAt`, with nothing lost (a known limit; the Wake now is dropped).
+2. `wakeStage('claimed')`, then write `waking` (a resume keeps `opened`, `windowId`, `groupId` and `baseline`, resets `failed`, and increments `attempts`).
+
+**Who acts on a record:**
+
+| State | `snooze:<id>` alarm | Wake now | Discard | Worker start |
+|---|---|---|---|---|
+| Unclaimed | claim and wake | claim and wake | discard | nothing (its alarm or the reconciler wakes it) |
+| Active (in this instance's `wakingNow`) | re-arm at now + 60 s and skip | `{ success: false, waking: 'active' }` | `{ success: false, waking: 'active' }` | n/a |
+| Interrupted, this boot (any `by`, not in `wakingNow`) | resume | resume, resetting `attempts` | discard the tabs that had not reopened | resume at once |
+| Interrupted, an earlier boot | resume in that boot's mode (below) | resume | as above | resume once the boot's kind is known |
+| Stalled / `wakeFailedAt` | nothing | resume or retry | discard | nothing |
+
+**Durable stages.** Each `wakeStage(name, detail)` is a checkpoint; it does nothing unless `globalThis.__huddleWakeHook` is defined (the unit harness and the audit's wake-stage build use it to stop a wake at exactly that point).
+
+- **`tab` / `tabs` / `group`** — into the window saved in the claim if it still exists, else the last-focused normal window (a new one if none). For each index not in `opened`: `chrome.tabs.create({ windowId, url, pinned, active: false })` (`index` is deliberately **omitted**: unlike `chrome.tabs.move`, `chrome.tabs.create` does not accept `index: -1` and throws `"index: Value must be at least 0"`; omitting it appends), then `wakeStage('after-create', i)`, then save `{ i, tabId, windowId }` into `opened`, then `wakeStage('after-progress', i)`. A `group` record creates its group with its first new tab (`chrome.tabs.group` + `chrome.tabGroups.update` with the stored title and colour) and saves `groupId` in the same write; later tabs join it with `chrome.tabs.group({ groupId, tabIds })`. A tab Chrome refuses (a `file://` page without file access) goes into `failed` and the loop goes on.
+- **`window`** (D18) — `chrome.windows.create({ focused: false })`, `wakeStage('after-window-create')`, save `windowId` and the window's New Tab as `placeholderTabId`; reopen the tabs into it one by one as above (never one `windows.create({ url: [...] })` call, which a crash after it resolves would repeat whole); `wakeStage('before-group')`; then remove the New Tab (or the window, if nothing came back into it), re-pin the pinned tabs, and recreate each entry of `record.groups` over the reopened tabs with the matching `groupIndex`. The stored `windowId` is only a provenance hint.
+- **Complete** — `wakeStage('before-remove')`, then under the lock re-read the record and remove it, clear its alarm, and notify once (only when `notify` is set: alarm, reconciler and resumes; Wake now does not notify) with the totals over every attempt: `createdCount = opened.length`, `failedCount = tabs.length − createdCount`. If not one tab opened, keep the record with `wakeFailedAt` instead.
+- **An unfinished wake** (a throw from `getRestoreTargetWindowId` or `windows.create`, a failed completion read) — the id leaves `wakingNow`; with `attempts < 3` the recovery alarm is re-armed at now + 60 s, after the third the claim becomes `stalled` (one "didn't finish waking" notification, no alarm).
+
+**How a resume decides what is done.**
+- **Same boot** (`waking.boot` is this boot): `opened` is authoritative. An index in it is done even if you have since closed that tab; indices in `failed` are retried. A missing saved window gets a new one for the missing tabs only; a missing group gets one new group with the record's title and colour, which also takes the reopened tabs that are still open and ungrouped.
+- **An earlier boot**, resumed as one batch for every such record. The boot's kind comes from the runtime's own events, never a timeout: `runtime.onStartup`, or `onInstalled` with reason `chrome_update` or `install` (a command-line-loaded extension starting with the browser fires `install` and no `onStartup`, and loses its alarms), means **restart**; `onInstalled` with reason `update` means **reload**. The kind is kept in `storage.session.huddleBootKind`, so every later worker instance of this boot knows it.
+  - **Reload** (ids are still valid): an `opened` entry is done when `chrome.tabs.get(tabId)` resolves **and** the tab's `url` or `pendingUrl` still equals the record's URL (an id can name an unrelated tab when the boot was in fact a restart). Entries that fail this check fall to the restart rule below: after the same wait for session restore, they are matched by URL, net of the tabs the check confirmed. This covers a browser restart whose `onInstalled('update')` arrives before `onStartup` (Chrome applying a pending update as it starts), when every id is stale and the reload resume is the one `onStartup` then joins.
+  - **Restart** (ids mean nothing): wait for session restore (poll the tabs every second until each URL that can be matched shows in as many tabs as expected (the largest `baseline[url]` among the records, plus every reopened tab with that URL, verified ones included), the count has not changed for 5 polls, or 20 s pass; once per boot). Only indices in `opened` can be matched. Across all interrupted records, oldest claim first, open tabs in regular windows are allocated by exact `url` or `pendingUrl`, each tab once, and for each URL the first `baseline[url]` tabs are left alone as tabs that were open before the wake. A group is reused only when every matched tab sits in one group holding nothing else but New Tabs, or, when nothing matched, a group with the record's title and colour holds only New Tabs; a window only when all its other tabs are New Tabs (session restore brings back a tab whose first page had not committed as a New Tab; those are saved in the claim as `strayTabIds`, kept by every later claim of the same boot, and closed at the end).
+  - **Neither event yet** (they may still be on their way, or the extension was re-enabled, which fires neither): a worker start makes sure the claim has a recovery alarm; its first firing only marks the claim `deferredIn` this boot and re-arms; the second resumes it with the reload check. Wake now uses the reload check at once.
+  - Before any tab is created, the whole batch is **re-stamped in one write** with this boot, this instance, `attempts + 1` (1 for the record Wake now was pressed on), and only the entries that were verified or matched (with their current ids); `baseline` is kept. Held records are not in the batch, except the one Wake now was pressed on. A later interruption is then a same-boot resume, and a worker instance that receives no startup event always sees a current-boot claim.
+
+**Bounds (D17).** Nothing is ever lost. Within one boot and after an extension reload, each interruption leaves at most **one** duplicate tab (the tab created but not yet saved), and for a window record at most one leftover empty window; a group record's duplicate may sit outside the group. After a browser restart, a reopened tab whose address changed before the restart (a redirect, a navigation) is not matched and opens again. The three automatic attempts bound the total.
 
 ### Notification content
 
@@ -113,11 +154,12 @@ Per-unit collection rules:
   - `window`: `Window restored (<n> tabs)`
 - If `failedCount > 0`, append ` — <failedCount> could not be reopened`.
 
-Best-effort click handling: a top-level `chrome.notifications.onClicked` listener focuses the woken window/first woken tab, using an in-memory `Map` of notificationId → `{ windowId, tabId }`. Because the MV3 worker is ephemeral this map may be gone when the user clicks; in that case the click is a silent no-op (and the listener clears the notification). This is explicitly acceptable.
+Best-effort click handling: a top-level `chrome.notifications.onClicked` listener focuses the woken window/first woken tab, using an in-memory `Map` of notificationId → `{ windowId, tabId }`. Because the MV3 worker is ephemeral this map may be gone when the user clicks; in that case the click is a silent no-op (and the listener clears the notification). This is explicitly acceptable. The "tabs didn't finish waking" notice (`snooze-stalled:<id>`) has no target: clicking it opens the nap room, and it is cleared when that record later wakes.
 
 ### Sleeping-list flows
 
-- **Wake now** — popup sends `{ action: 'wakeSnoozed', id }`. Background runs `wakeSnoozedRecord(id, { notify: false })`. Popup re-renders the list from the response (and via `storage.onChanged`).
+- **Wake now** — popup sends `{ action: 'wakeSnoozed', id }`. Background runs `wakeSnoozedRecord(id, { notify: false, trigger: 'wakeNow' })` and replies `{ success, createdCount, failedCount }`, `{ success: false, waking: 'active' }` for a wake already in progress, `{ success: false, notFound: true }` for a record already gone, or `{ success: false, waking: 'interrupted', error }` when the wake stopped early (the error says Huddle tries again in a minute only when an alarm will; a held record waits for you). The page disables the row's buttons while the request runs; the "active" and "not found" replies show nothing red (L46). The list re-renders via `storage.onChanged`.
+- **Discard** — see Cancel. A wake in progress can't be discarded. Discarding an interrupted wake drops only the tabs that had not reopened: the reply's `record` holds just those, with no claim, and `interrupted: true`, so the notice reads "Discarded 3 tabs that hadn't reopened" and Undo puts back an ordinary snooze. When every tab had reopened, the reply has no `record`, and the page says "Its tabs had all reopened — nothing left to discard". `restoreSnoozed` never stores a `waking` claim.
 - **Cancel** — popup sends `{ action: 'cancelSnoozed', id }`. Background removes the record (under lock) and clears the alarm. **Tabs are not reopened** — cancel means "forget it". No confirmation dialog (the list is minimal by design; the URLs are still in Chrome history if the user regrets it).
 
 ### Scheduling mechanism — one alarm per record
@@ -126,13 +168,14 @@ Best-effort click handling: a top-level `chrome.notifications.onClicked` listene
 
 MV3 lifecycle handling, all registered **synchronously at the top level** of `background.js` (an MV3 requirement — listeners registered inside async callbacks are lost when the worker respawns):
 
-- `chrome.alarms.onAlarm.addListener(handleSnoozeAlarm)` — an alarm firing re-spawns the suspended worker; all state is in `chrome.storage.local`, nothing depends on worker memory.
-- `chrome.runtime.onStartup.addListener(reconcileSnoozeAlarms)` — **browser-was-closed case**: Chrome fires alarms whose time passed while the browser was closed once at next startup, but `reconcileSnoozeAlarms()` is the belt-and-braces guarantee: it loads `snoozedItems`, immediately wakes (with notification) every record with `wakeAt <= Date.now()`, and re-creates alarms for future records missing from `chrome.alarms.getAll()`.
-- `chrome.runtime.onInstalled.addListener(reconcileSnoozeAlarms)` — alarms do **not** survive extension updates/reloads; reconciling on install/update re-arms everything from storage.
+- `chrome.alarms.onAlarm.addListener(handleSnoozeAlarm)` — an alarm firing re-spawns the suspended worker. The records (with any wake claim and its progress) live in `chrome.storage.local`; the only worker memory that matters is `wakingNow`, and the claim protocol above makes its loss safe.
+- `chrome.runtime.onStartup.addListener(handleBrowserStartup)` — **browser-was-closed case**: records `restart` as this boot's kind, resumes wakes of the earlier session (restart mode), then runs `reconcileSnoozeAlarms()`: it gives every unclaimed, unheld record with `wakeAt <= Date.now()` an alarm if it has none, then wakes them **one at a time** (each stays in storage until its own wake finishes, and a stop part-way leaves the rest to their alarms: M2), then re-creates the alarm of any future record whose alarm is missing or later than its `wakeAt` (an earlier alarm is a recovery alarm and is kept), and a recovery alarm for any claim without one.
+- `chrome.runtime.onInstalled.addListener(handleInstalled)` — alarms do **not** survive extension updates/reloads; records the boot's kind (`update` → reload; `chrome_update` or `install` → restart), resumes, and reconciles.
+- `onWorkerStart()`, called at the end of the top level, runs on **every** worker start: it resumes wakes a stopped instance of this boot left unfinished (and earlier-boot ones once the boot's kind is known), marking them active in `wakingNow` first so `listSnoozed` (which waits for that marking, not for the wakes) never shows them as interrupted in between. It also calls `loadAiConfig()`, which purges an expired key, and re-creates the `huddle-ai-key-expiry` alarm for a key with a numeric `expiresAt` and no alarm (L12). The reconciler runs only on `onStartup` / `onInstalled`.
 
 ### Concurrency
 
-All mutations of `snoozedItems` (snooze, wake, cancel, reconcile) run through `withSnoozeLock(fn)` — a module-level promise chain (`snoozeLock = snoozeLock.then(fn)`) serializing read-modify-write cycles within one worker instance. This prevents the "alarm fires while the user clicks Cancel" race from resurrecting or double-waking a record. (Cross-instance races are impossible: one worker services all events.)
+All mutations of `snoozedItems` (snooze, wake, cancel, reconcile) run through `withSnoozeLock(fn)` — a module-level promise chain (`snoozeLock = snoozeLock.then(fn)`) serializing read-modify-write cycles within one worker instance. This prevents the "alarm fires while the user clicks Cancel" race from resurrecting or double-waking a record. Within an instance, `wakingNow` is checked and set before any await, so an alarm, the reconciler and Wake now arriving together wake a record once. Across instances (one worker services all events at a time, but it can stop mid-wake), the `waking` claim and the resume rules above take over.
 
 ## Storage Schema
 
@@ -203,7 +246,7 @@ A new `chrome.storage.local` key **`snoozedItems`** holding an **array of record
 
 Field notes:
 
-- `id` — `crypto.randomUUID()` (available in MV3 service workers). Primary key; the alarm name is `snooze:<id>`; the notification id is `snooze-wake:<id>`.
+- `id` — `crypto.randomUUID()` (available in MV3 service workers). Primary key; the alarm name is `snooze:<id>`; the notification id is `snooze-wake:<id>` (and `snooze-stalled:<id>` for a wake that stalled).
 - `type` — `'tab' | 'tabs' | 'window' | 'group'`. Drives restore strategy and notification wording.
 - `summary` — precomputed at snooze time by `buildSnoozeSummary()`; used verbatim in the sleeping list and the notification (tab titles are unavailable after the tab closes, so they must be captured now).
 - `wakeAt` / `createdAt` — epoch milliseconds (matches the `expiresAt` convention in `aiConfig`).
@@ -211,6 +254,8 @@ Field notes:
 - `windowId` — provenance hint only; **never** used as a restore target (see Edge Cases).
 - `tabs[]` — per-tab `{ url, title, pinned, index }`, sorted ascending by original `index`. `title` truncated to 60 chars. `groupIndex` (optional, `window` type only) points into the record-level `groups` array.
 - `group` — `{ title, color }`, present only for `type: 'group'`. `groups[]` — present only for `type: 'window'` when the window contained groups.
+- `waking` — present only while the record wakes (see Wake flow). `wakeFailedAt` — epoch ms, present when a wake reopened none of its tabs; the record then waits for Wake now or Discard. `listSnoozed` never returns the claim itself: a claimed record comes back with `waking: 'active' | 'interrupted'` and `stalled`.
+- `snoozedItems` is read with `loadSnoozedItems()`, which **throws** on a failed read or a stored value that is not an array, for every caller: a snooze, Undo, Discard, a wake or the reconciler then refuses and writes nothing, and `listSnoozed` replies `success: false` (L67). (Returning `[]` there let the next save erase every snooze.)
 
 **Record → alarm mapping:** exactly one alarm per record, `chrome.alarms.create('snooze:' + id, { when: wakeAt })`. Records and alarms are reconciled on startup/install (see above); the record in storage is the source of truth, the alarm is merely the timer.
 
@@ -222,9 +267,11 @@ Field notes:
 - **Empty/undefined group titles** — a group with `title: ''`/`undefined` is stored as `title: ''`, restored with `title: ''`, and rendered as `Group "(unnamed)"` in summary/list/notification (mirrors `recreateTabGroup`'s `groupInfo.title || ''`).
 - **Custom time in the past** — rejected in the popup (validation before send) *and* in the background (`{ success: false, error: 'Wake time is in the past' }`). Preset times are clamped to `now + 60s`, never rejected.
 - **Duplicate snoozes** — allowed by design. Records are independent; snoozing the same URL twice creates two records and wakes two tabs. No dedup logic — the user already has Huddle's Deduplicate button.
-- **Browser closed across wake time** — Chrome fires expired alarms once at next startup; independently, `reconcileSnoozeAlarms()` on `onStartup` wakes every past-due record. Both paths funnel through the idempotent atomic-pop in `wakeSnoozedRecord`, so double-delivery cannot double-restore.
-- **Service-worker restart** — no in-memory state matters: records live in `storage.local`, timers live in `chrome.alarms`, and all listeners are registered synchronously at the top level so a respawned worker re-arms them. (Only the best-effort notification-click map is memory-resident, documented as lossy.)
-- **Extension update/reload** — clears alarms but not storage; `onInstalled` → `reconcileSnoozeAlarms()` re-creates them.
+- **Browser closed across wake time** — Chrome fires expired alarms once at next startup; independently, `reconcileSnoozeAlarms()` on `onStartup` wakes every past-due record. Both paths claim through `wakeSnoozedRecord` (`wakingNow` plus the stored claim), so double-delivery cannot double-restore.
+- **Browser closed, extension reloaded, or worker stopped in the middle of a wake** — the record is still stored with its claim and progress; the next worker resumes it as described under Wake flow (same boot, reload or restart), within D17's bounds, and the recovery alarm restarts a dead worker within about 60 s. Only `wakingNow` and the best-effort notification-click map are memory-resident.
+- **Service-worker restart** — records and wake claims live in `storage.local`, timers live in `chrome.alarms`, and all listeners are registered synchronously at the top level so a respawned worker re-arms them; `onWorkerStart()` resumes an unfinished wake.
+- **Extension update/reload** — clears alarms and `storage.session` but not `storage.local`; `onInstalled` resumes unfinished wakes in reload mode and `reconcileSnoozeAlarms()` re-creates the alarms.
+- **A failed read of the sleeping list** — refused everywhere, never read as empty (see Storage Schema). The popup's sleeping section and the nap room say "Couldn't read your sleeping tabs" with Retry, never "Nothing sleeping"; the nap room shows "Loading…" until its first reply (L44).
 - **Restoring into a window that no longer exists** — always the case for `window` records and common for the rest. `windowId` is never used as a target: `tab`/`tabs`/`group` wake into the last-focused normal window (creating one if none exists); `window` records always create a fresh window.
 - **Alarm fires while the popup is open** — the popup's `chrome.storage.onChanged` listener re-renders the sleeping list; the wake itself proceeds normally in the background.
 - **Zero-tab units** — snoozing "Selected" when only non-snoozeable tabs are highlighted, or a group whose tabs are all non-snoozeable, responds `{ success: false, error: 'Nothing here can be snoozed' }`.
@@ -280,7 +327,7 @@ Pure helpers (unit-testable without Chrome mocks):
 Storage / scheduling:
 
 - `withSnoozeLock(fn)` — serializes `snoozedItems` mutations on a module-level promise chain; returns `fn`'s result.
-- `loadSnoozedItems()` — reads `snoozedItems`, returns `[]` when unset/invalid.
+- `loadSnoozedItems()` — reads `snoozedItems`; `[]` when unset; **throws** on a failed read or a value that is not an array.
 - `saveSnoozedItems(items)` — writes the array.
 - `scheduleSnoozeAlarm(record)` — creates the `snooze:<id>` alarm at `record.wakeAt`.
 
@@ -292,18 +339,19 @@ Message handlers (registered in the `chrome.runtime.onMessage` dispatch, each `r
 - `handleSnoozeWindow(message, sendResponse)` — snoozes the whole current window incl. pinned tabs and group structure; `snoozeTabs('window', ...)`.
 - `handleSnoozeGroup(message, sendResponse)` — snoozes the active tab's group (errors if ungrouped); `snoozeTabs('group', ...)`.
 - `snoozeTabs(type, tabs, extras, wakeAt, preset)` — shared core implementing steps 1–8 of the snooze flow; returns `{ success, record }` or `{ success: false, error }`.
-- `handleListSnoozed(sendResponse)` — responds `{ success: true, items }` sorted ascending by `wakeAt`.
-- `handleWakeNow(message, sendResponse)` — `wakeSnoozedRecord(message.id, { notify: false })`; responds `{ success }` (false + error if the id is unknown).
-- `handleCancelSnooze(message, sendResponse)` — removes the record under lock, `chrome.alarms.clear('snooze:' + id)`; responds `{ success, record }` so the UI can offer Undo.
-- `handleRestoreSnoozed(message, sendResponse)` — Undo: re-adds `message.record` under lock (never duplicating an id) and re-arms its alarm; responds `{ success }`.
+- `handleListSnoozed(sendResponse)` — waits for the worker-start resume marking, then responds `{ success: true, items }` sorted ascending by `wakeAt`, each claimed record with `waking: 'active' | 'interrupted'` and `stalled`; `{ success: false, error }` when the read fails.
+- `handleWakeNow(message, sendResponse)` — `wakeSnoozedRecord(message.id, { notify: false, trigger: 'wakeNow' })`; the replies are listed under Sleeping-list flows.
+- `handleCancelSnooze(message, sendResponse)` — removes the record under lock, `chrome.alarms.clear('snooze:' + id)`; responds `{ success, record }` so the UI can offer Undo (`{ success: false, waking: 'active' }` during a wake; for an interrupted wake, `record` holds only the tabs that had not reopened, with `interrupted: true`).
+- `handleRestoreSnoozed(message, sendResponse)` — Undo: re-adds `message.record` without any `waking` claim, under lock (never duplicating an id) and re-arms its alarm; responds `{ success }`.
 
 Wake machinery:
 
-- `handleSnoozeAlarm(alarm)` — `onAlarm` listener; ignores names without the `snooze:` prefix; calls `wakeSnoozedRecord(id, { notify: true })`.
-- `wakeSnoozedRecord(id, { notify })` — atomically pops the record (no-op if absent), clears the alarm, restores, optionally notifies.
-- `restoreSnoozedRecord(record)` — recreates tabs/window/group in the background per the wake flow; returns `{ createdCount, failedCount, windowId, firstTabId }`.
+- `handleSnoozeAlarm(alarm)` — `onAlarm` listener; ignores names without the `snooze:` prefix; returns `wakeSnoozedRecord(id, { notify: true, trigger: 'alarm' })`, awaited and caught.
+- `wakeSnoozedRecord(id, { notify, trigger })` — claims the record (`claimInThisBoot`, or `resumeEarlierBoot` for a claim from an earlier boot), reopens what is not done yet (`reopenTabsRecord` / `reopenWindowRecord`, saving progress with `saveWakeProgress`), then `completeWake` removes it and notifies. Returns `null` for an unknown id.
+- `onWorkerStart()`, `handleBrowserStartup()`, `handleInstalled(details)` — see Scheduling mechanism.
+- `wakeStage(name, detail)` — the checkpoint hook (see Wake flow).
 - `notifyWake(record, createdCount, failedCount)` — fires the Chrome notification and registers it in the best-effort click map.
-- `reconcileSnoozeAlarms()` — startup/install reconciler: wakes past-due records, re-arms missing alarms.
+- `reconcileSnoozeAlarms()` — startup/install reconciler: wakes past-due records one at a time, re-arms missing alarms.
 
 Message-dispatch additions (exact shape, appended to the existing `chrome.runtime.onMessage` listener chain):
 
@@ -341,9 +389,10 @@ Top-level listener registrations (after the `onMessage` block):
 
 ```javascript
 chrome.alarms.onAlarm.addListener(handleSnoozeAlarm);
-chrome.runtime.onStartup.addListener(reconcileSnoozeAlarms);
-chrome.runtime.onInstalled.addListener(reconcileSnoozeAlarms);
+chrome.runtime.onStartup.addListener(handleBrowserStartup);
+chrome.runtime.onInstalled.addListener(handleInstalled);
 chrome.notifications.onClicked.addListener(handleWakeNotificationClicked);
+onWorkerStart();
 ```
 
 ### Popup Changes (popup.html / popup.js)
@@ -393,7 +442,7 @@ popup.js — new functions, wired from the existing `DOMContentLoaded` handler:
 - `openSnoozePicker(unit)` / `closeSnoozePicker()` — toggle `#snoozePickerPanel`, track `pendingSnoozeUnit` (`'tab' | 'selected' | 'window' | 'group'`), toggle `.selected` on the unit button.
 - `submitSnooze(wakeAt, preset)` — maps `pendingSnoozeUnit` to the action name (`snoozeTab`/`snoozeSelected`/`snoozeWindow`/`snoozeGroup`), sends `{ action, wakeAt, preset }` with a response callback that shows success/error in `#snoozeFeedback`, closes the picker, and re-renders the list.
 - `submitCustomSnooze()` — validates `#snoozeCustomTime` (parseable, ≥ now + 1 min) then calls `submitSnooze(parsedMs, 'custom')`; on invalid input shows "Pick a time in the future".
-- `renderSnoozedList()` — sends `listSnoozed`, rebuilds `#snoozedList` rows (`data-id`, summary, `formatWakeTime`, `.snoozed-wake`, `.snoozed-cancel`), toggles `#sleepingSection` visibility and `#sleepingCount`.
+- `renderSnoozedList()` — sends `listSnoozed`, rebuilds `#snoozedList` rows (`data-id`, summary, `formatWakeTime`, `.snoozed-wake`, `.snoozed-discard`), toggles `#sleepingSection` visibility and `#sleepingCount`. It rebuilds only when the list's signature (ids, `wakeAt`, summaries, waking state, tab counts) changes, so a wake's progress saves cause no churn. A row whose wake is active reads "Waking…" with both buttons disabled; an interrupted one reads "Didn't finish waking" with Wake and Discard enabled. A failed read shows "Couldn't read your sleeping tabs" with Retry. The nap room follows the same rules, except that its midnight and visibility refreshes always redraw, because its day headings and overdue summary depend on the time.
 - `wakeNow(id)` / `cancelSnooze(id)` — send `wakeSnoozed` / `cancelSnoozed` with `{ id }`, then `renderSnoozedList()`. Invoked via one delegated click listener on `#snoozedList` reading `data-action`/`data-id`.
 - `formatWakeTime(wakeAt, now = Date.now())` — "Today HH:MM" (same calendar day), "Tomorrow HH:MM", weekday short name + time within 6 days ("Sat 09:00"), else "12 Jul, 09:00" (via `Intl.DateTimeFormat`, default locale, 2-digit hour/minute).
 
@@ -410,7 +459,7 @@ New file `tests/snooze.test.js`, following the `tests/background.test.js` style 
 `tests/setup.js` changes:
 
 - Extend the chrome mock with `chrome.alarms` (`create`, `clear`, `clearAll`, `getAll`, `onAlarm.addListener`, plus `onAlarm.callListeners` to fire an alarm at every listener the worker registered), `chrome.notifications` (`create`, `clear`, `onClicked.addListener`), `chrome.runtime.onStartup.addListener`, `chrome.runtime.onInstalled.addListener`, `chrome.windows.getLastFocused`, `chrome.tabGroups.get`, and `chrome.tabs.remove` mocks resolving by default.
-- Expose in the background wrapper: `computePresetWakeTime`, `nextWeekdayAt`, `clampWakeAt`, `isSnoozeableUrl`, `buildSnoozeSummary`, `createSnoozeRecord`, `snoozeTabs`, `handleSnoozeTab`, `handleSnoozeSelected`, `handleSnoozeWindow`, `handleSnoozeGroup`, `handleListSnoozed`, `handleWakeNow`, `handleCancelSnooze`, `handleSnoozeAlarm`, `wakeSnoozedRecord`, `restoreSnoozedRecord`, `reconcileSnoozeAlarms`, `SNOOZE_PRESETS`.
+- Expose in the background wrapper: `computePresetWakeTime`, `nextWeekdayAt`, `clampWakeAt`, `isSnoozeableUrl`, `buildSnoozeSummary`, `createSnoozeRecord`, `snoozeTabs`, `handleSnoozeTab`, `handleSnoozeSelected`, `handleSnoozeWindow`, `handleSnoozeGroup`, `handleListSnoozed`, `handleWakeNow`, `handleCancelSnooze`, `handleSnoozeAlarm`, `wakeSnoozedRecord`, `reconcileSnoozeAlarms`, `SNOOZE_PRESETS`. The wake protocol itself runs in `tests/helpers/fake-browser.js`, a stateful stand-in for windows, tabs, groups, storage and alarms across worker instances, which evaluates `background.js` afresh per worker and stops a wake at a named `wakeStage` (`tests/snooze-wake.test.js`).
 - Expose in the popup wrapper: `formatWakeTime`, `renderSnoozedList`, `updateSnoozeButtonState`.
 
 Tests (fixed `now` values passed explicitly; storage mocked with an in-memory object that, like `chrome.storage`, copies values on get and set, so only a save changes what is stored):
@@ -431,9 +480,11 @@ Tests (fixed `now` values passed explicitly; storage mocked with an in-memory ob
 - **`handleSnoozeWindow`** — a grouped window stores each group once (`groups[]`, with the fallback title `''` and colour `grey` when Chrome can't describe a group) and each tab's `groupIndex`; waking it recreates each group over exactly its reopened members, with its title and colour, and a group none of whose tabs reopen is not recreated. Only a window snooze stores groups: a selected-tabs snooze of grouped tabs stores none.
 - **`handleSnoozeGroup`** — ungrouped active tab → error response, nothing removed.
 - **`handleCancelSnooze`** — record removed, `chrome.alarms.clear('snooze:<id>')` called, `chrome.tabs.create` never called.
-- **`wakeSnoozedRecord` / `restoreSnoozedRecord`** — tabs created with `active: false` in stored order in the last-focused window; pinned restored; `group` type regrouped with title/color via `chrome.tabs.group` + `chrome.tabGroups.update`; `window` type uses `chrome.windows.create({ url: [...], focused: false })`; notification created when `notify: true`, not created when `notify: false`; unknown id → silent no-op (no creates, no notification); a failing `chrome.tabs.create` doesn't abort remaining tabs and increments `failedCount`; `tab` and `tabs` records come back ungrouped (`chrome.tabs.group` is never called), and a `group` record none of whose tabs reopen makes no group.
+- **`wakeSnoozedRecord`** — tabs created with `active: false` in stored order in the last-focused window; pinned restored; `group` type regrouped with title/color via `chrome.tabs.group` + `chrome.tabGroups.update`; `window` type opens an empty background window (`chrome.windows.create({ focused: false })`) and reopens the tabs into it one by one, then removes the New Tab, re-pins and regroups; notification created when `notify: true`, not created when `notify: false`; unknown id → silent no-op (no creates, no notification); a failing `chrome.tabs.create` doesn't abort remaining tabs and increments `failedCount`; `tab` and `tabs` records come back ungrouped (`chrome.tabs.group` is never called), and a `group` record none of whose tabs reopen makes no group.
 - **`handleSnoozeAlarm`** — fired through the registered `onAlarm` listeners with two records stored: the AI key alarm (`huddle-ai-key-expiry`) and any other alarm without the `snooze:` prefix wake nothing and leave the store as it was; `snooze:<id>` wakes that record only.
-- **`reconcileSnoozeAlarms`** — past-due record → woken with notification and removed; future record with no live alarm → alarm re-created; future record with live alarm → untouched.
+- **`reconcileSnoozeAlarms`** — past-due record → woken with notification and removed, one record at a time (the others stay stored until their turn); future record with no live alarm → alarm re-created; future record with live alarm → untouched; an earlier (recovery) alarm is kept.
+- **Wake protocol (`snooze-wake.test.js`)** — the claim's recovery alarm is armed before the claim; a worker stop at each checkpoint (`after-create`, `after-progress`) of tab, tabs, group and window records loses nothing, with at most one duplicate; window records (D18) leave at most one empty window; a failed completion read and an alarm during an active wake; three failed attempts stall the wake (its notice, `snooze-stalled:<id>`, opens the nap room when clicked), and a stalled or nothing-reopened record is left alone by worker starts and the reconciler until Wake now, which wakes only the pressed record and resets only its attempts; reload mode (ids and URLs verified, a stale colliding id not counted; `onInstalled('update')` before or after `onStartup`, with and without a gap, matched by URL); restart mode (session restore on and off, restore arriving late, records sharing a URL, the baseline (a URL already open before the wake doesn't end the wait for session restore early), window and group reuse, a redirected tab, a second interruption after the re-stamp, which still closes a reused group's New Tab); concurrency; Wake now and Discard during and after a wake; Undo; the AI key alarm on worker start (L12).
+- **Reads (L67)** — one failed `storage.local.get` refuses a snooze, Undo and Discard and leaves the stored array as it was; `listSnoozed` replies `success: false`.
 - **`formatWakeTime` (popup)** — Today/Tomorrow/weekday/date buckets at fixed `now`.
 
 ### E2E Tests (Playwright)
@@ -460,8 +511,8 @@ New file `e2e/tests/snooze.spec.js`, following the existing fixture/helper conve
 2. **Pure helpers** in `background.js` (`SNOOZE_PRESETS`, `computePresetWakeTime`, `nextWeekdayAt`, `clampWakeAt`, `isSnoozeableUrl`, `buildSnoozeSummary`, `createSnoozeRecord`) + expose in `tests/setup.js` + write their Vitest tests. Everything here is date/string logic — get it green before touching Chrome APIs.
 3. **Storage & scheduling** — `withSnoozeLock`, `loadSnoozedItems`, `saveSnoozedItems`, `scheduleSnoozeAlarm`; extend the chrome mock in `tests/setup.js` (`alarms`, `notifications`, `getLastFocused`, `tabGroups.get`, `onStartup`/`onInstalled`).
 4. **Snooze path** — `snoozeTabs` core + the four `handleSnooze*` handlers + `handleGetSnoozePresets` + dispatch entries; unit tests for persist-before-close, alarm creation, URL filtering, last-window guard, ungrouped-group error.
-5. **Wake path** — `restoreSnoozedRecord`, `wakeSnoozedRecord`, `notifyWake`, `handleSnoozeAlarm`, `handleWakeNow`, `handleCancelSnooze`, `handleListSnoozed`, notification-click handler, top-level listener registrations; unit tests.
-6. **Reconciler** — `reconcileSnoozeAlarms` + `onStartup`/`onInstalled` wiring; unit tests for past-due wake and alarm re-arming.
+5. **Wake path** — `wakeSnoozedRecord` and its claim, resume and completion steps, `notifyWake`, `handleSnoozeAlarm`, `handleWakeNow`, `handleCancelSnooze`, `handleListSnoozed`, notification-click handler, top-level listener registrations; unit tests.
+6. **Reconciler and worker start** — `reconcileSnoozeAlarms`, `handleBrowserStartup` / `handleInstalled`, `onWorkerStart()`; unit tests for past-due wake, alarm re-arming and every resume mode.
 7. **Popup UI** — HTML sections + CSS, then `initSnoozeUi`, `updateSnoozeButtonState`, picker open/close, `submitSnooze`/`submitCustomSnooze`, `renderSnoozedList`, `wakeNow`/`cancelSnooze`, `formatWakeTime`; expose popup helpers in `tests/setup.js`; `formatWakeTime` unit tests.
 8. **E2E** — helpers (`openSnoozePicker`, `getSnoozedItems`) then `e2e/tests/snooze.spec.js` scenarios 1–11.
 9. **Manual pass** — real alarm firing (snooze 2 minutes out via custom picker, close and reopen Chrome to verify the missed-wake path and the notification), `chrome://extensions` reload to verify `onInstalled` reconciliation.

@@ -472,6 +472,16 @@
       white-space: nowrap;
     }
 
+    /* A row whose wake started says where it stands in the wake time's place. */
+    .snoozed-item[data-waking] .snoozed-time {
+      font-family: var(--ui);
+    }
+
+    .snoozed-item button:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+
     .snoozed-item button {
       flex: 0 0 auto;
       font-size: 10px;

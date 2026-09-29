@@ -764,6 +764,45 @@ function submitCustomSnooze() {
   submitSnooze(parsed, 'custom');
 }
 
+// What the sleeping list shows, as a string, kept on the list element: the
+// list is rebuilt only when it changes, so a wake's progress saves (each one
+// a storage change) cause no re-render churn.
+function sleepingListSignature(items) {
+  return JSON.stringify(items.map((i) => [
+    i.id, i.wakeAt, i.summary, i.waking || '', i.stalled ? 1 : 0, (i.tabs || []).length,
+  ]));
+}
+
+// The wake time, or where a wake that has started stands.
+function snoozedRowWhen(item) {
+  if (item.waking === 'active') return 'Waking…';
+  if (item.waking === 'interrupted') return 'Didn\'t finish waking';
+  return formatWakeTime(item.wakeAt);
+}
+
+// A read that failed never reads as "nothing sleeping": the section stays,
+// says so, and offers Retry.
+function showSnoozedListError(list, section, countEl) {
+  delete list.dataset.signature;
+  list.innerHTML = '';
+  const li = document.createElement('li');
+  li.className = 'snoozed-item snoozed-error';
+  const text = document.createElement('span');
+  text.className = 'snoozed-summary';
+  text.textContent = 'Couldn\'t read your sleeping tabs';
+  const retry = document.createElement('button');
+  retry.id = 'snoozedRetry';
+  retry.className = 'snoozed-wake';
+  retry.textContent = 'Retry';
+  retry.addEventListener('click', () => renderSnoozedList());
+  li.appendChild(text);
+  li.appendChild(retry);
+  list.appendChild(li);
+  if (countEl) countEl.hidden = true;
+  if (section) section.hidden = false;
+  refreshHotkeys();
+}
+
 // Rebuild the sleeping list from storage; toggle section visibility and count.
 function renderSnoozedList() {
   const list = document.getElementById('snoozedList');
@@ -771,13 +810,20 @@ function renderSnoozedList() {
   const section = document.getElementById('sleepingSection');
   const countEl = document.getElementById('sleepingCount');
   chrome.runtime.sendMessage({ action: 'listSnoozed' }, (response) => {
-    if (chrome.runtime.lastError || !response || !response.success) return;
+    if (chrome.runtime.lastError || !response || !response.success) {
+      showSnoozedListError(list, section, countEl);
+      return;
+    }
     const items = response.items || [];
+    const signature = sleepingListSignature(items);
+    if (signature === list.dataset.signature) return;
+    list.dataset.signature = signature;
     list.innerHTML = '';
     for (const item of items) {
       const li = document.createElement('li');
       li.className = 'snoozed-item';
       li.setAttribute('data-id', item.id);
+      if (item.waking) li.setAttribute('data-waking', item.waking);
 
       const summary = document.createElement('span');
       summary.className = 'snoozed-summary';
@@ -786,7 +832,7 @@ function renderSnoozedList() {
 
       const time = document.createElement('span');
       time.className = 'snoozed-time';
-      time.textContent = formatWakeTime(item.wakeAt);
+      time.textContent = snoozedRowWhen(item);
 
       const wakeBtn = document.createElement('button');
       wakeBtn.className = 'snoozed-wake';
@@ -802,17 +848,39 @@ function renderSnoozedList() {
       discardBtn.title = 'Discard these tabs without reopening them';
       discardBtn.setAttribute('aria-label', `Discard ${item.summary} without reopening`);
 
+      // A wake in progress can be neither woken again nor discarded.
+      if (item.waking === 'active') {
+        wakeBtn.disabled = true;
+        discardBtn.disabled = true;
+      }
+
       li.appendChild(summary);
       li.appendChild(time);
       li.appendChild(wakeBtn);
       li.appendChild(discardBtn);
       list.appendChild(li);
     }
-    if (countEl) countEl.textContent = String(items.length);
+    if (countEl) {
+      countEl.hidden = false;
+      countEl.textContent = String(items.length);
+    }
     if (section) section.hidden = items.length === 0;
     // The sleeping list (and its Wake now/Discard buttons) was rebuilt — recompute hotkeys.
     refreshHotkeys();
   });
+}
+
+// Disables (or re-enables) a sleeping row's buttons while its request runs,
+// so a second Enter can't send it again. A row rebuilt meanwhile is left as
+// the new list says.
+function setSnoozedRowPending(id, pending) {
+  const list = document.getElementById('snoozedList');
+  if (!list) return null;
+  const li = [...list.querySelectorAll('.snoozed-item')].find((el) => el.getAttribute('data-id') === id);
+  if (!li || li.getAttribute('data-waking') === 'active') return li || null;
+  for (const btn of li.querySelectorAll('button')) btn.disabled = pending;
+  refreshHotkeys();
+  return li;
 }
 
 // What a wakeSnoozed reply means for the user: an error line, or how many
@@ -831,9 +899,16 @@ function describeWakeReply(response) {
 function wakeNow(id) {
   // The list re-renders via the storage.onChanged listener when the background
   // mutates snoozedItems — no explicit re-render (avoids a double render).
+  setSnoozedRowPending(id, true);
   chrome.runtime.sendMessage({ action: 'wakeSnoozed', id }, (response) => {
+    setSnoozedRowPending(id, false);
     if (chrome.runtime.lastError) {
       showActionResult(`Couldn't wake: ${chrome.runtime.lastError.message}`, 'error');
+      return;
+    }
+    // Already waking, or woken or discarded meanwhile: the list shows it.
+    if (response && !response.success && (response.waking === 'active' || response.notFound)) {
+      renderSnoozedList();
       return;
     }
     const { text, kind } = describeWakeReply(response);
@@ -868,18 +943,34 @@ function discardSnooze(id) {
       showActionResult(`Couldn't discard: ${response.error}`, 'error');
       return;
     }
+    if (response && response.success && response.interrupted && !response.record) {
+      // A wake that didn't finish, but every tab had reopened: nothing to undo.
+      showActionResult(INTERRUPTED_ALL_REOPENED, 'ok');
+      return;
+    }
     if (!response || !response.success || !response.record) return;
-    showDiscardNotice(response.record);
+    showDiscardNotice(response.record, { interrupted: !!response.interrupted });
   });
 }
 
-function showDiscardNotice(record) {
+const INTERRUPTED_ALL_REOPENED = 'Its tabs had all reopened — nothing left to discard';
+
+// What a discard dropped. A wake that didn't finish drops only the tabs that
+// hadn't reopened.
+function discardNoticeText(record, { interrupted = false } = {}) {
+  if (interrupted) {
+    return `Discarded ${plural((record.tabs || []).length, 'tab')} that hadn't reopened.`;
+  }
+  return `Discarded ${record.summary}.`;
+}
+
+function showDiscardNotice(record, options = {}) {
   const notice = document.getElementById('discardNotice');
   const text = document.getElementById('discardNoticeText');
   if (!notice || !text) return;
   if (pendingDiscard) clearTimeout(pendingDiscard.timer);
   pendingDiscard = { record, timer: setTimeout(hideDiscardNotice, DISCARD_UNDO_MS) };
-  text.textContent = `Discarded ${record.summary}.`;
+  text.textContent = discardNoticeText(record, options);
   notice.hidden = false;
   updateToastSpace();
   refreshHotkeys();
@@ -1082,13 +1173,16 @@ function buildHotkeyMap() {
   const map = new Map();
   const used = new Set();
 
-  // Sleeping rows: Wake now takes 1–9 in list order and never a letter.
-  let rowNumber = 0;
-  for (const el of targets.filter(isSleepingRowWake)) {
-    if (rowNumber >= MAX_ROW_HOTKEYS) break;
-    rowNumber++;
-    map.set(String(rowNumber), el);
-  }
+  // Sleeping rows: Wake now takes 1–9 by the row's place in the list, and
+  // never a letter. A row whose Wake now is disabled (its request is running,
+  // or it is waking) keeps its digit, unbound, so pressing the same digit
+  // again never lands on the next row's Wake now.
+  const enabledWakes = new Set(targets.filter(isSleepingRowWake));
+  const rowWakes = [...document.querySelectorAll('.snoozed-item button[data-action="wake"]')]
+    .filter((el) => isHotkeyVisible(el));
+  rowWakes.slice(0, MAX_ROW_HOTKEYS).forEach((el, n) => {
+    if (enabledWakes.has(el)) map.set(String(n + 1), el);
+  });
 
   for (const el of targets.filter((t) => !isSleepingRowWake(t))) {
     let chosen = null;
