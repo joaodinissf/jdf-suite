@@ -409,11 +409,11 @@ New file `tests/snooze.test.js`, following the `tests/background.test.js` style 
 
 `tests/setup.js` changes:
 
-- Extend the chrome mock with `chrome.alarms` (`create`, `clear`, `clearAll`, `getAll`, `onAlarm.addListener`), `chrome.notifications` (`create`, `clear`, `onClicked.addListener`), `chrome.runtime.onStartup.addListener`, `chrome.runtime.onInstalled.addListener`, `chrome.windows.getLastFocused`, `chrome.tabGroups.get`, and `chrome.tabs.remove` mocks resolving by default.
+- Extend the chrome mock with `chrome.alarms` (`create`, `clear`, `clearAll`, `getAll`, `onAlarm.addListener`, plus `onAlarm.callListeners` to fire an alarm at every listener the worker registered), `chrome.notifications` (`create`, `clear`, `onClicked.addListener`), `chrome.runtime.onStartup.addListener`, `chrome.runtime.onInstalled.addListener`, `chrome.windows.getLastFocused`, `chrome.tabGroups.get`, and `chrome.tabs.remove` mocks resolving by default.
 - Expose in the background wrapper: `computePresetWakeTime`, `nextWeekdayAt`, `clampWakeAt`, `isSnoozeableUrl`, `buildSnoozeSummary`, `createSnoozeRecord`, `snoozeTabs`, `handleSnoozeTab`, `handleSnoozeSelected`, `handleSnoozeWindow`, `handleSnoozeGroup`, `handleListSnoozed`, `handleWakeNow`, `handleCancelSnooze`, `handleSnoozeAlarm`, `wakeSnoozedRecord`, `restoreSnoozedRecord`, `reconcileSnoozeAlarms`, `SNOOZE_PRESETS`.
 - Expose in the popup wrapper: `formatWakeTime`, `renderSnoozedList`, `updateSnoozeButtonState`.
 
-Tests (fixed `now` values passed explicitly; storage mocked with an in-memory object):
+Tests (fixed `now` values passed explicitly; storage mocked with an in-memory object that, like `chrome.storage`, copies values on get and set, so only a save changes what is stored):
 
 - **`computePresetWakeTime`**
   - `laterToday` returns exactly `now + 3h`.
@@ -427,10 +427,12 @@ Tests (fixed `now` values passed explicitly; storage mocked with an in-memory ob
 - **`buildSnoozeSummary`** — each of the four types, including the `(unnamed)` group and title truncation at 60 chars.
 - **`createSnoozeRecord`** — shape (id/createdAt/summary present), tabs sorted by index, pinned + groupIndex captured for `window` type, `group` `{title,color}` captured for `group` type.
 - **`snoozeTabs` (via `handleSnoozeTab`)** — persists the record **before** `chrome.tabs.remove` (assert `mock.invocationCallOrder`); creates alarm named `snooze:<id>` with `{ when: wakeAt }`; non-snoozeable active tab → `{ success: false }` and no tab removed; last-window guard creates a `chrome://newtab/` tab first.
+- **Custom wake times** — a custom `wakeAt` an hour ahead is stored as is and its alarm set for it; now + 30 s, now − 30 s, a non-number, `NaN` and a missing value are refused with "Wake time is in the past".
+- **`handleSnoozeWindow`** — a grouped window stores each group once (`groups[]`, with the fallback title `''` and colour `grey` when Chrome can't describe a group) and each tab's `groupIndex`; waking it recreates each group over exactly its reopened members, with its title and colour, and a group none of whose tabs reopen is not recreated. Only a window snooze stores groups: a selected-tabs snooze of grouped tabs stores none.
 - **`handleSnoozeGroup`** — ungrouped active tab → error response, nothing removed.
 - **`handleCancelSnooze`** — record removed, `chrome.alarms.clear('snooze:<id>')` called, `chrome.tabs.create` never called.
-- **`wakeSnoozedRecord` / `restoreSnoozedRecord`** — tabs created with `active: false` in stored order in the last-focused window; pinned restored; `group` type regrouped with title/color via `chrome.tabs.group` + `chrome.tabGroups.update`; `window` type uses `chrome.windows.create({ url: [...], focused: false })`; notification created when `notify: true`, not created when `notify: false`; unknown id → silent no-op (no creates, no notification); a failing `chrome.tabs.create` doesn't abort remaining tabs and increments `failedCount`.
-- **`handleSnoozeAlarm`** — ignores alarms without the `snooze:` prefix.
+- **`wakeSnoozedRecord` / `restoreSnoozedRecord`** — tabs created with `active: false` in stored order in the last-focused window; pinned restored; `group` type regrouped with title/color via `chrome.tabs.group` + `chrome.tabGroups.update`; `window` type uses `chrome.windows.create({ url: [...], focused: false })`; notification created when `notify: true`, not created when `notify: false`; unknown id → silent no-op (no creates, no notification); a failing `chrome.tabs.create` doesn't abort remaining tabs and increments `failedCount`; `tab` and `tabs` records come back ungrouped (`chrome.tabs.group` is never called), and a `group` record none of whose tabs reopen makes no group.
+- **`handleSnoozeAlarm`** — fired through the registered `onAlarm` listeners with two records stored: the AI key alarm (`huddle-ai-key-expiry`) and any other alarm without the `snooze:` prefix wake nothing and leave the store as it was; `snooze:<id>` wakes that record only.
 - **`reconcileSnoozeAlarms`** — past-due record → woken with notification and removed; future record with no live alarm → alarm re-created; future record with live alarm → untouched.
 - **`formatWakeTime` (popup)** — Today/Tomorrow/weekday/date buckets at fixed `now`.
 
@@ -443,7 +445,7 @@ New file `e2e/tests/snooze.spec.js`, following the existing fixture/helper conve
 3. **Cancel** — snooze a tab, click `.snoozed-cancel`; assert storage empty, alarm cleared (`sw.evaluate(() => chrome.alarms.getAll())`), and **no** tab was created.
 4. **Snooze selected tabs** — highlight 3 tabs, snooze via `snoozeSelected`; assert all 3 closed and a single `type: 'tabs'` record holds 3 entries in index order.
 5. **Snooze group + wake** — `createTabGroup` with title/color, activate a member tab, snooze via `snoozeGroup`, simulate the alarm; assert a recreated group with matching title, color, and member URLs.
-6. **Group button disabled** — with an ungrouped active tab, assert `#snoozeGroup` is disabled.
+6. **Group button follows the active tab** — opening the popup as a page makes it the active tab, so the test re-activates the tab under test and has the popup read the window again before each check: with an ungrouped active tab `#snoozeGroup` is disabled (6); with a grouped one it is enabled, and back to disabled for an ungrouped tab in the same window (6b).
 7. **Snooze window + wake** — two windows, one with a pinned tab; snooze the window; assert it closed; simulate the alarm; assert a new unfocused window with all URLs in order and the pinned tab pinned.
 8. **Custom time in the past** — fill `#snoozeCustomTime` with a past value, click `snoozeCustomConfirm`; assert error feedback visible, storage empty, no tab closed.
 9. **Alarm-driven wake into background** — snooze a tab, fire `handleSnoozeAlarm` via `sw.evaluate`; assert the tab reopened without stealing focus from the active tab.

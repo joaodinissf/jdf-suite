@@ -66,8 +66,8 @@ The link-clumping feature is inspired by [linkclump](https://github.com/benblack
 ### For Developers
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (612 tests)
-pnpm test:e2e          # Run E2E tests (96 tests, requires Chromium)
+pnpm test              # Run unit tests (792 tests)
+pnpm test:e2e          # Run E2E tests (119 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
 pnpm run package       # Create extension zip
@@ -97,18 +97,20 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Confirmation dialog for large operations
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (612 tests)
-│   ├── setup.js                   # Test setup with jest-chrome mocks
+├── tests/                         # Vitest unit tests (792 tests in 21 files)
+│   ├── setup.js                   # Chrome API mock, page scripts loaded, dispatch() to the worker
+│   ├── senders.js                 # The sender each caller (popup, pages, content script) arrives with
+│   ├── routing.test.js            # Every worker action, routed from its real caller
 │   ├── background.test.js         # Background script logic tests
 │   ├── popup.test.js              # Popup UI tests
-│   ├── focused.test.js            # Core functionality tests
+│   ├── snooze.test.js             # Snoozing and waking, through the worker's handlers
 │   ├── confirmation-dialog.test.js
 │   └── simple.test.js             # Framework verification
-├── e2e/                           # Playwright E2E tests (96 tests)
+├── e2e/                           # Playwright E2E tests (119 tests)
 │   ├── playwright.config.js       # Playwright configuration
 │   ├── fixtures/extension.js      # Custom fixture loading extension into Chromium
 │   ├── helpers/                   # Tab management, popup interaction, assertions
-│   └── tests/                     # 14 spec files covering all features
+│   └── tests/                     # 17 spec files covering all features
 ├── docs/                          # Documentation
 ├── .github/workflows/             # CI/CD (test, e2e, lint, build, release)
 ├── package.json
@@ -118,14 +120,16 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ## Testing
 
 ### Unit Tests (Vitest + jest-chrome shim)
-350 tests across 16 suites covering core logic with mocked Chrome APIs:
+792 tests across 21 files covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report
 ```
 
+`tests/routing.test.js` sends every action the service worker handles through its real `onMessage` listener, from the page that sends it (with the sender Chrome gives that page), and checks the reply and the Chrome call the handler makes. The dispatcher is an if/else chain on `message.action`, except the popup's logging message, which is keyed on `message.type`; the test reads every branch of that chain from the source, fails on a branch it does not understand, and checks its table against the actions (and the logging message) found there and against what each page's scripts send. So a new worker action needs a row there. The test's `dispatch(message, sender)` (in `tests/setup.js`) resolves with the worker's reply, and fails when an action that replies later does not keep the channel open by returning `true`.
+
 ### E2E Tests (Playwright + real Chromium)
-96 tests across 16 spec files that load the extension into a real browser:
+119 tests across 17 spec files that load the extension into a real browser:
 
 | Spec File | Tests | Coverage |
 |---|---|---|
@@ -135,16 +139,17 @@ pnpm run test:coverage   # With coverage report
 | extract-all-domains | 8 | Per-domain windows, confirmation dialog |
 | remove-duplicates-window | 9 | Same/cross-group dedup, pinned immunity |
 | remove-duplicates-all-windows | 4 | Per-window independent dedup |
-| remove-duplicates-globally | 6 | Cross-window dedup |
+| remove-duplicates-globally | 7 | Cross-window dedup |
 | move-all-to-single-window | 7 | Consolidation, group recreation |
 | copy-all-tabs | 8 | Clipboard copy, window vs all-windows scope, group sections, feedback |
-| popup-ui | 6 | Mode switching, button visibility |
+| popup-ui | 8 | Mode switching, button visibility |
 | confirmation-dialog | 4 | Confirm/cancel flow |
 | flatten-window | 3 | Ungrouping, pinned immunity |
 | split-view-compact | 2 | Compact then Expand; pinned/group runs, existing splits, no tab moves (skips below Chrome 155) |
 | split-view-repair | 5 | Splits survive sort (both modes), merge and extract; a separated pair is not forced back together (skips below Chrome 155) |
-| keyboard | 3 | Popup hotkey dispatch |
-| snooze | 11 | Tab/window/group snooze, wake, alarms, edge cases |
+| keyboard | 4 | Popup hotkey dispatch |
+| snooze | 13 | Tab/window/group snooze, wake, alarms, edge cases; the Group button follows the active tab |
+| ai-flow | 18 | Organize with AI against a fake OpenRouter: runs, Apply, errors; only the organize page's window is sent, and Apply never takes a tab from another window |
 
 ```bash
 pnpm test:e2e            # Run E2E tests (headless; HEADED=1 to watch)

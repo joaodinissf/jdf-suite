@@ -1,6 +1,6 @@
 import { test } from '../fixtures/extension.js';
 import { expect } from '@playwright/test';
-import { resetBrowserState, createTabs } from '../helpers/tabs.js';
+import { resetBrowserState, createTabs, createWindow } from '../helpers/tabs.js';
 import { openPopup } from '../helpers/popup.js';
 import {
   installFakeOpenRouter, siteUrls, GOOD_KEY, BAD_KEY, USABLE_LUNA_IDS,
@@ -55,6 +55,19 @@ async function stopWorker(context, page) {
 
 const groupNames = (page) => page.locator('#content .group-card .group-name');
 
+// A second window with one tab the organize page's window must never see,
+// then the first window focused again so the popup opens there.
+async function openSecondWindow(sw) {
+  const { windowId, tabIds } = await createWindow(sw, ['https://elsewhere.huddle.test/page-1']);
+  await sw.evaluate(async (other) => {
+    const [first] = (await chrome.windows.getAll()).filter((w) => w.id !== other);
+    await chrome.windows.update(first.id, { focused: true });
+  }, windowId);
+  await expect.poll(() => sw.evaluate(async (id) => (await chrome.tabs.get(id)).url, tabIds[0]))
+    .toBe('https://elsewhere.huddle.test/page-1');
+  return { windowId, tabId: tabIds[0] };
+}
+
 test.describe('Organize with AI', () => {
   test('O, Organize, Apply: the proposed groups land in the window', async ({ context, sw, extensionId }) => {
     const fake = await installFakeOpenRouter(context);
@@ -74,6 +87,53 @@ test.describe('Organize with AI', () => {
     const closed = page.waitForEvent('close');
     await page.click('#applyButton');
     await closed;
+    const titles = await sw.evaluate(async () => (await chrome.tabGroups.query({})).map((g) => g.title).sort());
+    expect(titles).toEqual(['Docs', 'Mail', 'Shop']);
+  });
+
+  test('with two windows open, only the organize page\'s window is sent to OpenRouter', async ({ context, sw, extensionId }) => {
+    const fake = await installFakeOpenRouter(context);
+    await seed(sw, context);
+    const other = await openSecondWindow(sw);
+    const page = await openOrganize(context, extensionId);
+
+    await page.click('#startOrganize');
+    await expect(groupNames(page)).toHaveCount(3);
+    expect(fake.chats).toHaveLength(1);
+    expect(fake.chats[0].prompt).toContain('docs.huddle.test');
+    expect(fake.chats[0].prompt).not.toContain('elsewhere.huddle.test');
+    expect(fake.chats[0].prompt).not.toContain(`[id:${other.tabId}]`);
+    await expect(page.locator('#content')).not.toContainText('elsewhere');
+  });
+
+  test('Apply leaves a tab in another window where it is, even when the page sends its id', async ({ context, sw, extensionId }) => {
+    await installFakeOpenRouter(context);
+    await seed(sw, context);
+    const other = await openSecondWindow(sw);
+    const page = await openOrganize(context, extensionId);
+
+    await page.click('#startOrganize');
+    await expect(groupNames(page)).toHaveCount(3);
+    // Swap one proposed tab for the other window's tab. That tab never left
+    // this window, so the page's own onDetached guard never sees it: only the
+    // worker's check stands between Apply and moving it.
+    const swapped = await page.evaluate((otherTabId) => {
+      const group = proposal.groups.find((g) => g.tabIds.length > 1);
+      const was = group.tabIds[0];
+      group.tabIds[0] = otherTabId;
+      return was;
+    }, other.tabId);
+    await page.click('#applyButton');
+    await expect(page.locator('#applyError')).toContainText('1 proposed tab was closed or moved to another window');
+
+    const tab = await sw.evaluate(async (id) => {
+      const t = await chrome.tabs.get(id);
+      return { windowId: t.windowId, groupId: t.groupId };
+    }, other.tabId);
+    expect(tab).toEqual({ windowId: other.windowId, groupId: -1 });
+    // The rest was grouped; only the tab taken out of the proposal was not.
+    const ungrouped = await sw.evaluate(async (id) => (await chrome.tabs.get(id)).groupId, swapped);
+    expect(ungrouped).toBe(-1);
     const titles = await sw.evaluate(async () => (await chrome.tabGroups.query({})).map((g) => g.title).sort());
     expect(titles).toEqual(['Docs', 'Mail', 'Shop']);
   });

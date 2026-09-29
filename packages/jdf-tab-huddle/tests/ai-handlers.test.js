@@ -3,10 +3,20 @@
 // and the stored key and default model. Exposed globally by tests/setup.js.
 
 const HAIKU = 'anthropic/claude-haiku-4.5';
+// The organize page's window (1) and its tabs, and a tab in another window
+// that a run from window 1 must never see.
 const TABS = [
-  { id: 20, url: 'https://x.com', title: 'X', pinned: false, groupId: -1 },
-  { id: 21, url: 'https://y.com', title: 'Y', pinned: false, groupId: -1 },
+  { id: 20, url: 'https://x.com', title: 'X', pinned: false, groupId: -1, windowId: 1 },
+  { id: 21, url: 'https://y.com', title: 'Y', pinned: false, groupId: -1, windowId: 1 },
 ];
+const OTHER_WINDOW_TAB = { id: 90, url: 'https://elsewhere.example/', title: 'Elsewhere', pinned: false, groupId: -1, windowId: 2 };
+
+// tabs.query over these tabs, filtered by windowId as Chrome does, so a
+// query that drops its windowId sees every window.
+function mockOpenTabs(tabs) {
+  chrome.tabs.query.mockImplementation(async (q = {}) =>
+    tabs.filter((t) => q.windowId === undefined || t.windowId === q.windowId).map((t) => ({ ...t })));
+}
 
 function jsonAnswer(content) {
   return {
@@ -66,7 +76,7 @@ function mockConfig(config) {
 beforeEach(() => {
   mockConfig({ key: btoa('sk-or-good'), expiresAt: null, model: HAIKU });
   chrome.storage.local.set.mockResolvedValue(undefined);
-  chrome.tabs.query.mockResolvedValue(TABS);
+  mockOpenTabs([...TABS, OTHER_WINDOW_TAB]);
   chrome.tabGroups.query.mockResolvedValue([]);
   chrome.windows.getCurrent.mockResolvedValue({ id: 1 });
   global.fetch = vi.fn().mockResolvedValue(jsonAnswer(groupsFor([20, 21])));
@@ -142,6 +152,20 @@ describe('runs over the organize page\'s port', () => {
     start(b);
     await settled(b);
     expect(JSON.parse(global.fetch.mock.calls[1][1].body).model).toBe(HAIKU);
+  });
+
+  test('only the organize page\'s window is sent: a tab in another window never is', async () => {
+    const port = makePort({ id: 10, windowId: 1 });
+    start(port);
+    await settled(port);
+    expect(chrome.tabs.query).toHaveBeenCalledWith({ windowId: 1 });
+    const prompt = port.last('ai-debug').messages[1].content;
+    expect(prompt).toContain('[id:20]');
+    expect(prompt).toContain('[id:21]');
+    expect(prompt).not.toContain('[id:90]');
+    const sent = global.fetch.mock.calls[0][1].body;
+    expect(sent).not.toContain('elsewhere.example');
+    expect(sent).not.toContain('Elsewhere');
   });
 
   test('Huddle\'s own pages are never sent to the model', async () => {
@@ -321,21 +345,37 @@ describe('messages every action answers', () => {
 });
 
 describe('handleApplyAiProposal', () => {
-  // The window's tabs as tabs.query reports them; tab 3 is in an old group.
+  // Window 5's tabs as tabs.query reports them; tab 3 is in an old group.
+  // Tab 6 exists only in window 6.
   const windowTabs = [
-    { id: 1, url: 'https://a.com', pinned: false, groupId: -1 },
-    { id: 2, url: 'https://b.com', pinned: false, groupId: -1 },
-    { id: 3, url: 'https://c.com', pinned: false, groupId: 700 },
+    { id: 1, url: 'https://a.com', pinned: false, groupId: -1, windowId: 5, index: 0 },
+    { id: 2, url: 'https://b.com', pinned: false, groupId: -1, windowId: 5, index: 1 },
+    { id: 3, url: 'https://c.com', pinned: false, groupId: 700, windowId: 5, index: 2 },
   ];
+  const WINDOW_6_TAB = { id: 6, url: 'https://f.com', pinned: false, groupId: -1, windowId: 6, index: 0 };
 
   beforeEach(() => {
     chrome.tabs.remove.mockResolvedValue();
     chrome.tabs.group.mockResolvedValue(123);
     chrome.tabs.ungroup.mockResolvedValue();
     chrome.tabGroups.update.mockResolvedValue();
-    chrome.tabs.query.mockResolvedValue(windowTabs);
+    mockOpenTabs([...windowTabs, WINDOW_6_TAB]);
     chrome.tabGroups.query.mockResolvedValue([]);
     chrome.tabs.move.mockResolvedValue();
+  });
+
+  test('a proposed tab that is now only in another window is left out, never grouped or moved', async () => {
+    const sendResponse = vi.fn();
+    await handleApplyAiProposal(
+      { groups: [{ name: 'G', color: 'blue', tabIds: [1, 6] }], windowId: 5 },
+      { tab: { id: 55 } },
+      sendResponse
+    );
+    expect(chrome.tabs.query).toHaveBeenCalledWith({ windowId: 5 });
+    expect(chrome.tabs.group).toHaveBeenCalledTimes(1);
+    expect(chrome.tabs.group).toHaveBeenCalledWith({ tabIds: [1], createProperties: { windowId: 5 } });
+    for (const [ids] of chrome.tabs.move.mock.calls) expect([].concat(ids)).not.toContain(6);
+    expect(sendResponse).toHaveBeenCalledWith({ success: true, grouped: 1, groups: 1, skipped: 1, closing: false });
   });
 
   test('closes the sender proposal tab only after the groups are in place', async () => {
@@ -457,15 +497,15 @@ describe('handleApplyAiProposal', () => {
   test('calls sortWindowTabs after grouping', async () => {
     const sendResponse = vi.fn();
     await handleApplyAiProposal(
-      { groups: [{ name: 'G', color: 'blue', tabIds: [1] }], windowId: 9 },
+      { groups: [{ name: 'G', color: 'blue', tabIds: [1] }], windowId: 5 },
       {},
       sendResponse
     );
 
     // sortWindowTabs(windowId, true) internally calls getTabsWithGroupInfo(windowId),
     // which queries tabs and tab groups for that window — proof it ran after grouping.
-    expect(chrome.tabs.query).toHaveBeenCalledWith({ windowId: 9 });
-    expect(chrome.tabGroups.query).toHaveBeenCalledWith({ windowId: 9 });
+    expect(chrome.tabs.query).toHaveBeenCalledWith({ windowId: 5 });
+    expect(chrome.tabGroups.query).toHaveBeenCalledWith({ windowId: 5 });
 
     // The first tabs.query drops stale tab ids; the last one is the sort's.
     const groupOrder = chrome.tabs.group.mock.invocationCallOrder[0];
@@ -477,7 +517,7 @@ describe('handleApplyAiProposal', () => {
     chrome.tabs.group.mockRejectedValue(new Error('group failed'));
     const sendResponse = vi.fn();
     await handleApplyAiProposal(
-      { groups: [{ name: 'G', color: 'blue', tabIds: [1] }], windowId: 9 },
+      { groups: [{ name: 'G', color: 'blue', tabIds: [1] }], windowId: 5 },
       {},
       sendResponse
     );

@@ -804,6 +804,35 @@ describe('the proposal', () => {
     expect(sent('applyAiProposal')[0].leftOut).toBe(1);
   });
 
+  test('a proposed tab moved to another window leaves the proposal, and Apply never sends it', async () => {
+    // This page's own onDetached listeners only (earlier pages' stay on the
+    // shared mock).
+    const shared = chrome.tabs.onDetached;
+    const detached = [];
+    chrome.tabs.onDetached = { addListener: (fn) => detached.push(fn) };
+    try {
+      loadPage();
+      await flush();
+      await toProposal();
+      expect(detached).toHaveLength(1);
+      detached.forEach((fn) => fn(2, { oldWindowId: 42, oldPosition: 1 }));
+      expect(content().textContent).not.toContain('Two');
+      expect(content().querySelector('.proposal-head').textContent).toMatch(/2 groups, 2 tabs/);
+      expect($('applyError').textContent).toMatch(/1 proposed tab was closed or moved to another window/);
+      $('applyButton').click();
+      const [apply] = sent('applyAiProposal');
+      expect(apply.groups).toEqual([
+        { name: 'Group A', color: 'blue', tabIds: [1] },
+        { name: 'Group B', color: 'red', tabIds: [3] },
+      ]);
+      expect(apply.ungroupedTabIds).toEqual([4]);
+      expect(apply.leftOut).toBe(1);
+      expect(apply.windowId).toBe(42);
+    } finally {
+      chrome.tabs.onDetached = shared;
+    }
+  });
+
   test('when every proposed tab is gone, the page says so and offers Run again', async () => {
     loadPage();
     await flush();
