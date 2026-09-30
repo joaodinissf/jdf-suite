@@ -764,26 +764,9 @@ function submitCustomSnooze() {
   submitSnooze(parsed, 'custom');
 }
 
-// What the sleeping list shows, as a string, kept on the list element: the
-// list is rebuilt only when it changes, so a wake's progress saves (each one
-// a storage change) cause no re-render churn.
-function sleepingListSignature(items) {
-  return JSON.stringify(items.map((i) => [
-    i.id, i.wakeAt, i.summary, i.waking || '', i.stalled ? 1 : 0, (i.tabs || []).length,
-  ]));
-}
-
-// The wake time, or where a wake that has started stands.
-function snoozedRowWhen(item) {
-  if (item.waking === 'active') return 'Waking…';
-  if (item.waking === 'interrupted') return 'Didn\'t finish waking';
-  return formatWakeTime(item.wakeAt);
-}
-
 // A read that failed never reads as "nothing sleeping": the section stays,
 // says so, and offers Retry.
 function showSnoozedListError(list, section, countEl) {
-  delete list.dataset.signature;
   list.innerHTML = '';
   const li = document.createElement('li');
   li.className = 'snoozed-item snoozed-error';
@@ -815,15 +798,12 @@ function renderSnoozedList() {
       return;
     }
     const items = response.items || [];
-    const signature = sleepingListSignature(items);
-    if (signature === list.dataset.signature) return;
-    list.dataset.signature = signature;
     list.innerHTML = '';
     for (const item of items) {
       const li = document.createElement('li');
       li.className = 'snoozed-item';
       li.setAttribute('data-id', item.id);
-      if (item.waking) li.setAttribute('data-waking', item.waking);
+      if (item.waking) li.setAttribute('data-waking', '');
 
       const summary = document.createElement('span');
       summary.className = 'snoozed-summary';
@@ -832,7 +812,8 @@ function renderSnoozedList() {
 
       const time = document.createElement('span');
       time.className = 'snoozed-time';
-      time.textContent = snoozedRowWhen(item);
+      // A record the worker is waking right now says so in its wake time's place.
+      time.textContent = item.waking ? 'Waking…' : formatWakeTime(item.wakeAt);
 
       const wakeBtn = document.createElement('button');
       wakeBtn.className = 'snoozed-wake';
@@ -849,7 +830,7 @@ function renderSnoozedList() {
       discardBtn.setAttribute('aria-label', `Discard ${item.summary} without reopening`);
 
       // A wake in progress can be neither woken again nor discarded.
-      if (item.waking === 'active') {
+      if (item.waking) {
         wakeBtn.disabled = true;
         discardBtn.disabled = true;
       }
@@ -877,7 +858,7 @@ function setSnoozedRowPending(id, pending) {
   const list = document.getElementById('snoozedList');
   if (!list) return null;
   const li = [...list.querySelectorAll('.snoozed-item')].find((el) => el.getAttribute('data-id') === id);
-  if (!li || li.getAttribute('data-waking') === 'active') return li || null;
+  if (!li || li.hasAttribute('data-waking')) return li || null;
   for (const btn of li.querySelectorAll('button')) btn.disabled = pending;
   refreshHotkeys();
   return li;
@@ -907,7 +888,7 @@ function wakeNow(id) {
       return;
     }
     // Already waking, or woken or discarded meanwhile: the list shows it.
-    if (response && !response.success && (response.waking === 'active' || response.notFound)) {
+    if (response && !response.success && (response.waking || response.notFound)) {
       renderSnoozedList();
       return;
     }
@@ -943,34 +924,18 @@ function discardSnooze(id) {
       showActionResult(`Couldn't discard: ${response.error}`, 'error');
       return;
     }
-    if (response && response.success && response.interrupted && !response.record) {
-      // A wake that didn't finish, but every tab had reopened: nothing to undo.
-      showActionResult(INTERRUPTED_ALL_REOPENED, 'ok');
-      return;
-    }
     if (!response || !response.success || !response.record) return;
-    showDiscardNotice(response.record, { interrupted: !!response.interrupted });
+    showDiscardNotice(response.record);
   });
 }
 
-const INTERRUPTED_ALL_REOPENED = 'Its tabs had all reopened — nothing left to discard';
-
-// What a discard dropped. A wake that didn't finish drops only the tabs that
-// hadn't reopened.
-function discardNoticeText(record, { interrupted = false } = {}) {
-  if (interrupted) {
-    return `Discarded ${plural((record.tabs || []).length, 'tab')} that hadn't reopened.`;
-  }
-  return `Discarded ${record.summary}.`;
-}
-
-function showDiscardNotice(record, options = {}) {
+function showDiscardNotice(record) {
   const notice = document.getElementById('discardNotice');
   const text = document.getElementById('discardNoticeText');
   if (!notice || !text) return;
   if (pendingDiscard) clearTimeout(pendingDiscard.timer);
   pendingDiscard = { record, timer: setTimeout(hideDiscardNotice, DISCARD_UNDO_MS) };
-  text.textContent = discardNoticeText(record, options);
+  text.textContent = `Discarded ${record.summary}.`;
   notice.hidden = false;
   updateToastSpace();
   refreshHotkeys();
