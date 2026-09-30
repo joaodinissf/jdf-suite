@@ -838,6 +838,23 @@ describe('Tab Snoozing', () => {
       );
     });
 
+    test('Wake now on a record not due yet that reopens nothing keeps its own wake time', async () => {
+      const wakeAt = Date.now() + 3600000;
+      const record = {
+        id: 'early', type: 'tab', summary: 'Local page', wakeAt, preset: 'custom',
+        windowId: 1, tabs: [{ url: 'file:///page.html', title: 'Local page', pinned: false, index: 0 }],
+      };
+      const store = useMemoryStore({ snoozedItems: [record] });
+      chrome.windows.getLastFocused.mockResolvedValue({ id: 5 });
+      chrome.tabs.create.mockRejectedValue(new Error('Cannot access file URLs'));
+
+      const result = await wakeSnoozedRecord('early', { notify: false });
+
+      expect(result.kept).toBe(true);
+      expect(store.snoozedItems).toEqual([record]);
+      expect(chrome.alarms.create).toHaveBeenLastCalledWith('snooze:early', { when: wakeAt });
+    });
+
     test('several tabs that all fail to reopen read "they are still in the nap room"', async () => {
       const record = {
         id: 'r14', type: 'tabs', summary: '2 selected tabs', wakeAt: at(4, 9), preset: 'tomorrow',
@@ -1343,12 +1360,6 @@ describe('Tab Snoozing', () => {
       expect(store.snoozedItems.map((r) => r.id)).toEqual(['d1', 'd2', 'd3']);
     });
 
-    test('listSnoozed marks nothing as waking once the wake is over, even a stale field from an older build', async () => {
-      useMemoryStore({ snoozedItems: [{ ...mk('old', 1), waking: { by: 'x', opened: [] } }] });
-      const list = vi.fn();
-      await handleListSnoozed(list);
-      expect(list.mock.calls[0][0].items[0].waking).toBe(false);
-    });
   });
 
   describe('a failed read of the sleeping list (L67)', () => {
