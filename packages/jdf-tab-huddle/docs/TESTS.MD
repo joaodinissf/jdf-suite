@@ -2,23 +2,20 @@
 
 ## Overview
 
-- **Unit Tests**: 876 tests across 22 Vitest files (mocked Chrome APIs)
+- **Unit Tests**: 817 tests across 21 Vitest files (mocked Chrome APIs)
 - **E2E Tests**: 119 tests across 17 Playwright spec files (real Chromium browser)
-- **Total**: 991 tests
+- **Total**: 936 tests
 
 ## Unit Tests (Vitest)
 
 `tests/setup.js` mocks the Chrome APIs, loads the worker and the pages' scripts, and exposes their functions. Its `dispatch(message, sender)` sends a message through the worker's real `chrome.runtime.onMessage` listener and resolves with the reply; `tests/senders.js` holds the sender Chrome gives each caller (the popup, the popup open in a tab, the nap room, Settings, the split dialog, the organize page, the link clumper's content script).
 
-`tests/helpers/fake-browser.js` is a stateful stand-in for the Chrome APIs the snooze and wake code uses: windows, tabs and groups that behave, and storage and alarms that outlive a worker. Each `startWorker()` evaluates `src/background.js` afresh, as Chrome does when it starts a worker; `stopWorker()`, `reloadExtension()` and `restart({ restore })` stand in for a worker stop, an extension reload and a browser restart with or without session restore, and `dieAt(stage)` stops a wake at one of the worker's `wakeStage()` checkpoints.
-
 | Suite | Tests | Coverage |
 |---|---|---|
 | routing.test.js | 71 | Every worker action routed from its real caller; the table checked against the dispatcher's if/else chain and each page's scripts |
 | background.test.js | 46 | Worker logic: sort, dedupe, split domains, results |
-| snooze.test.js | 80 | Snoozing and waking: records, custom times, window groups, alarms, failed reads |
-| snooze-wake.test.js | 60 | The wake protocol: claims, checkpoints, worker stops, reloads and restarts, stalled wakes |
-| snooze-ui.test.js | 41 | Snooze controls in the popup and the nap room, including waking states and failed reads |
+| snooze.test.js | 89 | Snoozing and waking: records, custom times, window groups, alarms, failed reads, a wake cut short and done again by a new worker |
+| snooze-ui.test.js | 33 | Snooze controls in the popup and the nap room, including the waking state and failed reads |
 | nap-room.test.js | 22 | The nap room page |
 | popup.test.js | 73 | Popup UI and message passing |
 | popup-feedback.test.js | 23 | Popup result and error messages |

@@ -338,8 +338,8 @@ describe('Nap room', () => {
   });
 });
 
-// A wake that started shows where it stands, a failed read is never "nothing
-// sleeping", and Wake now can't be sent twice (M1's UI, L44, L46).
+// A record being woken says so, a failed read is never "nothing sleeping",
+// and Wake now can't be sent twice (L44, L46).
 describe('Popup: the sleeping list while tabs wake', () => {
   const item = (id, extra = {}) => ({
     id, type: 'tabs', summary: `${id} tabs`, wakeAt: Date.now() + 3600000,
@@ -348,18 +348,14 @@ describe('Popup: the sleeping list while tabs wake', () => {
   const row = (id) => document.querySelector(`.snoozed-item[data-id="${id}"]`);
   const buttons = (id) => [...row(id).querySelectorAll('button')];
 
-  test('a wake in progress reads "Waking…" with both buttons disabled; one that didn\'t finish offers Wake and Discard', () => {
+  test('a record being woken reads "Waking…" with both buttons disabled', () => {
     routeMessages({
-      listSnoozed: () => ({
-        success: true,
-        items: [item('active', { waking: 'active', stalled: false }), item('stopped', { waking: 'interrupted', stalled: true }), item('plain')],
-      }),
+      listSnoozed: () => ({ success: true, items: [item('active', { waking: true }), item('plain', { waking: false })] }),
     });
     renderSnoozedList();
     expect(row('active').querySelector('.snoozed-time').textContent).toBe('Waking…');
     expect(buttons('active').map((b) => b.disabled)).toEqual([true, true]);
-    expect(row('stopped').querySelector('.snoozed-time').textContent).toBe('Didn\'t finish waking');
-    expect(buttons('stopped').map((b) => b.disabled)).toEqual([false, false]);
+    expect(buttons('plain').map((b) => b.disabled)).toEqual([false, false]);
     expect(row('plain').querySelector('.snoozed-time').textContent).toBe(formatWakeTime(item('plain').wakeAt));
     expect(document.getElementById('sleepingSection').hidden).toBe(false);
   });
@@ -389,19 +385,6 @@ describe('Popup: the sleeping list while tabs wake', () => {
     });
     renderSnoozedList();
     expect(document.getElementById('snoozedRetry')).toBeTruthy();
-  });
-
-  test('an unchanged list is not rebuilt, so progress saves cause no churn; a change is', () => {
-    let items = [item('a'), item('b')];
-    routeMessages({ listSnoozed: () => ({ success: true, items }) });
-    renderSnoozedList();
-    const first = row('a');
-    renderSnoozedList();
-    expect(row('a')).toBe(first);
-    items = [item('a', { waking: 'active' }), item('b')];
-    renderSnoozedList();
-    expect(row('a')).not.toBe(first);
-    expect(row('a').querySelector('.snoozed-time').textContent).toBe('Waking…');
   });
 
   test('Wake now disables its row while the request runs', () => {
@@ -434,7 +417,7 @@ describe('Popup: the sleeping list while tabs wake', () => {
   });
 
   test('a row that is waking keeps its place in the numbering', () => {
-    routeMessages({ listSnoozed: () => ({ success: true, items: [item('a', { waking: 'active' }), item('b')] }) });
+    routeMessages({ listSnoozed: () => ({ success: true, items: [item('a', { waking: true }), item('b')] }) });
     renderSnoozedList();
     const map = buildHotkeyMap();
     expect(map.has('1')).toBe(false);
@@ -443,7 +426,7 @@ describe('Popup: the sleeping list while tabs wake', () => {
 
   test('a reply that it is already waking, or already gone, shows nothing red', () => {
     for (const reply of [
-      { success: false, waking: 'active' },
+      { success: false, waking: true },
       { success: false, notFound: true, error: 'Snooze not found' },
     ]) {
       document.getElementById('actionResult').hidden = true;
@@ -453,30 +436,9 @@ describe('Popup: the sleeping list while tabs wake', () => {
       expect(resultIsError()).toBe(false);
     }
   });
-
-  test('discarding a wake that didn\'t finish says only the tabs that hadn\'t reopened went', () => {
-    routeMessages({
-      cancelSnoozed: () => ({
-        success: true, interrupted: true, discardedCount: 2,
-        record: { id: 'r', summary: '2 selected tabs', wakeAt: 1, tabs: [{ url: 'https://b/' }, { url: 'https://c/' }] },
-      }),
-    });
-    discardSnooze('r');
-    expect(document.getElementById('discardNoticeText').textContent).toBe('Discarded 2 tabs that hadn\'t reopened.');
-    expect(discardNoticeText({ summary: 'Group "X" (3 tabs)', tabs: [] })).toBe('Discarded Group "X" (3 tabs).');
-  });
-
-  test('discarding a wake that didn\'t finish, whose tabs had all reopened, says so instead of nothing', () => {
-    routeMessages({ cancelSnoozed: () => ({ success: true, interrupted: true, discardedCount: 0 }) });
-    discardSnooze('r');
-    expect(document.getElementById('discardNotice').hidden).toBe(true);
-    expect(document.getElementById('actionResult').hidden).toBe(false);
-    expect(resultText()).toBe('Its tabs had all reopened — nothing left to discard');
-    expect(resultIsError()).toBe(false);
-  });
 });
 
-describe('Nap room: loading, failures and refreshes', () => {
+describe('Nap room: loading, failures and waking', () => {
   const napDom = () => {
     document.body.innerHTML = NAP_DOM;
     document.getElementById('napSummary').textContent = 'Loading…';
@@ -508,56 +470,11 @@ describe('Nap room: loading, failures and refreshes', () => {
     expect(document.getElementById('napSummary').textContent).toContain('1 tab sleeping');
   });
 
-  test('a wake in progress reads "Waking…" with its buttons disabled; one that didn\'t finish keeps them', () => {
-    napRenderAll([item('a', { waking: 'active' }), item('b', { waking: 'interrupted' })]);
+  test('a record being woken reads "Waking…" with its buttons disabled', () => {
+    napRenderAll([item('a', { waking: true }), item('b', { waking: false })]);
     expect(row('a').querySelector('.nap-when').textContent).toBe('Waking…');
     expect([...row('a').querySelectorAll('button')].map((b) => b.disabled)).toEqual([true, true]);
-    expect(row('b').querySelector('.nap-when').textContent).toBe('Didn\'t finish waking');
     expect([...row('b').querySelectorAll('button')].map((b) => b.disabled)).toEqual([false, false]);
-  });
-
-  test('a storage change that leaves the list the same does not rebuild it', () => {
-    const items = [item('a')];
-    routeMessages({ listSnoozed: () => ({ success: true, items: structuredClone(items) }) });
-    napLoadAndRender();
-    const first = row('a');
-    napHandleStorageChange({ snoozedItems: {} }, 'local');
-    expect(row('a')).toBe(first);
-  });
-
-  test('the midnight refresh redraws an unchanged list, so "Tomorrow" becomes "Today"', () => {
-    vi.useFakeTimers();
-    try {
-      vi.setSystemTime(new Date(2024, 0, 10, 23, 59));
-      const items = [{ ...item('a'), wakeAt: new Date(2024, 0, 11, 9, 0).getTime() }];
-      routeMessages({ listSnoozed: () => ({ success: true, items }) });
-      napLoadAndRender();
-      expect(document.querySelector('.day-h .group-chip').textContent).toBe('Tomorrow');
-      napScheduleMidnightRefresh();
-      vi.advanceTimersByTime(2 * 60 * 1000);
-      expect(document.querySelector('.day-h .group-chip').textContent).toBe('Today');
-      expect(document.getElementById('napSummary').textContent).toContain('next wakes today at 09:00');
-    } finally {
-      vi.clearAllTimers();
-      vi.useRealTimers();
-    }
-  });
-
-  test('coming back to the page redraws an unchanged list too', () => {
-    vi.useFakeTimers();
-    try {
-      vi.setSystemTime(new Date(2024, 0, 10, 23, 59));
-      const items = [{ ...item('a'), wakeAt: new Date(2024, 0, 11, 9, 0).getTime() }];
-      routeMessages({ listSnoozed: () => ({ success: true, items }) });
-      napLoadAndRender();
-      vi.setSystemTime(new Date(2024, 0, 11, 8, 0));
-      napHandleVisibilityChange();
-      expect(document.visibilityState).toBe('visible');
-      expect(document.querySelector('.day-h .group-chip').textContent).toBe('Today');
-    } finally {
-      vi.clearAllTimers();
-      vi.useRealTimers();
-    }
   });
 
   test('Wake now disables its row while pending; "already waking" and "not found" show nothing red', async () => {
@@ -566,7 +483,7 @@ describe('Nap room: loading, failures and refreshes', () => {
     const pending = napWakeNow('a');
     expect([...row('a').querySelectorAll('button')].map((b) => b.disabled)).toEqual([true, true]);
     expect([...row('b').querySelectorAll('button')].map((b) => b.disabled)).toEqual([false, false]);
-    held.find((h) => h.message.action === 'wakeSnoozed').callback({ success: false, waking: 'active' });
+    held.find((h) => h.message.action === 'wakeSnoozed').callback({ success: false, waking: true });
     await pending;
     expect(document.getElementById('napStatus').hidden).toBe(true);
     routeMessages({
@@ -575,30 +492,5 @@ describe('Nap room: loading, failures and refreshes', () => {
     });
     await napWakeNow('b');
     expect(document.getElementById('napStatus').hidden).toBe(true);
-  });
-
-  test('discarding a wake that didn\'t finish says only the tabs that hadn\'t reopened went', async () => {
-    routeMessages({
-      cancelSnoozed: () => ({
-        success: true, interrupted: true,
-        record: { id: 'r', summary: '3 selected tabs', wakeAt: 1, tabs: [{ url: 'https://c/' }] },
-      }),
-      listSnoozed: () => ({ success: true, items: [] }),
-    });
-    await napDiscard('r');
-    expect(document.getElementById('discardNoticeText').textContent).toBe('Discarded 1 tab that hadn\'t reopened.');
-  });
-
-  test('discarding a wake that didn\'t finish, whose tabs had all reopened, says so instead of nothing', async () => {
-    routeMessages({
-      cancelSnoozed: () => ({ success: true, interrupted: true, discardedCount: 0 }),
-      listSnoozed: () => ({ success: true, items: [] }),
-    });
-    await napDiscard('r');
-    expect(document.getElementById('discardNotice').hidden).toBe(true);
-    const status = document.getElementById('napStatus');
-    expect(status.hidden).toBe(false);
-    expect(status.textContent).toBe('Its tabs had all reopened — nothing left to discard');
-    expect(status.classList.contains('error')).toBe(false);
   });
 });

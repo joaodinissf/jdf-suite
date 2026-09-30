@@ -332,7 +332,6 @@ const popupWrapper = `
   if (typeof discardSnooze !== 'undefined') global.discardSnooze = discardSnooze;
   if (typeof showDiscardNotice !== 'undefined') global.showDiscardNotice = showDiscardNotice;
   if (typeof undoDiscard !== 'undefined') global.undoDiscard = undoDiscard;
-  if (typeof discardNoticeText !== 'undefined') global.discardNoticeText = discardNoticeText;
 
   // Keyboard shortcut exposures
   if (typeof buildHotkeyMap !== 'undefined') global.buildHotkeyMap = buildHotkeyMap;
@@ -462,8 +461,6 @@ const napRoomWrapper = `
   if (typeof napShowDiscardNotice !== 'undefined') global.napShowDiscardNotice = napShowDiscardNotice;
   if (typeof napUndoDiscard !== 'undefined') global.napUndoDiscard = napUndoDiscard;
   if (typeof napLoadAndRender !== 'undefined') global.napLoadAndRender = napLoadAndRender;
-  if (typeof napHandleVisibilityChange !== 'undefined') global.napHandleVisibilityChange = napHandleVisibilityChange;
-  if (typeof napHandleStorageChange !== 'undefined') global.napHandleStorageChange = napHandleStorageChange;
 })();
 `;
 eval(napRoomWrapper);

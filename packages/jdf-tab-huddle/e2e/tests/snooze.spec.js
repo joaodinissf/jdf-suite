@@ -126,8 +126,8 @@ test('2: Wake now reopens the tab in the background and clears the record', asyn
   expect(restored).toBeTruthy();
   expect(restored.active).toBe(false);
 
-  // Storage is empty and the section is hidden.
-  expect((await getSnoozedItems(sw)).length).toBe(0);
+  // The record is removed once the tab has reopened, and the section hides.
+  await waitForSnoozedCount(sw, 0);
   await expect(popup.locator('#sleepingSection')).toBeHidden();
 
   await popup.close();
