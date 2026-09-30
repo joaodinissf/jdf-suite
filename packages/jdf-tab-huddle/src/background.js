@@ -3418,8 +3418,9 @@ async function clearSnoozeAlarm(id) {
   }
 }
 
-// Wake one record: reopen its tabs, and only once they are all open remove it
-// from storage and clear its alarm. Until then the record stays stored with an
+// Wake one record: reopen its tabs, and only once they are open remove it
+// from storage and clear its alarm (tabs Chrome refuses are dropped, as
+// before). Until then the record stays stored with an
 // alarm a minute out, so a wake cut short (the worker stopped, the extension
 // reloaded, the browser quit) is simply done again from scratch by that alarm
 // or the next startup. A re-run can open some tabs twice; it never loses one.
@@ -3455,6 +3456,9 @@ async function wakeSnoozedRecord(id, options = {}) {
       });
     }
     await clearSnoozeAlarm(id);
+    // A kept record that isn't due yet (Wake now pressed early) keeps its
+    // own wake time.
+    if (kept && record.wakeAt > Date.now()) await scheduleSnoozeAlarm(record).catch(() => {});
     if (options.notify === true) notifyWake(record, result.createdCount, result.failedCount, result);
     return { record, ...result, kept };
   } finally {
@@ -3522,11 +3526,7 @@ async function handleCancelSnooze(message, sendResponse) {
       sendResponse({ success: false, waking: true });
       return;
     }
-    try {
-      await chrome.alarms.clear(SNOOZE_ALARM_PREFIX + message.id);
-    } catch (_e) {
-      // harmless if already cleared
-    }
+    await clearSnoozeAlarm(message.id);
     sendResponse({ success: removed !== null, record: removed ? removed.record : undefined });
   } catch (error) {
     console.error('[Huddle] Error in cancelSnoozed:', error);
@@ -3560,8 +3560,7 @@ async function handleRestoreSnoozed(message, sendResponse) {
 
 async function handleListSnoozed(sendResponse) {
   try {
-    // `waking` says whether this worker is waking the record right now (a
-    // stale field from an older build is overwritten).
+    // `waking`: whether this worker is waking the record right now.
     const items = (await withSnoozeLock(loadSnoozedItems)).map((r) => ({ ...r, waking: wakingNow.has(r.id) }));
     items.sort((a, b) => a.wakeAt - b.wakeAt);
     sendResponse({ success: true, items });

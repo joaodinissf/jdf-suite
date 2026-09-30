@@ -211,7 +211,6 @@ export default [
         handleRestoreSnoozed: 'readonly',
         handleSnoozeAlarm: 'readonly',
         wakeSnoozedRecord: 'readonly',
-        setWakeSettleMs: 'readonly',
         reconcileSnoozeAlarms: 'readonly',
         SNOOZE_PRESETS: 'readonly',
         formatWakeTime: 'readonly',
