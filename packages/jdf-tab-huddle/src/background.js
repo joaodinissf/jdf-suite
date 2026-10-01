@@ -1429,7 +1429,15 @@ async function moveTabsWithGroups(tabsToMove, targetWindowId) {
 
 async function handleClumpOpenUrls(message, sender, sendResponse) {
   try {
-    const urls = Array.isArray(message.urls) ? message.urls : [];
+    // Only the clumper in a page's top frame sends this, and it never sends
+    // more than 25 web links.
+    if (!sender || !sender.tab || sender.frameId !== 0) {
+      sendResponse({ success: false, error: 'forbidden' });
+      return;
+    }
+    const urls = (Array.isArray(message.urls) ? message.urls : [])
+      .filter((url) => /^https?:/i.test(url))
+      .slice(0, 25);
     if (urls.length === 0) {
       sendResponse({ success: true, opened: 0 });
       return;

@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Unit Tests**: 817 tests across 21 Vitest files (mocked Chrome APIs)
-- **E2E Tests**: 119 tests across 17 Playwright spec files (real Chromium browser)
-- **Total**: 936 tests
+- **Unit Tests**: 835 tests across 21 Vitest files (mocked Chrome APIs)
+- **E2E Tests**: 121 tests across 18 Playwright spec files (real Chromium browser)
+- **Total**: 956 tests
 
 ## Unit Tests (Vitest)
 
@@ -22,7 +22,7 @@
 | keyboard.test.js | 28 | Popup hotkeys |
 | split-view.test.js | 45 | Split view compact, expand and repair |
 | confirmation-dialog.test.js | 15 | Split domains dialog |
-| content-clumper.test.js | 40 | Link clumping content script |
+| content-clumper.test.js | 58 | Link clumping content script: only trusted events, the confirm and the 25 cap, letting go on blur and hidden tabs, Cmd+Z, an orphaned copy after an update; the worker's top-frame, http(s) and 25-link checks |
 | options.test.js | 31 | Settings page |
 | options-ai.test.js | 18 | Settings: the AI section |
 | ai-config.test.js | 42 | Key checks, key form and model picker shared by Settings and the organize page |
@@ -60,6 +60,7 @@ Real browser tests that load the extension into Chromium and verify end-to-end b
 | split-view-repair.spec.js | 5 | Splits survive sort, merge and extract (skips below Chrome 155) |
 | popup-ui.spec.js | 8 | Mode switching, preference persistence, button visibility |
 | keyboard.spec.js | 4 | Popup hotkeys |
+| link-clumping.spec.js | 2 | A page's own events open nothing; a real drag opens 5 at once, and over 25 links asks (answered through `page.on('dialog')`) and opens the first 25 |
 | confirmation-dialog.spec.js | 4 | Window count display, confirm/cancel flow |
 | snooze.spec.js | 13 | Snooze and wake; the Group button follows the active tab |
 | ai-flow.spec.js | 18 | Organize with AI against a fake OpenRouter; two-window cases for what is sent and what Apply moves |
