@@ -1,0 +1,9 @@
+# Keeps the workflows' commit-SHA action pins current (it bumps the SHA and
+# its "# vX.Y.Z" comment together). npm is left out on purpose: security
+# advisories for the lockfile still arrive as Dependabot alerts.
+version: 2
+updates:
+- package-ecosystem: github-actions
+  directory: /
+  schedule:
+    interval: weekly
