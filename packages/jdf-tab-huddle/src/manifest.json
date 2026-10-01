@@ -4,7 +4,7 @@
   "short_name": "Huddle",
   "version": "0.7.0",
   "description": "Sort and organize tabs by URL and domain",
-  "minimum_chrome_version": "102",
+  "minimum_chrome_version": "147",
   "permissions": [
     "tabs",
     "windows",
@@ -51,18 +51,5 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "confirmation-dialog.html",
-        "confirmation-dialog.js",
-        "ai-proposal.html",
-        "ai-proposal.js"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ]
+  }
 }

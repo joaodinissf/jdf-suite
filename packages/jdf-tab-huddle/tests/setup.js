@@ -109,6 +109,7 @@ global.chrome = {
       get: vi.fn(),
       set: vi.fn(),
       remove: vi.fn(),
+      setAccessLevel: vi.fn().mockResolvedValue(undefined),
     },
     session: {
       get: vi.fn(async (keys) => pickKeys(keys)),

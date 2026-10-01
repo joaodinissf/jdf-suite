@@ -5,6 +5,8 @@
 // unavailable when only the request was refused, and the recommended models
 // checked against the live catalog.
 
+import { organizeSender } from './senders.js';
+
 // supported_parameters as OpenRouter's live catalog lists them (Sept 2026).
 const LUNA_PARAMS = ['include_reasoning', 'max_completion_tokens', 'max_tokens', 'reasoning',
   'reasoning_effort', 'response_format', 'seed', 'structured_outputs', 'tool_choice', 'tools'];
@@ -264,7 +266,7 @@ describe('a run builds its request from the cached catalog', () => {
     const onMessage = [];
     const port = {
       name: 'huddle-ai-run',
-      sender: { tab: { id: 10, windowId: 1 } },
+      sender: { ...organizeSender, tab: { id: 10, windowId: 1 } },
       postMessage: vi.fn(),
       onMessage: { addListener: (fn) => onMessage.push(fn) },
       onDisconnect: { addListener: () => {} },

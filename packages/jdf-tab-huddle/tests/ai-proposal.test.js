@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { workerSender, contentSender } from './senders.js';
 
 // The organize page (src/ai-proposal.html + ai-proposal.js, with the shared
 // ai-config.js): each test loads the real page markup and runs the page
@@ -138,6 +139,27 @@ beforeEach(() => {
 
 afterEach(() => {
   chrome.runtime.lastError = null;
+});
+
+describe('the mode the popup brings to an open organize page', () => {
+  // The page's own chrome.runtime.onMessage listener, registered on load.
+  const pageListener = () => chrome.runtime.onMessage.addListener.mock.calls.at(-1)[0];
+
+  test('from the worker it becomes the run\'s mode', async () => {
+    loadPage({ search: '?respectGroups=true' });
+    await flush();
+    pageListener()({ type: 'ai-set-mode', respectGroups: false }, workerSender);
+    const port = await organize();
+    expect(port.startMessage().respectGroups).toBe(false);
+  });
+
+  test('from a content script in a web page it is ignored', async () => {
+    loadPage({ search: '?respectGroups=true' });
+    await flush();
+    pageListener()({ type: 'ai-set-mode', respectGroups: false }, contentSender);
+    const port = await organize();
+    expect(port.startMessage().respectGroups).toBe(true);
+  });
 });
 
 describe('starting a run', () => {

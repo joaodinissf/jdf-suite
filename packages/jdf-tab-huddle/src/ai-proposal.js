@@ -1531,7 +1531,10 @@ function init() {
   if (chrome.tabs && chrome.tabs.onRemoved) chrome.tabs.onRemoved.addListener(dropProposedTab);
   if (chrome.tabs && chrome.tabs.onDetached) chrome.tabs.onDetached.addListener(dropProposedTab);
   // The popup's O on an already open organize page brings its mode along.
-  chrome.runtime.onMessage.addListener((msg) => {
+  // It comes from the worker (tabs.sendMessage), which has no tab; a content
+  // script's runtime.sendMessage reaches this page too, with its tab.
+  chrome.runtime.onMessage.addListener((msg, sender) => {
+    if (sender && sender.tab) return;
     if (msg && msg.type === 'ai-set-mode' && !run && typeof msg.respectGroups === 'boolean') {
       setRespectGroups(msg.respectGroups);
     }

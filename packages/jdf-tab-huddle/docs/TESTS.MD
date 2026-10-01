@@ -2,19 +2,19 @@
 
 ## Overview
 
-- **Unit Tests**: 847 tests across 21 Vitest files (mocked Chrome APIs)
-- **E2E Tests**: 121 tests across 18 Playwright spec files (real Chromium browser)
-- **Total**: 968 tests
+- **Unit Tests**: 900 tests across 21 Vitest files (mocked Chrome APIs)
+- **E2E Tests**: 123 tests across 19 Playwright spec files (real Chromium browser)
+- **Total**: 1023 tests
 
 ## Unit Tests (Vitest)
 
-`tests/setup.js` mocks the Chrome APIs, loads the worker and the pages' scripts, and exposes their functions. Its `dispatch(message, sender)` sends a message through the worker's real `chrome.runtime.onMessage` listener and resolves with the reply; `tests/senders.js` holds the sender Chrome gives each caller (the popup, the popup open in a tab, the nap room, Settings, the split dialog, the organize page, the link clumper's content script).
+`tests/setup.js` mocks the Chrome APIs, loads the worker and the pages' scripts, and exposes their functions. Its `dispatch(message, sender)` sends a message through the worker's real `chrome.runtime.onMessage` listener and resolves with the reply; `tests/senders.js` holds the sender Chrome gives each caller (the popup, the popup open in a tab, the nap room, Settings, the split dialog, the organize page, the link clumper's content script, and the worker as a page sees it).
 
 | Suite | Tests | Coverage |
 |---|---|---|
-| routing.test.js | 79 | Every worker action routed from its real caller; the table checked against the dispatcher's if/else chain and each page's scripts; which tabs each Deduplicate closes |
+| routing.test.js | 128 | Every worker action routed from its real caller; the table checked against the dispatcher's if/else chain and each page's scripts; which tabs each Deduplicate closes |
 | background.test.js | 46 | Worker logic: sort, dedupe, split domains, results |
-| snooze.test.js | 93 | Snoozing and waking: records, custom times, window groups, alarms, failed reads, a wake cut short and done again by a new worker, the window a wake opens in |
+| snooze.test.js | 94 | Snoozing and waking: records, custom times, window groups, alarms, failed reads, a wake cut short and done again by a new worker, the window a wake opens in |
 | snooze-ui.test.js | 33 | Snooze controls in the popup and the nap room, including the waking state and failed reads |
 | nap-room.test.js | 22 | The nap room page |
 | popup.test.js | 73 | Popup UI and message passing |
@@ -30,8 +30,8 @@
 | ai-service.test.js | 27 | Key encoding and expiry, query stripping, the prompt |
 | openrouter-requests.test.js | 35 | What is asked of OpenRouter, model by model, and its refusals |
 | ai-runtime.test.js | 26 | The OpenRouter client: error statuses, streaming, JSON fallback |
-| ai-handlers.test.js | 41 | Worker AI handlers: runs, Apply, window scoping |
-| ai-proposal.test.js | 58 | The organize page |
+| ai-handlers.test.js | 42 | Worker AI handlers: runs, Apply, window scoping; a content script's port is closed |
+| ai-proposal.test.js | 60 | The organize page |
 | simple.test.js | 6 | Framework and Chrome API mock verification |
 
 ```bash
@@ -64,6 +64,7 @@ Real browser tests that load the extension into Chromium and verify end-to-end b
 | confirmation-dialog.spec.js | 4 | Window count display, confirm/cancel flow |
 | snooze.spec.js | 13 | Snooze and wake; the Group button follows the active tab |
 | ai-flow.spec.js | 18 | Organize with AI against a fake OpenRouter; two-window cases for what is sent and what Apply moves |
+| trust-boundary.spec.js | 2 | The content script in a web page: no `storage.local` (the key), `storage.sync` still read, only `clumpOpenUrls` accepted, no organize port |
 
 ```bash
 pnpm test:e2e            # Run E2E tests (requires Chromium)

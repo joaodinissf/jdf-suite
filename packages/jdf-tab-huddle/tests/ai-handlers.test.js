@@ -2,6 +2,8 @@
 // (handleAiGroupTabs), runs over the organize page's port (onConnect), Apply
 // and the stored key and default model. Exposed globally by tests/setup.js.
 
+import { organizeSender, optionsSender, contentSender } from './senders.js';
+
 const HAIKU = 'anthropic/claude-haiku-4.5';
 // The organize page's window (1) and its tabs, and a tab in another window
 // that a run from window 1 must never see.
@@ -37,12 +39,12 @@ const groupsFor = (ids) => JSON.stringify({ groups: [{ name: 'G', color: 'blue',
 
 // A fake of the port the organize page opens. connect() runs the worker's
 // onConnect listener with it; start() sends the page's start message.
-function makePort(tab = { id: 10, windowId: 1 }) {
+function makePort(tab = { id: 10, windowId: 1 }, sender = { ...organizeSender, tab: tab || undefined }) {
   const onMessage = [];
   const onDisconnect = [];
   const port = {
     name: 'huddle-ai-run',
-    sender: tab ? { tab } : {},
+    sender,
     postMessage: vi.fn(),
     disconnect: vi.fn(),
     onMessage: { addListener: (fn) => onMessage.push(fn) },
@@ -133,6 +135,16 @@ describe('runs over the organize page\'s port', () => {
     expect(body.messages[1].content).toContain('by site');
     expect(body.max_tokens).toBe(maxTokensForTabs(2));
     expect(global.fetch.mock.calls[0][1].headers['X-Title']).toBe('Huddle');
+  });
+
+  test('a port from a content script is disconnected, and its start runs nothing on the stored key', async () => {
+    const port = makePort(contentSender.tab, contentSender);
+    expect(port.disconnect).toHaveBeenCalledTimes(1);
+    start(port);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(port.posted()).toEqual([]);
+    expect(chrome.storage.local.get).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   test('a page from another build is told to reload Huddle, and nothing runs', () => {
@@ -330,13 +342,13 @@ describe('runs over the organize page\'s port', () => {
 describe('messages every action answers', () => {
   test('an unknown action gets a reply instead of a closed port', () => {
     const reply = vi.fn();
-    chrome.runtime.onMessage.callListeners({ action: 'aiRestartRun' }, {}, reply);
+    chrome.runtime.onMessage.callListeners({ action: 'aiRestartRun' }, organizeSender, reply);
     expect(reply).toHaveBeenCalledWith({ success: false, error: 'unknown-action', protocol: AI_PROTOCOL });
   });
 
   test('loadAiConfig answers with the config at once, without the catalog', async () => {
     const reply = vi.fn();
-    chrome.runtime.onMessage.callListeners({ action: 'loadAiConfig' }, {}, reply);
+    chrome.runtime.onMessage.callListeners({ action: 'loadAiConfig' }, organizeSender, reply);
     await vi.waitFor(() => expect(reply).toHaveBeenCalled());
     expect(reply.mock.calls[0][0]).toMatchObject({ protocol: AI_PROTOCOL, config: expect.objectContaining({ model: HAIKU }) });
     expect(reply.mock.calls[0][0].models).toBeUndefined();
@@ -603,12 +615,12 @@ describe('default model and key storage', () => {
   test('the saveAiDefaultModel and deleteAiKey messages answer with the new config', async () => {
     stored = { key: btoa('sk-or-k'), model: 'a/one', expiresAt: null, expiryDuration: null, setupComplete: true };
     const saveReply = vi.fn();
-    chrome.runtime.onMessage.callListeners({ action: 'saveAiDefaultModel', model: 'c/three' }, {}, saveReply);
+    chrome.runtime.onMessage.callListeners({ action: 'saveAiDefaultModel', model: 'c/three' }, optionsSender, saveReply);
     await vi.waitFor(() => expect(saveReply).toHaveBeenCalled());
     expect(saveReply).toHaveBeenCalledWith({ success: true, config: expect.objectContaining({ model: 'c/three' }) });
 
     const deleteReply = vi.fn();
-    chrome.runtime.onMessage.callListeners({ action: 'deleteAiKey' }, {}, deleteReply);
+    chrome.runtime.onMessage.callListeners({ action: 'deleteAiKey' }, optionsSender, deleteReply);
     await vi.waitFor(() => expect(deleteReply).toHaveBeenCalled());
     expect(deleteReply).toHaveBeenCalledWith({ success: true, config: expect.objectContaining({ key: null, model: 'c/three' }) });
   });

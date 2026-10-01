@@ -14,8 +14,11 @@ import {
 // A new worker action needs a row here: the last tests compare this table
 // with the dispatcher's action names and with the actions each page's
 // scripts send, both read from the source. The dispatcher is an if/else
-// chain on message.action, except its first branch, the popup's logging
-// message, which is keyed on message.type; its row has `type`, not `action`.
+// chain on message.action. Its first branch is the sender check (only
+// Huddle's own pages may send anything but clumpOpenUrls), and its second
+// the popup's logging message, which is keyed on message.type; that row has
+// `type`, not `action`. Every row but clumpOpenUrls is also sent from the
+// content script, and must be refused.
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const read = (file) => readFileSync(resolve(__dirname, '../src', file), 'utf8');
@@ -208,6 +211,13 @@ const ROUTES = [
     effect: () => expect(chrome.windows.getLastFocused).toHaveBeenCalledWith({ windowTypes: ['normal'] }),
   },
   {
+    // No scope copies this window only, never every window's tabs.
+    action: 'copyTabs', page: 'popup.html', senders: [popupSender],
+    message: { action: 'copyTabs', respectGroups: false },
+    reply: { success: true, tabCount: 5 },
+    effect: () => expect(chrome.windows.getAll).not.toHaveBeenCalled(),
+  },
+  {
     action: 'flattenWindow', page: 'popup.html', senders: POPUP,
     message: { action: 'flattenWindow' },
     reply: { success: true, ungrouped: 1 },
@@ -375,8 +385,9 @@ const rows = ROUTES.flatMap((r) => r.senders.map((sender) => ({ ...r, sender, na
 // at the listener's own indentation, maybe with a trailing // comment);
 // nested ifs inside a branch are deeper.
 // Each branch's condition is read from the source and sorted into: the
-// logging message (message.type), actions (one or more message.action
-// comparisons joined by ||), the final catch-all, or not understood.
+// sender check, the logging message (message.type), actions (one or more
+// message.action comparisons joined by ||), the final catch-all, or not
+// understood.
 function dispatcherBranches() {
   const bg = read('background.js');
   const start = bg.indexOf('chrome.runtime.onMessage.addListener(');
@@ -384,6 +395,7 @@ function dispatcherBranches() {
   const end = bg.indexOf('\n});', start);
   const block = bg.slice(start, end);
   return [...block.matchAll(/^ {2}(?:\} else )?if \((.*?)\) \{\s*(?:\/\/.*)?$/gm)].map(([, cond]) => {
+    if (cond === "!fromExtensionPage(sender) && message.action !== 'clumpOpenUrls'") return { kind: 'sender check', names: [], cond };
     const type = cond.match(/^message\.type === '(\w+)'$/);
     if (type) return { kind: 'type', names: [type[1]], cond };
     const parts = cond.split(' || ').map((c) => c.match(/^message\.action === '(\w+)'$/));
@@ -454,10 +466,43 @@ describe('every worker action, routed from its real caller', () => {
     row.effect();
   });
 
-  test('an action the worker does not know gets unknown-action, from any sender', async () => {
-    for (const sender of [popupSender, organizeSender, contentSender]) {
+  test('an action the worker does not know gets unknown-action from a page, and forbidden from a content script', async () => {
+    for (const sender of [popupSender, organizeSender]) {
       expect(await dispatch({ action: 'noSuchAction' }, sender)).toEqual({ success: false, error: 'unknown-action', protocol: AI_PROTOCOL });
     }
+    expect(await dispatch({ action: 'noSuchAction' }, contentSender)).toEqual({ success: false, error: 'forbidden' });
+  });
+});
+
+describe('the trust boundary', () => {
+  beforeEach(() => {
+    installFakeBrowser();
+  });
+
+  // Each row's message, sent from the link clumper's content script.
+  const fromContentScript = ROUTES.filter((r) => r.action !== 'clumpOpenUrls')
+    .map((r) => ({ ...r, name: `${keyOf(r)} from a content script` }));
+
+  test.each(fromContentScript)('$name is forbidden, and nothing runs', async (row) => {
+    if (row.setup) row.setup();
+    const reply = await dispatch(structuredClone(row.message), structuredClone(contentSender));
+    expect(reply).toEqual({ success: false, error: 'forbidden' });
+    for (const call of [chrome.storage.local.get, chrome.storage.local.set, chrome.storage.session.get, chrome.tabs.query,
+      chrome.tabs.create, chrome.tabs.remove, chrome.windows.getAll, chrome.windows.create, chrome.alarms.create, global.fetch]) {
+      expect(call).not.toHaveBeenCalled();
+    }
+  });
+
+  test('a sender from another extension is refused, even with a url like Huddle\'s', async () => {
+    const other = { ...popupSender, id: 'other-extension' };
+    expect(await dispatch({ action: 'loadAiConfig' }, other)).toEqual({ success: false, error: 'forbidden' });
+  });
+
+  test('no web page can load Huddle\'s pages, and Chrome is new enough to keep the key from content scripts', () => {
+    const manifest = JSON.parse(read('manifest.json'));
+    expect(manifest).not.toHaveProperty('web_accessible_resources');
+    // chrome.storage.local.setAccessLevel is proven on 147 (CI) and up.
+    expect(manifest.minimum_chrome_version).toBe('147');
   });
 });
 
@@ -501,11 +546,13 @@ describe('which tabs Deduplicate closes', () => {
 });
 
 describe('the routing table is complete', () => {
-  test('the dispatcher is an if/else chain whose every branch is understood, ending in unknown-action', () => {
+  test('the dispatcher is an if/else chain whose every branch is understood, starting with the sender check and ending in unknown-action', () => {
     const branches = dispatcherBranches();
     expect(branches.filter((b) => b.kind === 'not understood').map((b) => b.cond)).toEqual([]);
     expect(branches.length).toBeGreaterThan(30);
-    expect(branches[0]).toMatchObject({ kind: 'type', names: ['log'] });
+    expect(branches[0].kind).toBe('sender check');
+    expect(branches.filter((b) => b.kind === 'sender check')).toHaveLength(1);
+    expect(branches[1]).toMatchObject({ kind: 'type', names: ['log'] });
     expect(branches.at(-1).kind).toBe('unknown-action');
     expect(branches.filter((b) => b.kind === 'unknown-action')).toHaveLength(1);
   });
