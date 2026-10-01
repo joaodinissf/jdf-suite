@@ -45,8 +45,11 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 ### Link Clumping
 - Hold the activation key (default: **Z**) and click-drag a rectangle over any set of links
 - On release, every selected link opens in a new background tab, adjacent to the current one, in DOM order, with duplicates filtered out
+- Up to 10 links open at once; for 11 to 25 the browser asks first, and above 25 it offers the first 25
+- Only your own key presses and drags count: a page's scripts can't make it open tabs
 - Works on any HTTP/HTTPS page
-- Press Escape mid-drag to cancel without opening
+- Press Escape mid-drag to cancel without opening; switching tabs or windows, or clicking into a frame, also lets go of the key. Cmd+Z doesn't arm it
+- After Huddle is updated or reloaded, reload a page that was already open to clump links in it again
 - Configure the key, optional modifier (Shift/Ctrl/Alt), or disable the feature via the **Settings** link in the popup — preferences sync across your Chrome signins
 
 ## Acknowledgements
@@ -66,8 +69,8 @@ The link-clumping feature is inspired by [linkclump](https://github.com/benblack
 ### For Developers
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (817 tests)
-pnpm test:e2e          # Run E2E tests (119 tests, requires Chromium)
+pnpm test              # Run unit tests (835 tests)
+pnpm test:e2e          # Run E2E tests (121 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
 pnpm run package       # Create extension zip
@@ -97,7 +100,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Confirmation dialog for large operations
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (817 tests in 21 files)
+├── tests/                         # Vitest unit tests (835 tests in 21 files)
 │   ├── setup.js                   # Chrome API mock, page scripts loaded, dispatch() to the worker
 │   ├── senders.js                 # The sender each caller (popup, pages, content script) arrives with
 │   ├── routing.test.js            # Every worker action, routed from its real caller
@@ -106,11 +109,11 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── snooze.test.js             # Snoozing and waking, through the worker's handlers
 │   ├── confirmation-dialog.test.js
 │   └── simple.test.js             # Framework verification
-├── e2e/                           # Playwright E2E tests (119 tests)
+├── e2e/                           # Playwright E2E tests (121 tests)
 │   ├── playwright.config.js       # Playwright configuration
 │   ├── fixtures/extension.js      # Custom fixture loading extension into Chromium
 │   ├── helpers/                   # Tab management, popup interaction, assertions
-│   └── tests/                     # 17 spec files covering all features
+│   └── tests/                     # 18 spec files covering all features
 ├── docs/                          # Documentation
 ├── .github/workflows/             # CI/CD (test, e2e, lint, build, release)
 ├── package.json
@@ -120,7 +123,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ## Testing
 
 ### Unit Tests (Vitest + jest-chrome shim)
-817 tests across 21 files covering core logic with mocked Chrome APIs:
+835 tests across 21 files covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report
@@ -129,7 +132,7 @@ pnpm run test:coverage   # With coverage report
 `tests/routing.test.js` sends every action the service worker handles through its real `onMessage` listener, from the page that sends it (with the sender Chrome gives that page), and checks the reply and the Chrome call the handler makes. The dispatcher is an if/else chain on `message.action`, except the popup's logging message, which is keyed on `message.type`; the test reads every branch of that chain from the source, fails on a branch it does not understand, and checks its table against the actions (and the logging message) found there and against what each page's scripts send. So a new worker action needs a row there. The test's `dispatch(message, sender)` (in `tests/setup.js`) resolves with the worker's reply, and fails when an action that replies later does not keep the channel open by returning `true`.
 
 ### E2E Tests (Playwright + real Chromium)
-119 tests across 17 spec files that load the extension into a real browser:
+121 tests across 18 spec files that load the extension into a real browser:
 
 | Spec File | Tests | Coverage |
 |---|---|---|
@@ -148,6 +151,7 @@ pnpm run test:coverage   # With coverage report
 | split-view-compact | 2 | Compact then Expand; pinned/group runs, existing splits, no tab moves (skips below Chrome 155) |
 | split-view-repair | 5 | Splits survive sort (both modes), merge and extract; a separated pair is not forced back together (skips below Chrome 155) |
 | keyboard | 4 | Popup hotkey dispatch |
+| link-clumping | 2 | A page's own events open nothing; a real drag opens 5 at once, and over 25 links asks and opens the first 25 |
 | snooze | 13 | Tab/window/group snooze, wake, alarms, edge cases; the Group button follows the active tab |
 | ai-flow | 18 | Organize with AI against a fake OpenRouter: runs, Apply, errors; only the organize page's window is sent, and Apply never takes a tab from another window |
 

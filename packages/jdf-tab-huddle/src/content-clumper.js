@@ -30,6 +30,17 @@ const clumperHighlightOverlays = []; // array of overlay DOM elements
 let clumperHighlightContainer = null; // parent element holding all overlays
 let clumperPrevBodyUserSelect = null; // saved value of document.body.style.userSelect while suppressed
 
+// A page can dispatch its own key and mouse events, and they reach this
+// script's listeners too; only the user's own input is trusted. Page scripts
+// can't reach this isolated world, so the tests can swap this function out
+// (jsdom's events are never trusted) without giving a page a way around it.
+let clumperEventIsTrusted = (event) => event.isTrusted;
+
+// Above this many links a drag asks first, and it never opens more than
+// CLUMPER_MAX_URLS.
+const CLUMPER_CONFIRM_ABOVE = 10;
+const CLUMPER_MAX_URLS = 25;
+
 // --- Pure helpers ---
 
 function clumperIsOpenableUrl(href) {
@@ -86,6 +97,9 @@ function clumperKeyMatches(event, key) {
 
 function clumperModifierMatches(event, modifier) {
   if (!event) return false;
+  // Cmd+Z is undo. macOS also sends no keyup for a key released while Cmd is
+  // held, so arming here would leave the clumper stuck on.
+  if (event.metaKey) return false;
   const shift = Boolean(event.shiftKey);
   const ctrl = Boolean(event.ctrlKey);
   const alt = Boolean(event.altKey);
@@ -252,9 +266,20 @@ function clumperTeardown() {
   clumperRestoreTextSelection();
 }
 
+// Lets go of the key as far as the clumper knows: for when its keyup can't
+// arrive (the window lost focus, the tab was hidden) or Escape was pressed.
+function clumperDisarm() {
+  clumperKeyHeld = false;
+  clumperTeardown();
+}
+
 // --- Event handlers ---
 
 function clumperHandleKeyDown(event) {
+  if (!clumperEventIsTrusted(event)) return;
+  // After the extension is updated or reloaded, this copy can no longer open
+  // tabs, so it never arms.
+  if (!chrome.runtime?.id) return;
   if (!clumperEnabled) return;
   if (clumperKeyHeld) return;
   if (clumperIsTextInputTarget(event.target)) return;
@@ -278,11 +303,12 @@ function clumperHandleKeyUp(event) {
 function clumperHandleEscape(event) {
   if (event.key !== 'Escape') return;
   if (!clumperKeyHeld && !clumperDragging) return;
-  clumperKeyHeld = false;
-  clumperTeardown();
+  clumperDisarm();
 }
 
 function clumperHandleMouseDown(event) {
+  if (!clumperEventIsTrusted(event)) return;
+  if (!chrome.runtime?.id) return;
   if (!clumperEnabled) return;
   if (!clumperKeyHeld) return;
   if (event.button !== 0) return;
@@ -302,20 +328,31 @@ function clumperHandleMouseMove(event) {
 }
 
 function clumperHandleMouseUp(event) {
+  if (!clumperEventIsTrusted(event)) return;
   if (!clumperDragging || !clumperSelectionBox) return;
   if (event.button !== 0) return;
+  event.preventDefault();
   const rect = clumperBoxFromPoints(clumperDragStart, { x: clumperPageX(event), y: clumperPageY(event) });
-  const urls = clumperCollectUrlsInRect(rect);
+  let urls = clumperCollectUrlsInRect(rect);
   clumperTeardown();
+  if (urls.length > CLUMPER_CONFIRM_ABOVE) {
+    // The key is let go while the dialog is up, and that keyup never reaches
+    // the page.
+    clumperKeyHeld = false;
+    // The browser's own dialog: a page can't click it or answer it.
+    const question = urls.length > CLUMPER_MAX_URLS
+      ? `Huddle: open the first ${CLUMPER_MAX_URLS} of ${urls.length} links?`
+      : `Huddle: open ${urls.length} links?`;
+    if (!window.confirm(question)) return;
+    urls = urls.slice(0, CLUMPER_MAX_URLS);
+  }
   if (urls.length > 0 && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
     chrome.runtime.sendMessage({ action: 'clumpOpenUrls', urls });
   }
-  event.preventDefault();
 }
 
 function clumperResetStateForTest() {
-  clumperKeyHeld = false;
-  clumperTeardown();
+  clumperDisarm();
 }
 
 function clumperGetStateForTest() {
@@ -354,6 +391,12 @@ if (typeof document !== 'undefined') {
   document.addEventListener('mousedown', clumperHandleMouseDown, true);
   document.addEventListener('mousemove', clumperHandleMouseMove, true);
   document.addEventListener('mouseup', clumperHandleMouseUp, true);
+  // The key's keyup goes elsewhere when it is released in another window, tab
+  // or frame.
+  window.addEventListener('blur', clumperDisarm);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) clumperDisarm();
+  });
 }
 
 // Load settings once on startup, then keep them in sync with any subsequent
@@ -365,9 +408,6 @@ if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged)
     clumperApplySettings(changes.clumping.newValue);
     // If the feature was just disabled or the key changed, abort any
     // in-flight drag to avoid a "zombie" armed state.
-    if (clumperKeyHeld || clumperDragging) {
-      clumperKeyHeld = false;
-      clumperTeardown();
-    }
+    if (clumperKeyHeld || clumperDragging) clumperDisarm();
   });
 }

@@ -416,6 +416,13 @@ const clumperWrapper = `
   if (typeof clumperResetStateForTest !== 'undefined') global.clumperResetStateForTest = clumperResetStateForTest;
   if (typeof clumperGetStateForTest !== 'undefined') global.clumperGetStateForTest = clumperGetStateForTest;
   if (typeof clumperApplySettings !== 'undefined') global.clumperApplySettings = clumperApplySettings;
+  // jsdom's events are never trusted, so the tests trust every event unless a
+  // test asks for the real check: clumperTrustAllEventsForTest(false).
+  const clumperRealEventIsTrusted = clumperEventIsTrusted;
+  global.clumperTrustAllEventsForTest = (all) => {
+    clumperEventIsTrusted = all ? () => true : clumperRealEventIsTrusted;
+  };
+  global.clumperTrustAllEventsForTest(true);
 })();
 `;
 eval(clumperWrapper);
