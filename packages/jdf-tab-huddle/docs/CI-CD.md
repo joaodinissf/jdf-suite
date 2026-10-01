@@ -2,6 +2,8 @@
 
 Both workflows live at the monorepo root under `.github/workflows/` and run with `packages/jdf-tab-huddle` as their working directory.
 
+Every action is pinned to a commit SHA, with its version in a trailing comment (`uses: actions/checkout@<sha> # v6.1.0`). Dependabot (`.github/dependabot.yml`) opens a weekly PR when an action has a new release. pnpm is pinned to one exact version in each workflow's `pnpm/action-setup` `version:`; change them together.
+
 ## CI: `jdf-tab-huddle-ci.yml`
 
 Runs on every pull request to `main` and every push to `main` that touches `packages/jdf-tab-huddle/**` or the workflow itself.
@@ -19,7 +21,14 @@ Runs when a `jdf-tab-huddle-v*` tag is pushed, or by hand (`workflow_dispatch`) 
 gh workflow run jdf-tab-huddle-release.yml -f tag=jdf-tab-huddle-v0.4.1
 ```
 
-It checks out two trees: the workflow's own commit, for the release tooling, and the tag, for everything that is released. Tags older than the workflow can therefore be backfilled too. It then:
+Add `-f dry_run=true` to build and test without publishing anything.
+
+It runs as two jobs, so the token that can write releases never meets the dev dependencies:
+
+- **Test and package** has a read-only token and keeps no credentials in git config. It checks out two trees: the workflow's own commit, for the release tooling, and the tag, for everything that is released. Tags older than the workflow can therefore be backfilled too. It does steps 1–4 below and uploads the zip and the notes as an artifact.
+- **Publish GitHub Release** holds the write token. It checks out nothing and installs nothing: it downloads that artifact and does step 5. A dry run skips it.
+
+The steps:
 
 1. Installs, lints and runs the unit tests on the tagged tree.
 2. Fails unless the tag's version equals the version in both of the tag's `src/manifest.json` and `package.json`.

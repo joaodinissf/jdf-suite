@@ -7,6 +7,10 @@ on:
       tag:
         description: Existing tag to build a Release for (backfill), e.g. jdf-tab-huddle-v0.4.1
         required: true
+      dry_run:
+        description: Build and test only; publish nothing
+        type: boolean
+        default: false
 
 # The tooling (this workflow, scripts/release-notes.sh) comes from the commit
 # the workflow runs at; everything released (code, versions, README entry)
@@ -16,30 +20,39 @@ defaults:
   run:
     working-directory: tagged/packages/jdf-tab-huddle
 
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
 jobs:
-  release:
-    name: Test, package and publish GitHub Release
+  # Runs the tag's dev dependencies, so it gets a read-only token and keeps
+  # no credentials in git config.
+  build:
+    name: Test and package
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-    env:
-      TAG: ${{ inputs.tag || github.ref_name }}
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      latest: ${{ steps.latest.outputs.latest }}
+      highest: ${{ steps.latest.outputs.highest }}
     steps:
     - name: Check out the release tooling
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
         path: tools
+        persist-credentials: false
     - name: Check out the tag being released
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
         ref: ${{ env.TAG }}
         path: tagged
         # Full history and tags: the notes list commits since the previous tag.
         fetch-depth: 0
-    - uses: pnpm/action-setup@v4
+        persist-credentials: false
+    - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
       with:
-        version: 10
-    - uses: actions/setup-node@v6
+        version: 10.34.6
+    - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
       with:
         node-version: '22'
         cache: pnpm
@@ -51,6 +64,7 @@ jobs:
     - name: Unit tests
       run: pnpm test
     - name: Check the tag matches the manifest and package versions
+      id: version
       run: |
         version="${TAG#jdf-tab-huddle-v}"
         manifest="$(node -p "require('./src/manifest.json').version")"
@@ -60,6 +74,7 @@ jobs:
           exit 1
         fi
         echo "VERSION=$version" >> "$GITHUB_ENV"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
     - name: Package the extension
       # Zipped from inside src/ so manifest.json is at the top of the zip, as
       # the Chrome Web Store expects (older tags' package scripts did not).
@@ -67,25 +82,50 @@ jobs:
     - name: Write release notes
       run: bash "$GITHUB_WORKSPACE/tools/packages/jdf-tab-huddle/scripts/release-notes.sh" "$TAG" > release-notes.md
     - name: Mark as latest only for the highest huddle version
+      id: latest
       run: |
         highest="$(git tag --list 'jdf-tab-huddle-v*' --sort=-v:refname | head -1)"
         if [ "$highest" = "$TAG" ]; then latest=true; else latest=false; fi
-        echo "LATEST=$latest" >> "$GITHUB_ENV"
-        echo "HIGHEST=$highest" >> "$GITHUB_ENV"
+        echo "latest=$latest" >> "$GITHUB_OUTPUT"
+        echo "highest=$highest" >> "$GITHUB_OUTPUT"
+    - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      with:
+        name: release
+        path: |
+          tagged/packages/jdf-tab-huddle/jdf-tab-huddle-${{ env.VERSION }}.zip
+          tagged/packages/jdf-tab-huddle/release-notes.md
+        if-no-files-found: error
+
+  # Holds the write token, so it checks out nothing and runs no repo code.
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+    - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      with:
+        name: release
     - name: Create or update the GitHub Release
-      uses: softprops/action-gh-release@v2.5.0
+      uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
       with:
         tag_name: ${{ env.TAG }}
         name: ${{ env.TAG }}
-        body_path: tagged/packages/jdf-tab-huddle/release-notes.md
-        files: tagged/packages/jdf-tab-huddle/jdf-tab-huddle-${{ env.VERSION }}.zip
-        make_latest: ${{ env.LATEST }}
+        body_path: release-notes.md
+        files: jdf-tab-huddle-${{ needs.build.outputs.version }}.zip
+        make_latest: ${{ needs.build.outputs.latest }}
     # make_latest: false alone did not stop a backfill (v0.5.0) from taking
     # Latest from v0.6.0, so a backfill hands it back to the highest version.
     - name: Keep Latest on the highest huddle version
-      if: env.LATEST == 'false'
+      if: needs.build.outputs.latest == 'false'
       env:
         GH_TOKEN: ${{ github.token }}
+        HIGHEST: ${{ needs.build.outputs.highest }}
       # The highest tag may not have a Release yet; that is not this run's failure.
       run: |
         gh release edit "$HIGHEST" --latest --repo "$GITHUB_REPOSITORY" \
