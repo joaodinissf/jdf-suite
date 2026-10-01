@@ -264,7 +264,7 @@ Field notes:
 - `alarms` — per-record wake timers.
 - `notifications` — the wake notification (manifest permission suffices; no runtime permission prompt).
 
-**No `web_accessible_resources` additions.** The picker and the sleeping list live inside the popup; unlike `confirmation-dialog.html` (which is opened as a standalone tab), no new extension page is required.
+**No `web_accessible_resources`.** The picker and the sleeping list live inside the popup, and the nap room opens as a tab of its own; no web page can load any of Huddle's pages.
 
 ## API Usage
 
@@ -312,7 +312,7 @@ Message handlers (registered in the `chrome.runtime.onMessage` dispatch, each `r
 - `handleListSnoozed(sendResponse)` — responds `{ success: true, items }` sorted ascending by `wakeAt`, each with `waking: true | false`; `{ success: false, error }` when the read fails.
 - `handleWakeNow(message, sendResponse)` — `wakeSnoozedRecord(message.id, { notify: false })`; the replies are listed under Sleeping-list flows.
 - `handleCancelSnooze(message, sendResponse)` — removes the record under lock, `chrome.alarms.clear('snooze:' + id)`; responds `{ success, record }` so the UI can offer Undo, or `{ success: false, waking: true }` while the record wakes.
-- `handleRestoreSnoozed(message, sendResponse)` — Undo: re-adds `message.record` under lock (never duplicating an id) and re-arms its alarm; responds `{ success }`.
+- `handleRestoreSnoozed(message, sendResponse)` — Undo: re-adds `message.record` under lock (never duplicating an id) and re-arms its alarm; responds `{ success }`. A record with a tab whose URL `isSnoozeableUrl` rejects is refused (`Invalid snooze record`), since a wake opens those URLs. Only Huddle's own pages can send it: the worker refuses every action but `clumpOpenUrls` from a content script.
 
 Wake machinery:
 

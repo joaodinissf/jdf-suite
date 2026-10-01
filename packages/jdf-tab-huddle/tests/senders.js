@@ -4,6 +4,8 @@
 // - the toolbar popup has id, url and origin, but no tab and no frameId;
 // - an extension page open in a tab has its tab and frameId 0;
 // - a content script has the site's url and origin, its tab and frameId 0.
+// The worker accepts every action from Huddle's pages (their url is under
+// chrome-extension://<id>/), and only clumpOpenUrls from a content script.
 
 const EXT_ID = 'test-id';
 const EXT_ORIGIN = `chrome-extension://${EXT_ID}`;
@@ -33,6 +35,11 @@ export const optionsSender = extensionTabSender('options.html', 503);
 export const dialogSender = extensionTabSender('confirmation-dialog.html?windows=6', 504);
 
 export const organizeSender = extensionTabSender('ai-proposal.html?respectGroups=true', 505);
+
+// The worker itself, as a page's chrome.runtime.onMessage listener sees it
+// when the worker messages that page (tabs.sendMessage): its script's url and
+// no tab.
+export const workerSender = { id: EXT_ID, url: `${EXT_ORIGIN}/background.js`, origin: EXT_ORIGIN };
 
 // The link clumper's content script on a web page.
 export const contentSender = {

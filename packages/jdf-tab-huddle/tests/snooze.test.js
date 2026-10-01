@@ -593,6 +593,19 @@ describe('Tab Snoozing', () => {
       expect(store.snoozedItems).toEqual([]);
       expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'Invalid snooze record' });
     });
+
+    test('rejects a record with an address Huddle never snoozes, so a wake can never open it', async () => {
+      for (const url of ['chrome://settings/', 'chrome-extension://test-id/options.html', 'javascript:alert(1)', '']) {
+        const store = useMemoryStore({ snoozedItems: [] });
+        chrome.alarms.create.mockClear();
+        const sendResponse = vi.fn();
+        const tabs = [...record.tabs, { url, title: 'S', pinned: false, index: 1 }];
+        await handleRestoreSnoozed({ record: { ...record, tabs } }, sendResponse);
+        expect(store.snoozedItems).toEqual([]);
+        expect(chrome.alarms.create).not.toHaveBeenCalled();
+        expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'Invalid snooze record' });
+      }
+    });
   });
 
   describe('handleListSnoozed', () => {

@@ -1,6 +1,27 @@
 // Background service worker for persistent logging
 console.log('Huddle service worker starting...');
 
+// storage.local holds the OpenRouter key: only Huddle's own pages and this
+// worker may read it, not the link clumper's content script in every web
+// page (L10). Called on every worker start, so it never depends on an install
+// event having run. storage.sync stays readable there: the clumper reads its
+// settings from it.
+if (chrome.storage.local.setAccessLevel) {
+  chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' })
+    .catch((e) => console.warn('[Huddle] storage.local.setAccessLevel failed:', e));
+} else {
+  console.warn('[Huddle] storage.local.setAccessLevel is missing: content scripts can read storage.local');
+}
+
+// Whether a message or port comes from one of Huddle's own pages (the popup,
+// the nap room, Settings, the organize page, the split dialog). Content
+// scripts arrive with the web page's url. No web page can load Huddle's
+// pages: the manifest lists no web_accessible_resources.
+function fromExtensionPage(sender) {
+  return !!sender && sender.id === chrome.runtime.id
+    && typeof sender.url === 'string' && sender.url.startsWith(chrome.runtime.getURL(''));
+}
+
 // ============================================================
 // AI Tab Grouping — Constants and Helpers
 // ============================================================
@@ -1188,6 +1209,11 @@ async function runAiOrganize({ tabId, windowId, start, signal, post }) {
 // the port closing. The page pings while it waits, which keeps the worker
 // awake through a slow answer.
 chrome.runtime.onConnect.addListener((port) => {
+  // A run spends the stored key: only the organize page may start one.
+  if (!fromExtensionPage(port.sender)) {
+    port.disconnect();
+    return;
+  }
   if (port.name !== AI_RUN_PORT) return;
   const tab = port.sender && port.sender.tab;
   let run = null;
@@ -1462,12 +1488,16 @@ async function handleClumpOpenUrls(message, sender, sendResponse) {
   }
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'log') {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Huddle's own pages may send every action; the link clumper's content
+  // script, which runs in web pages, only clumpOpenUrls (L11).
+  if (!fromExtensionPage(sender) && message.action !== 'clumpOpenUrls') {
+    sendResponse({ success: false, error: 'forbidden' });
+  } else if (message.type === 'log') {
     console.log('[Huddle]', message.data.message, ...message.data.args);
     sendResponse({ success: true });
   } else if (message.action === 'clumpOpenUrls') {
-    handleClumpOpenUrls(message, _sender, sendResponse);
+    handleClumpOpenUrls(message, sender, sendResponse);
     return true; // async response
   } else if (message.action === 'sortAllWindows') {
     handleSortAllWindows(message.respectGroups, sendResponse);
@@ -1491,15 +1521,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     handleExtractAllDomains(message.respectGroups, sendResponse);
     return true; // Keep message channel open for async response
   } else if (message.action === 'extractAllDomainsConfirmation') {
-    handleExtractAllDomainsConfirmation(message, _sender, sendResponse);
+    handleExtractAllDomainsConfirmation(message, sender, sendResponse);
     return true; // async response
   } else if (message.action === 'moveAllToSingleWindow') {
     handleMoveAllToSingleWindow(message, sendResponse);
     return true; // Keep message channel open for async response
   } else if (message.action === 'copyTabs') {
-    // scope: 'window' (current window only) | 'all' (every window; default
-    // for callers that omit the field).
-    handleCopyTabs(message.respectGroups, sendResponse, message.scope || 'all');
+    // scope: 'window' (current window only; default for callers that omit
+    // the field) | 'all' (every window).
+    handleCopyTabs(message.respectGroups, sendResponse, message.scope || 'window');
     return true; // Keep message channel open for async response
   } else if (message.action === 'flattenWindow') {
     handleFlattenWindow(sendResponse);
@@ -1514,11 +1544,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     handleAiGroupTabs(message, sendResponse);
     return true;
   } else if (message.action === 'applyAiProposal') {
-    handleApplyAiProposal(message, _sender, sendResponse);
+    handleApplyAiProposal(message, sender, sendResponse);
     return true;
   } else if (message.action === 'cancelAiProposal') {
-    if (_sender.tab) {
-      chrome.tabs.remove(_sender.tab.id);
+    if (sender.tab) {
+      chrome.tabs.remove(sender.tab.id);
     }
     sendResponse({ success: true });
   } else if (message.action === 'saveAiConfig') {
@@ -2520,7 +2550,7 @@ async function restoreSplitPairs(pairs) {
   return restored;
 }
 
-async function handleCopyTabs(respectGroups = true, sendResponse, scope = 'all') {
+async function handleCopyTabs(respectGroups = true, sendResponse, scope = 'window') {
   try {
     const scopeLabel = scope === 'window' ? 'current window' : 'all windows';
     console.log(
@@ -3549,7 +3579,9 @@ async function handleCancelSnooze(message, sendResponse) {
 async function handleRestoreSnoozed(message, sendResponse) {
   try {
     const record = message.record;
-    if (!record || typeof record.id !== 'string' || typeof record.wakeAt !== 'number' || !Array.isArray(record.tabs)) {
+    // Only what Huddle would have snoozed: a wake opens these URLs.
+    if (!record || typeof record.id !== 'string' || typeof record.wakeAt !== 'number' || !Array.isArray(record.tabs)
+      || !record.tabs.every((t) => t && isSnoozeableUrl(t.url))) {
       sendResponse({ success: false, error: 'Invalid snooze record' });
       return;
     }

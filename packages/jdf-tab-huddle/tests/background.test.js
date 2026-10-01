@@ -1,3 +1,5 @@
+import { popupSender, dialogSender as dialogPageSender } from './senders.js';
+
 describe('Background Script', () => {
 
   describe('lexHost function', () => {
@@ -287,7 +289,7 @@ describe('Background Script', () => {
       const mockSendResponse = vi.fn();
       const message = { type: 'log', data: { message: 'test', args: [] } };
       
-      chrome.runtime.onMessage.callListeners(message, {}, mockSendResponse);
+      chrome.runtime.onMessage.callListeners(message, popupSender, mockSendResponse);
       
       expect(mockSendResponse).toHaveBeenCalledWith({ success: true });
     });
@@ -464,7 +466,7 @@ describe('Split domains confirmation survives a worker restart', () => {
   const allTabs = domains.flatMap((d, i) => [1, 2].map((n) => ({
     id: i * 10 + n, url: `https://${d}.test/${n}`, pinned: false, groupId: -1, windowId: 1, index: i * 2 + n,
   })));
-  const dialogSender = { tab: { id: DIALOG_TAB } };
+  const dialogSender = { ...dialogPageSender, tab: { id: DIALOG_TAB } };
   const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
   // Opens the dialog through the real handler; returns the popup's sendResponse.
