@@ -261,8 +261,8 @@ test('all windows are sorted after global dedup', async ({ sw, context, extensio
   }
 });
 
-// #46 - Window left empty after dedup
-test('window left empty after global dedup gets new tab page', async ({
+// #46 - A window whose only tab is a duplicate closes
+test('a window whose only tab is a global duplicate is closed', async ({
   sw,
   context,
   extensionId,
@@ -300,19 +300,8 @@ test('window left empty after global dedup gets new tab page', async ({
     expect(w1Urls).toContain(URLS.EXAMPLE_A);
     expect(w1Urls).toContain(URLS.TEST_A);
 
-    // W2: all tabs were duplicates, so Chrome should auto-create a new tab page
-    // or the window may have been closed. Check either scenario.
-    const allWindows = await getAllWindows(sw);
-    const w2 = allWindows.find(w => w.id === w2Id);
-    if (w2) {
-      // If window still exists, it should have a new tab page (chrome://newtab or about:blank)
-      expect(w2.tabs.length).toBeGreaterThanOrEqual(1);
-      const w2Urls = w2.tabs.map(t => t.url);
-      const hasNewTabPage = w2Urls.some(
-        u => u === 'chrome://newtab/' || u === 'about:blank' || u === 'chrome://new-tab-page/'
-      );
-      expect(hasNewTabPage).toBe(true);
-    }
-    // If window was closed by Chrome (no tabs left), that's also acceptable
+    // W2's only tab was a duplicate: closing it closes W2, and nothing (no
+    // New Tab) is put in its place.
+    await expect.poll(async () => (await getAllWindows(sw)).map(w => w.id)).not.toContain(w2Id);
   }
 });

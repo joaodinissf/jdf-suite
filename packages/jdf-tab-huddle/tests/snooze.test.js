@@ -466,6 +466,7 @@ describe('Tab Snoozing', () => {
       };
       useMemoryStore({ snoozedItems: [record] });
       chrome.windows.getLastFocused.mockRejectedValue(new Error('no window'));
+      chrome.windows.getAll.mockResolvedValue([]);
       chrome.windows.create.mockRejectedValue(new Error('cannot create window'));
       vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -770,9 +771,10 @@ describe('Tab Snoozing', () => {
         windowId: 1, tabs: [{ url: 'https://example.com/a', title: 'A', pinned: false, index: 0 }],
       };
       const store = useMemoryStore({ snoozedItems: [record] });
-      // Both the primary lookup and the create-a-window fallback fail, so
+      // No window is open and the create-a-window fallback fails, so
       // getRestoreTargetWindowId (and therefore restoreSnoozedRecord) throws.
       chrome.windows.getLastFocused.mockRejectedValue(new Error('no window'));
+      chrome.windows.getAll.mockResolvedValue([]);
       chrome.windows.create.mockRejectedValue(new Error('cannot create window'));
 
       const before = Date.now();
@@ -815,6 +817,75 @@ describe('Tab Snoozing', () => {
         'snooze-wake:r7',
         expect.objectContaining({ message: '2 tabs are back — 1 could not be reopened' })
       );
+    });
+  });
+
+  describe('where a wake opens (M6, L13)', () => {
+    const twoTabs = (id) => ({
+      id, type: 'tabs', summary: '2 selected tabs', wakeAt: at(4, 9), preset: 'tomorrow', windowId: 1,
+      tabs: [
+        { url: 'https://a/', title: 'A', pinned: false, index: 0 },
+        { url: 'https://b/', title: 'B', pinned: false, index: 1 },
+      ],
+    });
+    let next;
+    beforeEach(() => {
+      next = 500;
+      chrome.tabs.create.mockImplementation(async (props) => ({ id: next++, windowId: props.windowId }));
+      chrome.tabs.remove.mockResolvedValue(undefined);
+    });
+
+    test('with an incognito window focused, the tabs open in a regular window', async () => {
+      useMemoryStore({ snoozedItems: [twoTabs('w1')] });
+      chrome.windows.getLastFocused.mockResolvedValue({ id: 3, incognito: true });
+      chrome.windows.getAll.mockResolvedValue([{ id: 3, incognito: true }, { id: 5, incognito: false }]);
+
+      await wakeSnoozedRecord('w1', { notify: false });
+
+      expect(chrome.tabs.create.mock.calls.map(([p]) => [p.windowId, p.url])).toEqual([[5, 'https://a/'], [5, 'https://b/']]);
+      expect(chrome.windows.create).not.toHaveBeenCalled();
+    });
+
+    test('with only incognito windows open, a regular window is made for them', async () => {
+      useMemoryStore({ snoozedItems: [twoTabs('w2')] });
+      chrome.windows.getLastFocused.mockResolvedValue({ id: 3, incognito: true });
+      chrome.windows.getAll.mockResolvedValue([{ id: 3, incognito: true }]);
+      chrome.windows.create.mockResolvedValue({ id: 40, incognito: false, tabs: [{ id: 400 }] });
+
+      await wakeSnoozedRecord('w2', { notify: false });
+
+      expect(chrome.windows.create).toHaveBeenCalledWith({ focused: false });
+      expect(chrome.tabs.create.mock.calls.map(([p]) => p.windowId)).toEqual([40, 40]);
+    });
+
+    test('with no window open, the new window holds the woken tabs and no New Tab', async () => {
+      const store = useMemoryStore({ snoozedItems: [twoTabs('w3')] });
+      chrome.windows.getLastFocused.mockRejectedValue(new Error('No last-focused window'));
+      chrome.windows.getAll.mockResolvedValue([]);
+      chrome.windows.create.mockResolvedValue({ id: 40, incognito: false, tabs: [{ id: 400 }] });
+
+      await wakeSnoozedRecord('w3', { notify: false });
+
+      expect(chrome.tabs.create.mock.calls.map(([p]) => p.windowId)).toEqual([40, 40]);
+      expect(chrome.tabs.remove.mock.calls).toEqual([[400]]);
+      // The New Tab goes only once a woken tab is in, so the window never closes.
+      expect(chrome.tabs.remove.mock.invocationCallOrder[0]).toBeGreaterThan(chrome.tabs.create.mock.invocationCallOrder[0]);
+      expect(store.snoozedItems).toEqual([]);
+    });
+
+    test('with no window open and every tab failing, the New Tab stays so the window does not close', async () => {
+      const record = twoTabs('w4');
+      const store = useMemoryStore({ snoozedItems: [record] });
+      chrome.windows.getLastFocused.mockRejectedValue(new Error('No last-focused window'));
+      chrome.windows.getAll.mockResolvedValue([]);
+      chrome.windows.create.mockResolvedValue({ id: 40, incognito: false, tabs: [{ id: 400 }] });
+      chrome.tabs.create.mockRejectedValue(new Error('Cannot open'));
+
+      await wakeSnoozedRecord('w4', { notify: false });
+
+      expect(chrome.tabs.create).toHaveBeenCalledTimes(2);
+      expect(chrome.tabs.remove).not.toHaveBeenCalled();
+      expect(store.snoozedItems).toEqual([record]);
     });
   });
 
