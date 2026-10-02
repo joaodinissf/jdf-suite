@@ -1808,9 +1808,10 @@ async function handleRemoveDuplicatesGlobally(respectGroups = true, sendResponse
     const windows = await chrome.windows.getAll({ populate: true });
     console.log('[Huddle] Removing duplicates globally across all windows', respectGroups ? '(respecting groups)' : '(individual tabs)');
 
-    // Flatten all tabs from all windows for global deduplication
-    const allTabs = windows.flatMap(window => window.tabs);
-    const { tabsToRemove } = findDuplicateTabs([allTabs], respectGroups);
+    // One pass over all regular windows and one over all incognito windows:
+    // a page open in both kinds of window is not a duplicate.
+    const tabsByKind = [false, true].map((inc) => windows.filter((w) => !!w.incognito === inc).flatMap((w) => w.tabs));
+    const { tabsToRemove } = findDuplicateTabs(tabsByKind, respectGroups);
 
     if (tabsToRemove.length > 0) {
       await chrome.tabs.remove(tabsToRemove);
@@ -1833,14 +1834,14 @@ async function handleRemoveDuplicatesGlobally(respectGroups = true, sendResponse
   }
 }
 
-// Helper function to find duplicate tabs while considering tab groups
+// Find duplicate tabs, considering tab groups if respectGroups.
+// Each array is deduplicated on its own: one window, or (for global dedupe)
+// all regular windows and, separately, all incognito windows.
 function findDuplicateTabs(tabArrays, respectGroups = true) {
-  const urlSeen = new Map();
   const tabsToRemove = [];
 
-  // Process each array of tabs (either per window or globally)
   for (const tabs of tabArrays) {
-    const localUrlSeen = new Map();
+    const arrayUrlSeen = new Map();
 
     // Group tabs by their group membership if respecting groups
     const tabsByGroup = new Map();
@@ -1869,14 +1870,10 @@ function findDuplicateTabs(tabArrays, respectGroups = true) {
 
         const url = tab.pendingUrl || tab.url;
 
-        // For per-window deduplication, track within each window/group
-        // For global deduplication, track across all windows but respect groups if enabled
-        // Groups mode always dedups per-group (groupUrlSeen is scoped to a single
-        // window+group pair), regardless of how many tab arrays were passed in —
-        // a URL repeated in two different groups is NOT a duplicate.
-        const seenMap = respectGroups
-          ? groupUrlSeen
-          : (tabArrays.length === 1 ? urlSeen : localUrlSeen);
+        // Groups mode dedups within each group of the array: a URL repeated
+        // in two different groups is NOT a duplicate. Flat mode dedups across
+        // the whole array.
+        const seenMap = respectGroups ? groupUrlSeen : arrayUrlSeen;
 
         if (seenMap.has(url)) {
           // Duplicate. Prefer keeping the copy in a Split View — closing it
@@ -1886,19 +1883,12 @@ function findDuplicateTabs(tabArrays, respectGroups = true) {
           if (tabSplitViewId(tab) !== null && tabSplitViewId(kept) === null) {
             tabsToRemove.push(kept.id);
             seenMap.set(url, tab);
-            if (tabArrays.length === 1) {
-              urlSeen.set(url, tab);
-            }
           } else {
             tabsToRemove.push(tab.id);
           }
         } else {
           // First occurrence - keep it
           seenMap.set(url, tab);
-          if (tabArrays.length === 1) {
-            // For global deduplication, also track in the global map
-            urlSeen.set(url, tab);
-          }
         }
       }
     }
@@ -3170,7 +3160,12 @@ async function handleSnoozeGroup(message, sendResponse) {
 const snoozeNotificationTargets = new Map();
 
 // Find the window to restore tab/tabs/group records into: the last-focused
-// normal window, creating one if none exists.
+// regular window, else any regular window, else a new one. Never an incognito
+// window (with "Allow in Incognito" on they are 'normal' windows too): the
+// tabs were snoozed from regular windows, and in incognito they would come
+// back without the user's logins and be lost with that window. Returns
+// { windowId, placeholderTabId }; placeholderTabId is the New Tab of a window
+// created here, which the caller removes once a tab has opened in it.
 // Memoize the in-flight lookup so concurrent wakes (e.g. several alarms
 // firing at once with no normal window open) share one target window instead
 // of each creating its own and splitting the restore across windows.
@@ -3180,15 +3175,15 @@ async function getRestoreTargetWindowId() {
   if (restoreTargetInFlight) return restoreTargetInFlight;
   restoreTargetInFlight = (async () => {
     try {
-      const win = await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
-      if (win && win.id !== undefined && win.id !== null) {
-        return win.id;
-      }
+      const win = await chrome.windows.getLastFocused({ windowTypes: ['normal'] }).catch(() => null);
+      if (win && !win.incognito && win.id != null) return { windowId: win.id };
+      const regular = (await chrome.windows.getAll({ windowTypes: ['normal'] })).find((w) => !w.incognito);
+      if (regular) return { windowId: regular.id };
     } catch (_e) {
       // fall through to creating a window
     }
     const created = await chrome.windows.create({ focused: false });
-    return created.id;
+    return { windowId: created.id, placeholderTabId: created.tabs && created.tabs[0] && created.tabs[0].id };
   })();
   try {
     return await restoreTargetInFlight;
@@ -3290,8 +3285,9 @@ async function restoreSnoozedRecord(record) {
     return { createdCount, failedCount, windowId, firstTabId };
   }
 
-  // tab / tabs / group — recreate into the last-focused normal window.
-  windowId = await getRestoreTargetWindowId();
+  // tab / tabs / group — recreate into the last-focused regular window.
+  const target = await getRestoreTargetWindowId();
+  windowId = target.windowId;
   const createdTabIds = [];
   for (const t of record.tabs) {
     try {
@@ -3312,6 +3308,12 @@ async function restoreSnoozedRecord(record) {
       failedCount++;
       console.warn('[Huddle] Failed to restore snoozed tab:', t.url, e && e.message);
     }
+  }
+  // A window created for this wake opened with a New Tab that isn't one of
+  // the snoozed tabs. Once a tab is in, the window can't close by removing it.
+  // (A concurrent wake sharing the window may remove it first; then this fails.)
+  if (target.placeholderTabId !== undefined && createdCount > 0) {
+    chrome.tabs.remove(target.placeholderTabId).catch(() => {});
   }
 
   if (record.type === 'group' && createdTabIds.length > 0) {

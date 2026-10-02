@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Unit Tests**: 835 tests across 21 Vitest files (mocked Chrome APIs)
+- **Unit Tests**: 847 tests across 21 Vitest files (mocked Chrome APIs)
 - **E2E Tests**: 121 tests across 18 Playwright spec files (real Chromium browser)
-- **Total**: 956 tests
+- **Total**: 968 tests
 
 ## Unit Tests (Vitest)
 
@@ -12,9 +12,9 @@
 
 | Suite | Tests | Coverage |
 |---|---|---|
-| routing.test.js | 71 | Every worker action routed from its real caller; the table checked against the dispatcher's if/else chain and each page's scripts |
+| routing.test.js | 79 | Every worker action routed from its real caller; the table checked against the dispatcher's if/else chain and each page's scripts; which tabs each Deduplicate closes |
 | background.test.js | 46 | Worker logic: sort, dedupe, split domains, results |
-| snooze.test.js | 89 | Snoozing and waking: records, custom times, window groups, alarms, failed reads, a wake cut short and done again by a new worker |
+| snooze.test.js | 93 | Snoozing and waking: records, custom times, window groups, alarms, failed reads, a wake cut short and done again by a new worker, the window a wake opens in |
 | snooze-ui.test.js | 33 | Snooze controls in the popup and the nap room, including the waking state and failed reads |
 | nap-room.test.js | 22 | The nap room page |
 | popup.test.js | 73 | Popup UI and message passing |
@@ -52,7 +52,7 @@ Real browser tests that load the extension into Chromium and verify end-to-end b
 | extract-all-domains.spec.js | 8 | One window per domain + misc window (confirmation dialog) |
 | remove-duplicates-window.spec.js | 9 | Dedup within window (same/cross-group, pinned, pendingUrl) |
 | remove-duplicates-all-windows.spec.js | 4 | Dedup each window independently |
-| remove-duplicates-globally.spec.js | 7 | Cross-window dedup (group-aware, empty window handling) |
+| remove-duplicates-globally.spec.js | 7 | Cross-window dedup (group-aware; a window left empty closes) |
 | move-all-to-single-window.spec.js | 7 | Consolidate tabs (pinned immunity, group recreation) |
 | copy-all-tabs.spec.js | 8 | Clipboard copy, window vs all-windows scope |
 | flatten-window.spec.js | 3 | Ungrouping, pinned immunity |

@@ -27,7 +27,7 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 ### Duplicate Management
 - **Remove Duplicates (Window)**: Remove duplicates within current window
 - **Remove Duplicates (All Windows Per Window)**: Remove duplicates within each window separately
-- **Remove Duplicates (Globally)**: Remove duplicates across all windows
+- **Remove Duplicates (Globally)**: Remove duplicates across all windows (with Huddle allowed in Incognito, regular and incognito windows are deduplicated separately: a page open in both keeps both)
 
 ### Split View
 - **Compact** (Chrome 155+): pairs neighbouring tabs in the current window into Split Views — (1,2), (3,4), … — without moving any tab. Chrome only splits two adjacent tabs with the same pinned state and tab group, so pairing restarts at every pinned or group boundary and at every tab already in a split; an odd tab left at the end of a run stays as it is.
@@ -69,7 +69,7 @@ The link-clumping feature is inspired by [linkclump](https://github.com/benblack
 ### For Developers
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (835 tests)
+pnpm test              # Run unit tests (847 tests)
 pnpm test:e2e          # Run E2E tests (121 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
@@ -100,7 +100,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Confirmation dialog for large operations
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (835 tests in 21 files)
+├── tests/                         # Vitest unit tests (847 tests in 21 files)
 │   ├── setup.js                   # Chrome API mock, page scripts loaded, dispatch() to the worker
 │   ├── senders.js                 # The sender each caller (popup, pages, content script) arrives with
 │   ├── routing.test.js            # Every worker action, routed from its real caller
@@ -123,7 +123,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ## Testing
 
 ### Unit Tests (Vitest + jest-chrome shim)
-835 tests across 21 files covering core logic with mocked Chrome APIs:
+847 tests across 21 files covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report

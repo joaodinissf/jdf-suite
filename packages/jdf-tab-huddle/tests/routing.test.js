@@ -461,6 +461,45 @@ describe('every worker action, routed from its real caller', () => {
   });
 });
 
+// Which tabs each Deduplicate closes, in the fake browser plus: window 1 gains
+// an ungrouped b.test (16), window 2 gains a.test (22) and b.test (23). In
+// Groups mode a URL repeats only within one group (ungrouped counts as one);
+// "this window" and "each window" never compare across windows (L82).
+describe('which tabs Deduplicate closes', () => {
+  beforeEach(() => {
+    installFakeBrowser();
+    windows[0].tabs.push(tab(16, 1, 5, 'https://b.test/1'));
+    windows[1].tabs.push(tab(22, 2, 1, 'https://a.test/1'), tab(23, 2, 2, 'https://b.test/1'));
+  });
+
+  test.each([
+    ['removeDuplicatesWindow', true, [13]],
+    ['removeDuplicatesWindow', false, [13, 16]],
+    ['removeDuplicatesAllWindows', true, [13]],
+    ['removeDuplicatesAllWindows', false, [13, 16]],
+    ['removeDuplicatesGlobally', true, [13, 22, 23]],
+    ['removeDuplicatesGlobally', false, [13, 16, 22, 23]],
+  ])('%s, respectGroups=%s, closes %j', async (action, respectGroups, closed) => {
+    const reply = await dispatch({ action, respectGroups }, popupSender);
+    expect(reply).toMatchObject({ success: true, removed: closed.length });
+    expect(chrome.tabs.remove.mock.calls).toEqual([[closed]]);
+  });
+
+  // With "Allow in Incognito" on: a page open in a regular and an incognito
+  // window is not a duplicate; repeats within incognito windows still are (L14).
+  test.each([
+    [true, [13, 22, 23, 32]],
+    [false, [13, 16, 22, 23, 32]],
+  ])('removeDuplicatesGlobally, respectGroups=%s, keeps regular and incognito tabs apart', async (respectGroups, closed) => {
+    windows.push({
+      id: 3, focused: false, type: 'normal', incognito: true,
+      tabs: [31, 32].map((id, i) => tab(id, 3, i, 'https://a.test/1', { incognito: true })),
+    });
+    await dispatch({ action: 'removeDuplicatesGlobally', respectGroups }, popupSender);
+    expect(chrome.tabs.remove.mock.calls).toEqual([[closed]]);
+  });
+});
+
 describe('the routing table is complete', () => {
   test('the dispatcher is an if/else chain whose every branch is understood, ending in unknown-action', () => {
     const branches = dispatcherBranches();
