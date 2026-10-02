@@ -20,7 +20,7 @@ jobs:
       run: uv run python scripts/refresh_revs.py
     - name: Run unit tests against the refreshed fragments
       run: uv run --extra dev pytest tests/test_generate.py -q
-    - uses: peter-evans/create-pull-request@v7
+    - uses: peter-evans/create-pull-request@v8
       with:
         commit-message: 'chore(hooks): refresh pre-commit revs'
         title: 'chore(hooks): refresh pre-commit revs'
