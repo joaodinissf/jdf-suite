@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Unit Tests**: 900 tests across 21 Vitest files (mocked Chrome APIs)
-- **E2E Tests**: 123 tests across 19 Playwright spec files (real Chromium browser)
-- **Total**: 1023 tests
+- **Unit Tests**: 917 tests across 21 Vitest files (mocked Chrome APIs)
+- **E2E Tests**: 124 tests across 19 Playwright spec files (real Chromium browser)
+- **Total**: 1041 tests
 
 ## Unit Tests (Vitest)
 
@@ -13,7 +13,7 @@
 | Suite | Tests | Coverage |
 |---|---|---|
 | routing.test.js | 128 | Every worker action routed from its real caller; the table checked against the dispatcher's if/else chain and each page's scripts; which tabs each Deduplicate closes |
-| background.test.js | 46 | Worker logic: sort, dedupe, split domains, results |
+| background.test.js | 50 | Worker logic: sort, dedupe, split domains, results |
 | snooze.test.js | 94 | Snoozing and waking: records, custom times, window groups, alarms, failed reads, a wake cut short and done again by a new worker, the window a wake opens in |
 | snooze-ui.test.js | 33 | Snooze controls in the popup and the nap room, including the waking state and failed reads |
 | nap-room.test.js | 22 | The nap room page |
@@ -21,7 +21,7 @@
 | popup-feedback.test.js | 23 | Popup result and error messages |
 | keyboard.test.js | 28 | Popup hotkeys |
 | split-view.test.js | 45 | Split view compact, expand and repair |
-| confirmation-dialog.test.js | 15 | Split domains dialog |
+| confirmation-dialog.test.js | 28 | Split domains dialog |
 | content-clumper.test.js | 58 | Link clumping content script: only trusted events, the confirm and the 25 cap, letting go on blur and hidden tabs, Cmd+Z, an orphaned copy after an update; the worker's top-frame, http(s) and 25-link checks |
 | options.test.js | 31 | Settings page |
 | options-ai.test.js | 18 | Settings: the AI section |
@@ -61,7 +61,7 @@ Real browser tests that load the extension into Chromium and verify end-to-end b
 | popup-ui.spec.js | 8 | Mode switching, preference persistence, button visibility |
 | keyboard.spec.js | 4 | Popup hotkeys |
 | link-clumping.spec.js | 2 | A page's own events open nothing; a real drag opens 5 at once, and over 25 links asks (answered through `page.on('dialog')`) and opens the first 25 |
-| confirmation-dialog.spec.js | 4 | Window count display, confirm/cancel flow |
+| confirmation-dialog.spec.js | 5 | Window count display, confirm/cancel flow |
 | snooze.spec.js | 13 | Snooze and wake; the Group button follows the active tab |
 | ai-flow.spec.js | 18 | Organize with AI against a fake OpenRouter; two-window cases for what is sent and what Apply moves |
 | trust-boundary.spec.js | 2 | The content script in a web page: no `storage.local` (the key), `storage.sync` still read, only `clumpOpenUrls` accepted, no organize port |

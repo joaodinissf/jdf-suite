@@ -112,6 +112,12 @@ test('61: Confirm proceeds', async ({ sw, context, extensionId }) => {
     const tabs = win.tabs.filter(t => !t.pinned);
     expect(tabs.length).toBe(2);
   }
+
+  // The dialog stays open and says what the split did; only Close is left.
+  await expect(dialogPage.locator('#dialogResult')).toHaveText('Split into 6 windows');
+  await expect(dialogPage.locator('#confirmButton')).toBeHidden();
+  await expect(dialogPage.locator('#cancelButton')).toHaveText('Close');
+  await expect(dialogPage.locator('#cancelButton')).toBeFocused();
 });
 
 test('62: Cancel stops', async ({ sw, context, extensionId }) => {
@@ -192,4 +198,31 @@ test('63: Operation summary correct', async ({ sw, context, extensionId }) => {
   // Cancel to clean up
   await dialogPage.click('#cancelButton');
   await sleep(500);
+});
+
+test('64: Keyboard: Cancel has the focus and Escape cancels', async ({ sw, context }) => {
+  await createTabs(sw, [
+    URLS.EXAMPLE_A, URLS.EXAMPLE_B,
+    URLS.GITHUB_A, URLS.GITHUB_B,
+    URLS.TEST_A, URLS.TEST_B,
+    URLS.MOZILLA_A, URLS.MOZILLA_B,
+    URLS.WIKI_A, URLS.WIKI_B,
+    URLS.SO_A, URLS.SO_B,
+  ]);
+
+  sw.evaluate(async (respectGroups) => {
+    handleExtractAllDomains(respectGroups, () => {});
+  }, false);
+
+  const dialogPage = await findDialogPage(context);
+  await expect(dialogPage.locator('#cancelButton')).toBeFocused();
+  // The popup was in Flat mode, and the dialog says what that means.
+  await expect(dialogPage.locator('#operationList')).toContainText('Tabs leave their groups (Flat mode)');
+
+  const closed = dialogPage.waitForEvent('close');
+  // Escape cancels and the dialog closes its own tab, which can happen before
+  // the key press itself resolves.
+  await dialogPage.keyboard.press('Escape').catch(() => {});
+  await closed;
+  expect(await getAllWindows(sw)).toHaveLength(1);
 });

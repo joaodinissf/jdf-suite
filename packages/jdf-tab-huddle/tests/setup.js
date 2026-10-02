@@ -164,7 +164,6 @@ const backgroundWrapper = `
   if (typeof handleExtractDomain !== 'undefined') global.handleExtractDomain = handleExtractDomain;
   if (typeof handleExtractAllDomains !== 'undefined') global.handleExtractAllDomains = handleExtractAllDomains;
   if (typeof handleExtractAllDomainsConfirmation !== 'undefined') global.handleExtractAllDomainsConfirmation = handleExtractAllDomainsConfirmation;
-  if (typeof splitConfirmWaiters !== 'undefined') global.splitConfirmWaiters = splitConfirmWaiters;
   if (typeof handleMoveAllToSingleWindow !== 'undefined') global.handleMoveAllToSingleWindow = handleMoveAllToSingleWindow;
   if (typeof formatTabsAsText !== 'undefined') global.formatTabsAsText = formatTabsAsText;
   if (typeof handleCopyTabs !== 'undefined') global.handleCopyTabs = handleCopyTabs;

@@ -48,9 +48,10 @@ test('13: Extracts matching domain tabs to new window', async ({ sw, context }) 
   }
   await sleep(300);
 
-  // Use EXAMPLE_A as the active tab for extraction
-  const targetTabId = tabIds[0];
-  const targetUrl = URLS.EXAMPLE_A;
+  // Extract from EXAMPLE_C, which sorts last: the new window starts with it
+  // and gets A and B after it, so only the sort puts the window in order.
+  const targetTabId = tabIds[2];
+  const targetUrl = URLS.EXAMPLE_C;
 
   await sw.evaluate(async (params) => {
     await new Promise((resolve) => {

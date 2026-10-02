@@ -43,11 +43,14 @@ describe('Confirmation Dialog', () => {
   beforeEach(() => {
     // Setup minimal DOM for testing
     document.body.innerHTML = `
-      <div id="windowCount">Loading...</div>
-      <ul id="operationList"></ul>
-      <p id="dialogError" hidden></p>
-      <button id="confirmButton">Confirm</button>
-      <button id="cancelButton">Cancel</button>
+      <main>
+        <div id="windowCount">Loading...</div>
+        <ul id="operationList"></ul>
+        <p id="dialogResult" hidden></p>
+        <p id="dialogError" hidden></p>
+        <button id="confirmButton">Confirm</button>
+        <button id="cancelButton">Cancel</button>
+      </main>
     `;
     // A real close would tear down jsdom's window for the rest of the file.
     window.close = vi.fn();
@@ -68,22 +71,102 @@ describe('Confirmation Dialog', () => {
       expect(typeof setupEventListeners).toBe('function');
       expect(() => setupEventListeners()).not.toThrow();
     });
+  });
 
-    test('respond function should send Chrome messages', async () => {
-      expect(typeof respond).toBe('function');
-      chrome.runtime.sendMessage.mockResolvedValue({ success: true });
+  // The page is loaded as it is in Chrome (beforeEach), so these go through
+  // its real listeners.
+  describe('Buttons and keys', () => {
+    const click = (id) => document.getElementById(id).click();
+    const key = (init) => document.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ...init }));
+    const sent = () => chrome.runtime.sendMessage.mock.calls.map(([m]) => m);
+
+    test('Confirm sends confirmed: true', async () => {
+      chrome.runtime.sendMessage.mockResolvedValue({ success: true, windows: 3 });
+      click('confirmButton');
+      expect(sent()).toEqual([{ action: 'extractAllDomainsConfirmation', confirmed: true }]);
+    });
+
+    test('Cancel sends confirmed: false', async () => {
+      chrome.runtime.sendMessage.mockResolvedValue({ success: true, cancelled: true });
+      click('cancelButton');
+      expect(sent()).toEqual([{ action: 'extractAllDomainsConfirmation', confirmed: false }]);
+    });
+
+    test('Cancel has the focus when the page opens', () => {
+      expect(document.activeElement).toBe(document.getElementById('cancelButton'));
+    });
+
+    test('Escape cancels', () => {
+      chrome.runtime.sendMessage.mockResolvedValue({ success: true, cancelled: true });
+      key({ key: 'Escape' });
+      expect(sent()).toEqual([{ action: 'extractAllDomainsConfirmation', confirmed: false }]);
+    });
+
+    test.each([['Cmd', { metaKey: true }], ['Ctrl', { ctrlKey: true }]])('%s+Enter confirms', (_name, mods) => {
+      chrome.runtime.sendMessage.mockResolvedValue({ success: true, windows: 3 });
+      key({ key: 'Enter', ...mods });
+      expect(sent()).toEqual([{ action: 'extractAllDomainsConfirmation', confirmed: true }]);
+    });
+
+    test('plain Enter is left to the focused button', () => {
+      key({ key: 'Enter' });
+      expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    });
+
+    test('while the split runs, Confirm says so, the page is busy and the keys do nothing', async () => {
+      let answer;
+      chrome.runtime.sendMessage.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+      click('confirmButton');
+
+      const confirmBtn = document.getElementById('confirmButton');
+      expect(confirmBtn.textContent).toBe('Creating 3 windows…');
+      expect(confirmBtn.disabled).toBe(true);
+      expect(document.getElementById('cancelButton').disabled).toBe(true);
+      expect(document.querySelector('main').getAttribute('aria-busy')).toBe('true');
+      key({ key: 'Escape' });
+      key({ key: 'Enter', metaKey: true });
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledTimes(1);
+
+      answer({ success: true, windows: 3, notMoved: 0, sortFailed: false });
+      await vi.waitFor(() => expect(document.getElementById('dialogResult').hidden).toBe(false));
+      expect(document.querySelector('main').hasAttribute('aria-busy')).toBe(false);
+    });
+  });
+
+  describe("The split's result", () => {
+    test('a Confirm shows what the split did and leaves only Close, which closes the tab', async () => {
+      chrome.runtime.sendMessage.mockResolvedValue({ success: true, windows: 6, notMoved: 2, sortFailed: true });
 
       await respond(true);
-      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
-        action: 'extractAllDomainsConfirmation',
-        confirmed: true,
-      });
 
-      await respond(false);
-      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
-        action: 'extractAllDomainsConfirmation',
-        confirmed: false,
-      });
+      const resultEl = document.getElementById('dialogResult');
+      expect(resultEl.hidden).toBe(false);
+      expect(resultEl.textContent).toBe("Split into 6 windows; 2 tabs couldn't be moved; couldn't sort, try Sort");
+      expect(document.getElementById('dialogError').hidden).toBe(true);
+      expect(document.getElementById('confirmButton').hidden).toBe(true);
+      const closeBtn = document.getElementById('cancelButton');
+      expect(closeBtn.textContent).toBe('Close');
+      expect(closeBtn.disabled).toBe(false);
+      expect(document.activeElement).toBe(closeBtn);
+      expect(window.close).not.toHaveBeenCalled();
+
+      closeBtn.click();
+      expect(window.close).toHaveBeenCalled();
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    test('a clean split says only how many windows it made', async () => {
+      chrome.runtime.sendMessage.mockResolvedValue({ success: true, windows: 1, notMoved: 0, sortFailed: false });
+      await respond(true);
+      expect(document.getElementById('dialogResult').textContent).toBe('Split into 1 window');
+    });
+
+    test('Escape closes the tab once the result is shown', async () => {
+      chrome.runtime.sendMessage.mockResolvedValue({ success: true, windows: 3 });
+      await respond(true);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(window.close).toHaveBeenCalled();
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -102,6 +185,7 @@ describe('Confirmation Dialog', () => {
       const cancelBtn = document.getElementById('cancelButton');
       expect(cancelBtn.disabled).toBe(false);
       expect(cancelBtn.textContent).toBe('Close');
+      expect(document.activeElement).toBe(cancelBtn);
       expect(window.close).not.toHaveBeenCalled();
     });
 
@@ -149,19 +233,36 @@ describe('Confirmation Dialog', () => {
       expect(html).toContain('<strong>2 windows</strong> will be created, one for each domain with 2+ tabs');
       expect(html).toContain('<strong>1 miscellaneous window</strong> will be created for 3 single-tab domains');
     });
+  });
 
-    test('setupEventListeners should attach click handlers', () => {
-      const confirmBtn = document.getElementById('confirmButton');
-      const cancelBtn = document.getElementById('cancelButton');
+  describe('What the page says', () => {
+    const html = readFileSync(resolve(__dirname, '../src/confirmation-dialog.html'), 'utf8');
 
-      // Mock addEventListener to verify it's called
-      confirmBtn.addEventListener = vi.fn();
-      cancelBtn.addEventListener = vi.fn();
+    test('it is called Split domains, like the button that opens it', () => {
+      expect(html).toContain('<title>Huddle — Split domains</title>');
+      expect(html).toContain('<h1>Split domains</h1>');
+      expect(html).not.toMatch(/extract/i);
+      updateContent();
+      expect(document.getElementById('operationList').innerHTML).toContain('sorted alphabetically by URL after splitting');
+    });
 
-      setupEventListeners();
+    test('one single-tab domain is singular', () => {
+      setLocationSearch('?extractable=5&single=1');
+      loadConfirmationDialog();
+      updateContent();
+      expect(document.getElementById('operationList').innerHTML).toContain('will be created for 1 single-tab domain</li>');
+    });
 
-      expect(confirmBtn.addEventListener).toHaveBeenCalledWith('click', expect.any(Function));
-      expect(cancelBtn.addEventListener).toHaveBeenCalledWith('click', expect.any(Function));
+    test.each([
+      ['keep', 'Tab groups are kept', 'Tabs leave their groups'],
+      ['flat', 'Tabs leave their groups (Flat mode)', 'Tab groups are kept'],
+    ])('groups=%s says "%s"', (mode, line, other) => {
+      setLocationSearch(`?extractable=6&single=0&groups=${mode}`);
+      loadConfirmationDialog();
+      updateContent();
+      const list = document.getElementById('operationList').innerHTML;
+      expect(list).toContain(`<li>${line}</li>`);
+      expect(list).not.toContain(other);
     });
   });
 
