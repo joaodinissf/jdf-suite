@@ -163,10 +163,15 @@ test('22: Confirmation >5 windows - confirm', async ({ sw, context, extensionId 
   // After confirmation, 6 domain windows should be created
   const allWindows = await getAllWindows(sw);
   const nonPopupWindows = allWindows.filter(w =>
-    !w.tabs.some(t => t.url.includes('popup.html'))
+    !w.tabs.some(t => t.url.includes('popup.html') || t.url.includes('confirmation-dialog.html'))
   );
 
   expect(nonPopupWindows.length).toBe(6);
+
+  // The popup can't say what happened (Chrome closes the real one when the
+  // dialog opens), so the dialog stays open and does.
+  await expect(dialogPage.locator('#dialogResult')).toContainText('Split into');
+  await expect(dialogPage.locator('#cancelButton')).toHaveText('Close');
 
   await popup.close();
 });

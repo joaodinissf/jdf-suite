@@ -1975,40 +1975,62 @@ async function analyzeDomainDistribution(excludeTabId) {
   }
 }
 
-// Split domains confirmations waiting for their dialog tab, keyed by that
-// tab's id. The request itself is also saved in storage.session under
-// splitConfirmKey(tabId), which outlives a worker restart; this map does not.
-const splitConfirmWaiters = new Map();
-
+// A Split domains request waiting for its dialog's answer is saved in
+// storage.session under the dialog tab's id, so the answer works the same
+// whether or not the worker was stopped while the dialog was open.
 function splitConfirmKey(tabId) {
   return `splitConfirm:${tabId}`;
 }
 
-// A dialog closed with its tab's X counts as Cancel.
+// A dialog closed with its tab's X forgets its request.
 chrome.tabs.onRemoved.addListener((tabId) => {
-  const resolve = splitConfirmWaiters.get(tabId);
-  if (resolve) {
-    splitConfirmWaiters.delete(tabId);
-    resolve(false);
-  }
   chrome.storage.session.remove(splitConfirmKey(tabId)).catch(() => {});
 });
 
 // Create confirmation dialog URL with parameters
-function createConfirmationDialogUrl(domainAnalysis) {
+function createConfirmationDialogUrl(domainAnalysis, respectGroups) {
   const extractableCount = domainAnalysis.extractableDomains.length;
   const singleTabCount = domainAnalysis.singleTabDomains.length;
 
   const params = new URLSearchParams({
     extractable: extractableCount.toString(),
-    single: singleTabCount.toString()
+    single: singleTabCount.toString(),
+    groups: respectGroups ? 'keep' : 'flat'
   });
 
   return chrome.runtime.getURL(`confirmation-dialog.html?${params.toString()}`);
 }
 
-// Handle Extract All Domains functionality
+// The popup has closed by the time a split ends (it closes when the windows
+// appear), so a split that went wrong also says so in a notification.
+// Clicking it only clears it (handleWakeNotificationClicked).
+function notifySplitProblem(result) {
+  let message;
+  if (!result.success) {
+    message = `Couldn't split domains: ${result.error || 'unknown error'}`;
+  } else {
+    message = `Split into ${plural(result.windows || 0, 'window')}`
+      + (result.notMoved ? `; ${plural(result.notMoved, 'tab')} couldn't be moved` : '')
+      + (result.sortFailed ? '; couldn\'t sort, try Sort' : '');
+  }
+  try {
+    chrome.notifications.create('split:' + Date.now(), {
+      type: 'basic',
+      iconUrl: 'icons/icon128.png',
+      title: 'Split domains',
+      message,
+    });
+  } catch (_e) {
+    // notifications are best-effort
+  }
+}
+
+// Handle Extract All Domains functionality. Up to 5 windows, it splits
+// straight away. Above that it opens the confirmation dialog, saves the
+// request and replies { pending: true }: the dialog's answer is carried out,
+// and its result shown there, by handleExtractAllDomainsConfirmation.
 async function handleExtractAllDomains(respectGroups = true, sendResponse) {
+  let result;
   try {
     console.log('[Huddle] Starting Extract All Domains', respectGroups ? '(preserving groups)' : '(individual tabs)');
 
@@ -2017,41 +2039,26 @@ async function handleExtractAllDomains(respectGroups = true, sendResponse) {
 
     // Check if confirmation is needed (more than 5 total windows would be created)
     const totalWindowsToCreate = domainAnalysis.extractableDomains.length + (domainAnalysis.singleTabDomains.length > 0 ? 1 : 0);
-    const needsConfirmation = totalWindowsToCreate > 5;
-
-    if (needsConfirmation) {
+    if (totalWindowsToCreate > 5) {
       console.log('[Huddle] Many windows would be created, requesting confirmation');
-
-      // Create a confirmation dialog using the separate HTML file
-      const confirmationUrl = createConfirmationDialogUrl(domainAnalysis);
       const confirmTab = await chrome.tabs.create({
-        url: confirmationUrl,
+        url: createConfirmationDialogUrl(domainAnalysis, respectGroups),
         active: true
-      });
-
-      // The dialog's answer arrives through handleExtractAllDomainsConfirmation.
-      // The request is also kept in storage.session, so the answer still
-      // works if the worker is stopped while the dialog is open.
-      const confirmationPromise = new Promise((resolve) => {
-        splitConfirmWaiters.set(confirmTab.id, resolve);
       });
       await chrome.storage.session.set({ [splitConfirmKey(confirmTab.id)]: { respectGroups } })
         .catch((error) => console.error('[Huddle] Could not save the Split domains request:', error));
-
-      const confirmed = await confirmationPromise;
-      if (!confirmed) {
-        console.log('[Huddle] User cancelled Extract All Domains');
-        sendResponse({ success: true, cancelled: true });
-        return;
-      }
+      sendResponse({ success: true, pending: true });
+      return;
     }
 
-    sendResponse(await extractAndSortAllDomains(domainAnalysis, respectGroups));
-
+    result = await extractAndSortAllDomains(domainAnalysis, respectGroups);
+    if (result.notMoved || result.sortFailed) notifySplitProblem(result);
   } catch (error) {
     console.error('[Huddle] Error in Extract All Domains:', error);
-    sendResponse({ success: false, error: error.message });
+    result = { success: false, error: error.message };
+    notifySplitProblem(result);
   }
+  sendResponse(result);
 }
 
 // Extract every domain, then sort all windows. Returns the response to send.
@@ -2070,45 +2077,32 @@ async function extractAndSortAllDomains(domainAnalysis, respectGroups) {
   return { success: true, windows: created, notMoved, sortFailed: unsorted > 0 };
 }
 
-// The dialog's Confirm or Cancel. While handleExtractAllDomains is still
-// waiting, it gets the answer. After a worker restart it is gone, so the
-// request saved in storage.session is carried out here. With neither, the
-// dialog is told the request has ended.
+// The dialog's Confirm or Cancel, carried out from the request saved in
+// storage.session. Cancel closes the dialog. Confirm analyses the tabs again
+// as they are now (leaving out the dialog's own tab), splits them and replies
+// with the result, which the dialog shows. With no saved request, the dialog
+// is told the request has ended.
 async function handleExtractAllDomainsConfirmation(message, sender, sendResponse) {
   const tabId = sender && sender.tab ? sender.tab.id : undefined;
-  const closeDialog = () => {
-    if (tabId !== undefined) chrome.tabs.remove(tabId).catch(() => {});
-  };
   try {
     const key = splitConfirmKey(tabId);
-    const waiter = splitConfirmWaiters.get(tabId);
     const stored = (await chrome.storage.session.get(key))[key];
-    splitConfirmWaiters.delete(tabId);
     await chrome.storage.session.remove(key);
 
-    if (waiter) {
-      sendResponse({ success: true });
-      closeDialog();
-      waiter(message.confirmed === true);
-      return;
-    }
     if (!message.confirmed) {
       sendResponse({ success: true, cancelled: true });
-      closeDialog();
+      if (tabId !== undefined) chrome.tabs.remove(tabId).catch(() => {});
       return;
     }
     if (!stored) {
       sendResponse({ success: false, expired: true, error: 'This split request has ended. Close this tab and run Split domains again.' });
       return;
     }
-    // Analysed afresh, without the dialog's own tab, which is still open.
     const domainAnalysis = await analyzeDomainDistribution(tabId);
-    const result = await extractAndSortAllDomains(domainAnalysis, stored.respectGroups !== false);
-    sendResponse(result);
-    closeDialog();
+    sendResponse(await extractAndSortAllDomains(domainAnalysis, stored.respectGroups !== false));
   } catch (error) {
     console.error('[Huddle] Error in Extract All Domains confirmation:', error);
-    sendResponse({ success: false, error: error.message });
+    sendResponse({ success: false, error: `Couldn't split domains: ${error.message}` });
   }
 }
 

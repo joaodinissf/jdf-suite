@@ -506,7 +506,8 @@ describe('Action results (UI review F2)', () => {
     ['flattenWindow', { ungrouped: 0 }, 'No groups to ungroup'],
     ['extractDomain', { moved: 4, domain: 'example.com' }, 'Moved 4 tabs from example.com to a new window'],
     ['extractAllDomains', { windows: 3 }, 'Split into 3 windows'],
-    ['extractAllDomains', { cancelled: true }, 'Split cancelled'],
+    // The dialog opened: the result is shown there, not in the popup.
+    ['extractAllDomains', { success: true, pending: true }, ''],
     ['moveAllToSingleWindow', { moved: 6 }, 'Merged 6 tabs into this window'],
     ['moveAllToSingleWindow', { moved: 0 }, 'Nothing to merge'],
     ['compactWindow', { paired: 2 }, 'Paired 2 Split Views'],

@@ -209,7 +209,8 @@ function notMovedNote(r) {
 }
 
 // One line saying what an action did, from the counts the background returns.
-// Returns '' for actions that report elsewhere (AI opens its own tab).
+// Returns '' for actions that report elsewhere (AI opens its own tab, and a
+// split that asks first shows its result in the confirmation dialog).
 function describeActionResult(action, r) {
   const sortNote = r.sortFailed ? SORT_FAILED_NOTE : '';
   switch (action) {
@@ -231,7 +232,7 @@ function describeActionResult(action, r) {
       return `Moved ${plural(r.moved || 0, 'tab')}${r.domain ? ` from ${r.domain}` : ''} to a new window`
         + notMovedNote(r) + sortNote;
     case 'extractAllDomains':
-      if (r.cancelled) return 'Split cancelled';
+      if (r.pending) return '';
       return `Split into ${plural(r.windows || 0, 'window')}`
         + (r.notMoved ? `; ${plural(r.notMoved, 'tab')} couldn't be moved` : '') + sortNote;
     case 'moveAllToSingleWindow':

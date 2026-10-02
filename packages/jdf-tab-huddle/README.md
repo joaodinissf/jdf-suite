@@ -14,7 +14,7 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 - **Sort All Tabs**: Sort tabs by URL across all windows
 - **Sort Current Window**: Sort tabs by URL in the current window only
 - **Extract Domain**: Move all tabs from the current domain into a new window
-- **Extract All Domains**: Organize all domains into separate windows
+- **Split domains**: Move each domain with 2+ tabs into its own window, and the single-tab domains into one more. Above 5 new windows it asks first, and the dialog stays open to show what the split did or why it couldn't. When there is no dialog, a split that left tabs behind or failed says so in a notification
 - **Move All to Single Window**: Consolidate all tabs into one window
 - **Copy this window / Copy all windows**: Copy tab URLs to the clipboard (current window only, or every window), paragraph-separated by tab group when Groups mode is on
 - **Organize with AI** (OpenRouter): the popup's Organize with AI opens the organize page, which proposes groups you can edit before applying them. When the chosen model supports structured outputs, Huddle requests a strict JSON schema; otherwise it uses JSON object mode. Responses are always reconciled so no input tab is dropped.
@@ -69,8 +69,8 @@ The link-clumping feature is inspired by [linkclump](https://github.com/benblack
 ### For Developers
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (900 tests)
-pnpm test:e2e          # Run E2E tests (123 tests, requires Chromium)
+pnpm test              # Run unit tests (917 tests)
+pnpm test:e2e          # Run E2E tests (124 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
 pnpm run package       # Create extension zip
@@ -98,9 +98,9 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── manifest.json              # Chrome extension manifest (v3)
 │   ├── background.js              # Service worker with all action handlers
 │   ├── popup.html / popup.js      # Extension popup UI
-│   ├── confirmation-dialog.*      # Confirmation dialog for large operations
+│   ├── confirmation-dialog.*      # Split domains confirmation and result
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (900 tests in 21 files)
+├── tests/                         # Vitest unit tests (917 tests in 21 files)
 │   ├── setup.js                   # Chrome API mock, page scripts loaded, dispatch() to the worker
 │   ├── senders.js                 # The sender each caller (popup, pages, content script) arrives with
 │   ├── routing.test.js            # Every worker action, routed from its real caller; refused from a content script
@@ -109,7 +109,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── snooze.test.js             # Snoozing and waking, through the worker's handlers
 │   ├── confirmation-dialog.test.js
 │   └── simple.test.js             # Framework verification
-├── e2e/                           # Playwright E2E tests (123 tests)
+├── e2e/                           # Playwright E2E tests (124 tests)
 │   ├── playwright.config.js       # Playwright configuration
 │   ├── fixtures/extension.js      # Custom fixture loading extension into Chromium
 │   ├── helpers/                   # Tab management, popup interaction, assertions
@@ -123,7 +123,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ## Testing
 
 ### Unit Tests (Vitest + jest-chrome shim)
-900 tests across 21 files covering core logic with mocked Chrome APIs:
+917 tests across 21 files covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report
@@ -132,7 +132,7 @@ pnpm run test:coverage   # With coverage report
 `tests/routing.test.js` sends every action the service worker handles through its real `onMessage` listener, from the page that sends it (with the sender Chrome gives that page), and checks the reply and the Chrome call the handler makes. The dispatcher is an if/else chain on `message.action`, except the popup's logging message, which is keyed on `message.type`, and its first branch, the sender check: only Huddle's own pages (a sender `url` under `chrome-extension://<id>/`) may send anything but `clumpOpenUrls`, the one action the link clumper's content script sends. The test reads every branch of that chain from the source, fails on a branch it does not understand, and checks its table against the actions (and the logging message) found there and against what each page's scripts send; it also sends every row's message from the content script and expects `forbidden`. So a new worker action needs a row there. The test's `dispatch(message, sender)` (in `tests/setup.js`) resolves with the worker's reply, and fails when an action that replies later does not keep the channel open by returning `true`.
 
 ### E2E Tests (Playwright + real Chromium)
-123 tests across 19 spec files that load the extension into a real browser:
+124 tests across 19 spec files that load the extension into a real browser:
 
 | Spec File | Tests | Coverage |
 |---|---|---|
@@ -146,7 +146,7 @@ pnpm run test:coverage   # With coverage report
 | move-all-to-single-window | 7 | Consolidation, group recreation |
 | copy-all-tabs | 8 | Clipboard copy, window vs all-windows scope, group sections, feedback |
 | popup-ui | 8 | Mode switching, button visibility |
-| confirmation-dialog | 4 | Confirm/cancel flow |
+| confirmation-dialog | 5 | Confirm/cancel flow, the result shown in the dialog, keyboard |
 | flatten-window | 3 | Ungrouping, pinned immunity |
 | split-view-compact | 2 | Compact then Expand; pinned/group runs, existing splits, no tab moves (skips below Chrome 155) |
 | split-view-repair | 5 | Splits survive sort (both modes), merge and extract; a separated pair is not forced back together (skips below Chrome 155) |

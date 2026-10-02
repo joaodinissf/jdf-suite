@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Huddle — Extract all domains</title>
+  <title>Huddle — Split domains</title>
   <link rel="stylesheet" href="huddle-theme.css">
   <style>
     /* Tokens, fonts, light/dark and the tab-group chips live in
@@ -117,6 +117,17 @@
       cursor: default;
     }
 
+    /* What the split did (see respond()). */
+    .result-msg {
+      margin: 24px 0 0;
+      padding: 10px 14px;
+      background: var(--panel);
+      border: 1px solid var(--bd);
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-weight: 600;
+    }
+
     /* The request could not be carried out (see respond()). */
     .error-msg {
       margin: 24px 0 0;
@@ -129,6 +140,7 @@
       font-weight: 600;
     }
 
+    .result-msg[hidden],
     .error-msg[hidden] {
       display: none;
     }
@@ -156,7 +168,7 @@
     <header class="page-head">
       <img class="logo" src="icons/huddle-mark.svg" alt="Huddle">
       <div>
-        <h1>Extract all domains</h1>
+        <h1>Split domains</h1>
       </div>
     </header>
 
@@ -171,6 +183,7 @@
       </ul>
     </section>
 
+    <p id="dialogResult" class="result-msg" role="status" hidden></p>
     <p id="dialogError" class="error-msg" role="alert" hidden></p>
 
     <div class="actions">
