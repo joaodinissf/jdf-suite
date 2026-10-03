@@ -172,6 +172,18 @@ describe('An action already running is not started again', () => {
     held.forEach((h) => h.callback({ success: true }));
   });
 
+  test('the running action\'s button is aria-busy until the reply, and dims (L40)', () => {
+    document.body.insertAdjacentHTML('beforeend',
+      '<button id="moveAllToSingleWindow" class="btn" data-action="moveAllToSingleWindow">Merge windows</button>');
+    const button = document.getElementById('moveAllToSingleWindow');
+    const held = holdReplies();
+    sendAction('moveAllToSingleWindow', { activeTabId: 1, respectGroups: true });
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    held[0].callback({ success: true, moved: 150 });
+    expect(button.hasAttribute('aria-busy')).toBe(false);
+    expect(cssRule('.btn[aria-busy="true"]')).toMatch(/cursor:\s*progress/);
+  });
+
   test('a failed reply also releases the action', () => {
     const held = holdReplies();
     sendAction('sortCurrentWindow');
