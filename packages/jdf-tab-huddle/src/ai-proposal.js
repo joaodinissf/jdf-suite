@@ -98,6 +98,9 @@ const ENTER_GUARD_MS = 700;
 let lastEnterAt = -Infinity;
 let runKeyStartedAt = -Infinity;
 let enterGuardEl = null;
+// The value the focused text field had when it took focus: Escape puts it
+// back.
+let fieldValueOnFocus = '';
 
 // ---- Page state that survives a reload ------------------------------------
 
@@ -131,6 +134,13 @@ function setRespectGroups(value) {
   const hint = document.getElementById('modeHint');
   if (hint) hint.innerHTML = modeHintHtml();
   savePageState();
+  // A proposal on screen keeps the mode it was made in; the new one is for
+  // Run again, which becomes the primary button, and the note says so.
+  if (view === 'proposal') updateModelBar();
+}
+
+function modeName(groups) {
+  return groups ? 'Groups' : 'Flat';
 }
 
 // ---- Small builders ---------------------------------------------------------
@@ -237,6 +247,8 @@ function updateModelBar() {
 
   if (transientNote) {
     setModelNote(transientNote);
+  } else if (view === 'proposal' && proposal && respectGroups !== proposal.respectGroups) {
+    setModelNote(`Made in ${modeName(proposal.respectGroups)} mode · Run again to use ${modeName(respectGroups)}`);
   } else if (lastRun && id && lastRun.model !== id && view !== 'compose') {
     const ran = lastRun.modelName || modelLabel(lastRun.model);
     if (view === 'loading') {
@@ -257,13 +269,14 @@ function updateModelBar() {
   }
 }
 
-// With a proposal on screen from one model and another model picked for the
-// next run, Run again is the thing to do: it becomes the primary button and
-// takes Cmd/Ctrl+Enter, so that shortcut never applies a proposal the page
-// just said to replace. Apply stays one click (or Tab) away.
+// With a proposal on screen from one model (or mode) and another picked for
+// the next run, Run again is the thing to do: it becomes the primary button
+// and takes Cmd/Ctrl+Enter, so that shortcut never applies a proposal the
+// page just said to replace. Apply stays one click (or Tab) away.
 function nextRunDiffers() {
   const id = nextModel();
-  return view === 'proposal' && !!lastRun && !!id && lastRun.model !== id;
+  return view === 'proposal' && ((!!lastRun && !!id && lastRun.model !== id)
+    || (!!proposal && respectGroups !== proposal.respectGroups));
 }
 
 function syncProposalActions() {
@@ -1050,6 +1063,8 @@ function showProposal(msg) {
   };
   if (msg.model) lastRun = { model: msg.model, modelName: msg.modelName || msg.model };
   if (typeof msg.respectGroups === 'boolean') respectGroups = msg.respectGroups;
+  // The mode Apply sends, whatever the popup's O says later.
+  proposal.respectGroups = respectGroups;
   tabMap = {};
   for (const t of proposal.tabs) {
     tabMap[t.id] = t;
@@ -1069,8 +1084,8 @@ function groupCountLabel(n) {
 
 function leftOutText(n) {
   return n === 1
-    ? '1 proposed tab was closed or moved to another window, so it was left out.'
-    : `${n} proposed tabs were closed or moved to another window, so they were left out.`;
+    ? '1 proposed tab was closed, moved or pinned, so it was left out.'
+    : `${n} proposed tabs were closed, moved or pinned, so they were left out.`;
 }
 
 // A tab that is gone from this window is taken out of the proposal on
@@ -1113,6 +1128,11 @@ function showNothingLeft() {
   focusCompose({ primary: true });
 }
 
+// A group's name, or a stand-in while the user has cleared it.
+function groupLabel(group, i) {
+  return group.name || `Unnamed group ${i + 1}`;
+}
+
 // Build the move-to-group <select> for a tab
 function buildMoveSelect(tabId, currentGroupIndex) {
   const select = document.createElement('select');
@@ -1123,7 +1143,7 @@ function buildMoveSelect(tabId, currentGroupIndex) {
   proposal.groups.forEach((g, i) => {
     const opt = document.createElement('option');
     opt.value = String(i);
-    opt.textContent = g.name;
+    opt.textContent = groupLabel(g, i);
     if (i === currentGroupIndex) opt.selected = true;
     select.appendChild(opt);
   });
@@ -1175,7 +1195,7 @@ function renderColorPicker(groupIndex) {
   const container = document.createElement('div');
   container.className = 'color-select';
   container.setAttribute('role', 'radiogroup');
-  container.setAttribute('aria-label', `Colour for ${group.name}`);
+  container.setAttribute('aria-label', `Colour for ${groupLabel(group, groupIndex)}`);
 
   for (const [name, label] of Object.entries(COLOR_MAP)) {
     const dot = document.createElement('button');
@@ -1238,7 +1258,7 @@ function renderGroup(group, groupIndex) {
   card.className = 'group-card';
   card.dataset.group = group.color;
   card.setAttribute('role', 'group');
-  card.setAttribute('aria-label', `Group ${group.name}, ${tabCountLabel(group.tabIds.length)}`);
+  card.setAttribute('aria-label', `Group ${groupLabel(group, groupIndex)}, ${tabCountLabel(group.tabIds.length)}`);
 
   const header = document.createElement('div');
   header.className = 'group-header';
@@ -1247,10 +1267,11 @@ function renderGroup(group, groupIndex) {
   nameInput.type = 'text';
   nameInput.className = 'group-name';
   nameInput.value = group.name;
+  nameInput.maxLength = 40;
   nameInput.setAttribute('aria-label', `Name of group ${groupIndex + 1}`);
   nameInput.dataset.focusKey = `name-${groupIndex}`;
   nameInput.addEventListener('change', () => {
-    proposal.groups[groupIndex].name = nameInput.value.slice(0, 40);
+    proposal.groups[groupIndex].name = nameInput.value.trim().slice(0, 40);
     // Update all move-selects to reflect the new name. Deferred a tick:
     // `change` fires before Tab moves focus, so rendering now would remove
     // the control focus is heading to.
@@ -1411,7 +1432,7 @@ function setupActionButtons() {
       action: 'applyAiProposal',
       groups: groupsToApply,
       ungroupedTabIds: [...proposal.ungroupedTabIds],
-      respectGroups,
+      respectGroups: proposal.respectGroups,
       windowId: proposal.windowId,
       // Tabs the page already took out, so Apply reports them too.
       leftOut: leftOutTabs,
@@ -1451,15 +1472,16 @@ function setupActionButtons() {
 // ---- Keyboard ----------------------------------------------------------------
 
 // Cmd/Ctrl+Enter does the primary thing on screen (Organize, Retry, Apply,
-// or Run again once another model is picked for it);
-// Escape closes the model list (restoring the model), stops a run, or
-// cancels the page.
+// or Run again once another model or mode is picked for it, or from the
+// instructions for Run again);
+// Escape closes the model list (restoring the model), stops a run, undoes
+// the edits in a text field (or leaves it), or cancels the page.
 function onKeydown(e) {
   if (e.defaultPrevented) return;
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
     if (view === 'proposal') {
-      if (nextRunDiffers()) {
+      if (nextRunDiffers() || (e.target.closest && e.target.closest('#nextRun'))) {
         startRun();
         return;
       }
@@ -1481,10 +1503,27 @@ function onKeydown(e) {
       closeModelPanel({ revert: true });
     } else if (run) {
       stopRun();
+    } else if (isTextField(e.target)) {
+      // The first Escape puts back the value the field had on focus and
+      // leaves the field; the next one closes the page.
+      if (e.target.value !== fieldValueOnFocus) {
+        e.target.value = fieldValueOnFocus;
+        if (e.target.tagName === 'TEXTAREA') e.target.dispatchEvent(new Event('input'));
+      }
+      e.target.blur();
     } else {
       cancelPage();
     }
   }
+}
+
+function isTextField(el) {
+  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+}
+
+// Records the value a text field had when it took focus, for Escape.
+function onFocusIn(e) {
+  if (isTextField(e.target)) fieldValueOnFocus = e.target.value;
 }
 
 // Runs first (capture), before any button or form sees the key.
@@ -1526,6 +1565,7 @@ function init() {
   setupModelBar();
   window.addEventListener('keydown', guardEnter, true);
   document.addEventListener('keydown', onKeydown);
+  document.addEventListener('focusin', onFocusIn);
   if (chrome.storage && chrome.storage.onChanged) chrome.storage.onChanged.addListener(onStorageChanged);
   // A proposed tab closed or moved to another window leaves the proposal.
   if (chrome.tabs && chrome.tabs.onRemoved) chrome.tabs.onRemoved.addListener(dropProposedTab);

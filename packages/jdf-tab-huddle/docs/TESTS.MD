@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Unit Tests**: 919 tests across 21 Vitest files (mocked Chrome APIs)
-- **E2E Tests**: 124 tests across 19 Playwright spec files (real Chromium browser)
-- **Total**: 1043 tests
+- **Unit Tests**: 929 tests across 21 Vitest files (mocked Chrome APIs)
+- **E2E Tests**: 127 tests across 19 Playwright spec files (real Chromium browser)
+- **Total**: 1056 tests
 
 ## Unit Tests (Vitest)
 
@@ -30,8 +30,8 @@
 | ai-service.test.js | 27 | Key encoding and expiry, query stripping, the prompt |
 | openrouter-requests.test.js | 35 | What is asked of OpenRouter, model by model, and its refusals |
 | ai-runtime.test.js | 26 | The OpenRouter client: error statuses, streaming, JSON fallback |
-| ai-handlers.test.js | 42 | Worker AI handlers: runs, Apply, window scoping; a content script's port is closed |
-| ai-proposal.test.js | 60 | The organize page |
+| ai-handlers.test.js | 44 | Worker AI handlers: runs, Apply, window scoping, pinned tabs; a content script's port is closed |
+| ai-proposal.test.js | 68 | The organize page |
 | simple.test.js | 6 | Framework and Chrome API mock verification |
 
 ```bash
@@ -63,7 +63,7 @@ Real browser tests that load the extension into Chromium and verify end-to-end b
 | link-clumping.spec.js | 2 | A page's own events open nothing; a real drag opens 5 at once, and over 25 links asks (answered through `page.on('dialog')`) and opens the first 25 |
 | confirmation-dialog.spec.js | 5 | Window count display, confirm/cancel flow |
 | snooze.spec.js | 13 | Snooze and wake; the Group button follows the active tab |
-| ai-flow.spec.js | 18 | Organize with AI against a fake OpenRouter; two-window cases for what is sent and what Apply moves |
+| ai-flow.spec.js | 21 | Organize with AI against a fake OpenRouter; two-window cases for what is sent and what Apply moves; a tab pinned before Apply stays pinned; Escape and Cmd/Ctrl+Enter in the proposal's fields |
 | trust-boundary.spec.js | 2 | The content script in a web page: no `storage.local` (the key), `storage.sync` still read, only `clumpOpenUrls` accepted, no organize port |
 
 ```bash

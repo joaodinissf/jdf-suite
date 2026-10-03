@@ -1272,9 +1272,10 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }
 });
 
-// Groups the tabs still in the window. Tabs closed or moved away since the
-// proposal was made are left out and counted; the page is closed only when
-// everything proposed was grouped, and never when it is the window's last tab.
+// Groups the tabs still in the window. Tabs closed, moved away or pinned
+// since the proposal was made are left out and counted (grouping a pinned tab
+// would unpin it); the page is closed only when everything proposed was
+// grouped, and never when it is the window's last tab.
 async function handleApplyAiProposal(message, sender, sendResponse) {
   try {
     const { groups, windowId } = message;
@@ -1284,7 +1285,7 @@ async function handleApplyAiProposal(message, sender, sendResponse) {
     const splitPairs = await captureSplitPairs([windowId]);
 
     const windowTabs = await chrome.tabs.query({ windowId });
-    const stillHere = new Map(windowTabs.map(t => [t.id, t]));
+    const stillHere = new Map(windowTabs.filter(t => !t.pinned).map(t => [t.id, t]));
 
     let proposed = 0;
     const usable = (groups || []).map((group) => {

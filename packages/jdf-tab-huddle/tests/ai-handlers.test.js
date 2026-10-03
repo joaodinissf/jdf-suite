@@ -194,6 +194,17 @@ describe('runs over the organize page\'s port', () => {
     expect(prompt).not.toContain('[id:31]');
   });
 
+  test('pinned tabs are never sent to the model', async () => {
+    mockOpenTabs([...TABS, { id: 22, url: 'https://pinned.example/', title: 'Pinned', pinned: true, groupId: -1, windowId: 1 }]);
+    const port = makePort();
+    start(port);
+    await settled(port);
+    const prompt = port.last('ai-debug').messages[1].content;
+    expect(prompt).toContain('[id:20]');
+    expect(prompt).not.toContain('[id:22]');
+    expect(global.fetch.mock.calls[0][1].body).not.toContain('pinned.example');
+  });
+
   test('no key asks the page for one, with no network call', async () => {
     mockConfig(null);
     const port = makePort();
@@ -388,6 +399,20 @@ describe('handleApplyAiProposal', () => {
     expect(chrome.tabs.group).toHaveBeenCalledWith({ tabIds: [1], createProperties: { windowId: 5 } });
     for (const [ids] of chrome.tabs.move.mock.calls) expect([].concat(ids)).not.toContain(6);
     expect(sendResponse).toHaveBeenCalledWith({ success: true, grouped: 1, groups: 1, skipped: 1, closing: false });
+  });
+
+  test('a proposed tab pinned since the proposal was made is left out, never grouped (that would unpin it)', async () => {
+    mockOpenTabs([{ ...windowTabs[0] }, { ...windowTabs[1], pinned: true, index: 0 }, windowTabs[2]]);
+    const sendResponse = vi.fn();
+    await handleApplyAiProposal(
+      { groups: [{ name: 'Mail', color: 'blue', tabIds: [1, 2] }], windowId: 5 },
+      { tab: { id: 55 } },
+      sendResponse
+    );
+    expect(chrome.tabs.group).toHaveBeenCalledTimes(1);
+    expect(chrome.tabs.group).toHaveBeenCalledWith({ tabIds: [1], createProperties: { windowId: 5 } });
+    expect(sendResponse).toHaveBeenCalledWith({ success: true, grouped: 1, groups: 1, skipped: 1, closing: false });
+    expect(chrome.tabs.remove).not.toHaveBeenCalled();
   });
 
   test('closes the sender proposal tab only after the groups are in place', async () => {

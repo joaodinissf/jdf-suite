@@ -124,7 +124,7 @@ test.describe('Organize with AI', () => {
       return was;
     }, other.tabId);
     await page.click('#applyButton');
-    await expect(page.locator('#applyError')).toContainText('1 proposed tab was closed or moved to another window');
+    await expect(page.locator('#applyError')).toContainText('1 proposed tab was closed, moved or pinned');
 
     const tab = await sw.evaluate(async (id) => {
       const t = await chrome.tabs.get(id);
@@ -174,10 +174,73 @@ test.describe('Organize with AI', () => {
       const [shop] = await chrome.tabs.query({ url: '*://shop.huddle.test/*' });
       await chrome.tabs.remove(shop.id);
     });
-    await expect(page.locator('#applyError')).toContainText('closed or moved to another window');
+    await expect(page.locator('#applyError')).toContainText('closed, moved or pinned');
     await page.click('#applyButton');
     await expect(page.locator('#applyError')).toContainText(/Grouped \d+ tabs? into \d+ groups?\. 1 proposed tab was closed/);
     await expect(page.locator('#closeAfterApply')).toBeFocused();
+  });
+
+  test('a tab pinned while the proposal is on screen stays pinned: Apply leaves it out and says so', async ({ context, sw, extensionId }) => {
+    await installFakeOpenRouter(context);
+    await seed(sw, context);
+    const page = await openOrganize(context, extensionId);
+
+    await page.click('#startOrganize');
+    await expect(groupNames(page)).toHaveCount(3);
+    const mailId = await sw.evaluate(async () => {
+      const [mail] = await chrome.tabs.query({ url: '*://mail.huddle.test/*' });
+      await chrome.tabs.update(mail.id, { pinned: true });
+      return mail.id;
+    });
+    await page.click('#applyButton');
+    await expect(page.locator('#applyError')).toContainText('1 proposed tab was closed, moved or pinned, so it was left out.');
+    const mail = await sw.evaluate(async (id) => {
+      const t = await chrome.tabs.get(id);
+      return { pinned: t.pinned, groupId: t.groupId };
+    }, mailId);
+    expect(mail).toEqual({ pinned: true, groupId: -1 });
+  });
+
+  test('in the proposal, Escape in a group name undoes the edit instead of closing, and a name stops at 40 characters', async ({ context, sw, extensionId }) => {
+    await installFakeOpenRouter(context);
+    await seed(sw, context);
+    const page = await openOrganize(context, extensionId);
+
+    await page.click('#startOrganize');
+    await expect(groupNames(page)).toHaveCount(3);
+    const name = groupNames(page).first();
+    const was = await name.inputValue();
+    await name.click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' typo');
+    await page.keyboard.press('Escape');
+    await expect(name).toHaveValue(was);
+    await expect(name).not.toBeFocused();
+    expect(page.isClosed()).toBe(false);
+
+    await name.click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' and many more words than a group name can hold');
+    // The field stops at 40 characters as they are typed.
+    expect((await name.inputValue()).length).toBe(40);
+  });
+
+  test('in the proposal, Cmd/Ctrl+Enter in the Run again instructions runs again and applies nothing', async ({ context, sw, extensionId }) => {
+    const fake = await installFakeOpenRouter(context);
+    await seed(sw, context);
+    const page = await openOrganize(context, extensionId);
+
+    await page.click('#startOrganize');
+    await expect(groupNames(page)).toHaveCount(3);
+    await page.click('#nextRun summary');
+    await page.click('#userInstructions');
+    await page.keyboard.type('by topic');
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter');
+    await expect.poll(() => fake.chats.length).toBe(2);
+    expect(fake.chats[1].prompt).toContain('by topic');
+    await expect(groupNames(page)).toHaveCount(3);
+    expect(page.isClosed()).toBe(false);
+    expect(await sw.evaluate(async () => (await chrome.tabGroups.query({})).length)).toBe(0);
   });
 
   test('a reload with a proposal on screen says the proposal is gone and offers Run again', async ({ context, sw, extensionId }) => {
