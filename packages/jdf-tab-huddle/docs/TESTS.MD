@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Unit Tests**: 996 tests across 20 Vitest files (mocked Chrome APIs)
+- **Unit Tests**: 1008 tests across 20 Vitest files (mocked Chrome APIs)
 - **E2E Tests**: 130 tests across 20 Playwright spec files (real Chromium browser)
-- **Total**: 1126 tests
+- **Total**: 1138 tests
 
 ## Unit Tests (Vitest)
 
@@ -15,8 +15,8 @@
 | routing.test.js | 128 | Every worker action routed from its real caller; the table checked against the dispatcher's if/else chain and each page's scripts; which tabs each Deduplicate closes |
 | background.test.js | 53 | Worker logic: sort (Groups mode's exact moves), dedupe (a loading tab by its pendingUrl), merge into the active tab's window, split domains, results |
 | snooze.test.js | 96 | Snoozing and waking: records, custom times, window groups, alarms, failed reads, a wake cut short and done again by a new worker, the window a wake opens in; clicking a wake notification focuses its window and tab, and any other notification is only cleared |
-| snooze-ui.test.js | 38 | Snooze controls in the popup and the nap room, including the waking state and failed reads; keyboard focus after Wake, Discard and Undo, Undo with no time limit, the picker's focus and inert header |
-| nap-room.test.js | 22 | The nap room page |
+| snooze-ui.test.js | 45 | Snooze controls in the popup and the nap room, including the waking state and failed reads; keyboard focus after Wake, Discard, Undo and a re-render (popup and nap room), Undo with no time limit, the picker's focus and inert header |
+| nap-room.test.js | 27 | The nap room page: overdue tabs counted and dated, group rows, Wake now's name, the main landmark |
 | popup.test.js | 74 | Popup UI and message passing |
 | popup-feedback.test.js | 24 | Popup result and error messages; a running action's button is `aria-busy`; keyboard focus scrolls clear of a toast |
 | keyboard.test.js | 29 | Popup hotkeys, including I for Settings in the real popup |
