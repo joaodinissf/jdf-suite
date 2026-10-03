@@ -1034,9 +1034,14 @@ function showApplyNotice(msg, { error = true } = {}) {
     content.parentNode.insertBefore(el, content);
   }
   el.className = error ? 'error-msg apply-error' : 'ended-msg apply-error';
-  el.setAttribute('role', error ? 'alert' : 'status');
+  // An error is an alert; anything else is read out once, through
+  // announce() below, so the notice itself isn't a second live region.
+  if (error) el.setAttribute('role', 'alert');
+  else el.removeAttribute('role');
   el.textContent = msg;
   el.hidden = false;
+  // Replaces "Proposal ready".
+  if (!error) announce(msg);
 }
 
 function hideApplyNotice() {
@@ -1246,6 +1251,8 @@ function renderTabRow(tabId, groupIndex) {
   info.className = 'tab-info';
   info.innerHTML = `<div class="tab-title">${escapeHtml(meta.title)}</div>
     <div class="tab-url">${escapeHtml(meta.url)}</div>`;
+  // Both lines can be cut off: the tooltip has them in full.
+  info.title = `${meta.title}\n${meta.url}`;
 
   row.appendChild(favicon);
   row.appendChild(info);
@@ -1457,6 +1464,8 @@ function setupActionButtons() {
       }
       applyButton.disabled = false;
       applyButton.textContent = label;
+      // Disabling Apply sent focus to the page: bring it back to apply again.
+      applyButton.focus();
       const why = lastError
         ? (HuddleAi.isNoReceiverError(lastError.message) ? HuddleAi.STALE_MESSAGE : lastError.message)
         : (response && response.error) || 'no reply from Huddle';

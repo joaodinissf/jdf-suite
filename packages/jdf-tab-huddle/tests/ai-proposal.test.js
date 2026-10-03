@@ -843,6 +843,44 @@ describe('the proposal', () => {
     expect(content().querySelectorAll('.group-card')).toHaveLength(3);
   });
 
+  test('a failed Apply gives focus back to Apply', async () => {
+    const error = 'None of the proposed tabs are still in this window.';
+    loadPage({ replies: { applyAiProposal: { success: false, error } } });
+    await flush();
+    await toProposal();
+    expect(document.activeElement).toBe($('applyButton'));
+    // Disabling the focused Apply sends Chrome's focus to the page. jsdom
+    // keeps it on the button (and won't blur a disabled one), so start there.
+    $('applyButton').blur();
+    expect(document.activeElement).toBe(document.body);
+    $('applyButton').click();
+    expect($('applyError').textContent).toBe(`Couldn't apply the groups: ${error}`);
+    expect(document.activeElement).toBe($('applyButton'));
+  });
+
+  test('what Apply did, and a tab taken out, are read out in place of Proposal ready', async () => {
+    loadPage({ replies: { applyAiProposal: { success: true, grouped: 2, groups: 1, skipped: 1, closing: false } } });
+    await flush();
+    await toProposal();
+    expect($('runStatus').textContent).toBe('Proposal ready: 2 groups, 3 tabs.');
+    chrome.tabs.onRemoved.callListeners(3);
+    expect($('runStatus').textContent).toBe($('applyError').textContent);
+    expect($('runStatus').textContent).toMatch(/1 proposed tab was closed, moved or pinned, so it was taken out of the proposal/);
+    // Read out once: the notice itself is not a second live region.
+    expect($('applyError').getAttribute('role')).toBeNull();
+    $('applyButton').click();
+    expect($('runStatus').textContent).toBe('Grouped 2 tabs into 1 group. 1 proposed tab was closed, moved or pinned, so it was left out.');
+  });
+
+  test('a row\'s tooltip has its full title and URL', async () => {
+    loadPage();
+    await flush();
+    await toProposal();
+    const info = content().querySelector('.tab-info');
+    expect(info.querySelector('.tab-title').textContent).toBe('One');
+    expect(info.title).toBe('One\nhttps://a.example.com/1');
+  });
+
   test('an Apply that left tabs out says so and offers Close', async () => {
     loadPage({ replies: { applyAiProposal: { success: true, grouped: 2, groups: 1, skipped: 1, closing: false } } });
     await flush();

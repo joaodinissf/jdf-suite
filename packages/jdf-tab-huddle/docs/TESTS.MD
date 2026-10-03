@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Unit Tests**: 929 tests across 21 Vitest files (mocked Chrome APIs)
+- **Unit Tests**: 932 tests across 21 Vitest files (mocked Chrome APIs)
 - **E2E Tests**: 127 tests across 19 Playwright spec files (real Chromium browser)
-- **Total**: 1056 tests
+- **Total**: 1059 tests
 
 ## Unit Tests (Vitest)
 
@@ -31,7 +31,7 @@
 | openrouter-requests.test.js | 35 | What is asked of OpenRouter, model by model, and its refusals |
 | ai-runtime.test.js | 26 | The OpenRouter client: error statuses, streaming, JSON fallback |
 | ai-handlers.test.js | 44 | Worker AI handlers: runs, Apply, window scoping, pinned tabs; a content script's port is closed |
-| ai-proposal.test.js | 68 | The organize page |
+| ai-proposal.test.js | 71 | The organize page |
 | simple.test.js | 6 | Framework and Chrome API mock verification |
 
 ```bash
