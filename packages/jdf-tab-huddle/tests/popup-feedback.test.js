@@ -257,6 +257,8 @@ describe('Toasts stay readable and off the footer', () => {
 
   test('the page reserves space at the bottom while a toast shows', () => {
     expect(cssRule('body.has-toast')).toMatch(/padding-bottom/);
+    // ...and keyboard focus scrolls a control clear of it, toast inset included (L37).
+    expect(cssRule('html:has(body.has-toast)')).toMatch(/scroll-padding-bottom:\s*calc\(var\(--toast-space,\s*34px\)\s*\+\s*10px\)/);
     vi.useFakeTimers();
     try {
       showActionResult('Sorted 3 tabs');
@@ -272,11 +274,11 @@ describe('Toasts stay readable and off the footer', () => {
     const stack = document.querySelector('.toasts');
     stack.getBoundingClientRect = () => ({ height: 57.2 });
     showActionResult('A result long enough to wrap onto a second line');
-    expect(document.body.style.getPropertyValue('--toast-space')).toBe('58px');
+    expect(document.documentElement.style.getPropertyValue('--toast-space')).toBe('58px');
     document.getElementById('actionResult').hidden = true;
     updateToastSpace();
     expect(document.body.classList.contains('has-toast')).toBe(false);
-    expect(document.body.style.getPropertyValue('--toast-space')).toBe('');
+    expect(document.documentElement.style.getPropertyValue('--toast-space')).toBe('');
   });
 
   test('a hidden "Copied!" toast does not count as showing', () => {

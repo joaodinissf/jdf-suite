@@ -70,7 +70,7 @@ The link-clumping feature is inspired by [linkclump](https://github.com/benblack
 ```bash
 pnpm install           # Install dependencies
 pnpm test              # Run unit tests (955 tests)
-pnpm test:e2e          # Run E2E tests (127 tests, requires Chromium)
+pnpm test:e2e          # Run E2E tests (128 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
 pnpm run package       # Create extension zip
@@ -109,7 +109,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── snooze.test.js             # Snoozing and waking, through the worker's handlers
 │   ├── confirmation-dialog.test.js
 │   └── simple.test.js             # Framework verification
-├── e2e/                           # Playwright E2E tests (127 tests)
+├── e2e/                           # Playwright E2E tests (128 tests)
 │   ├── playwright.config.js       # Playwright configuration
 │   ├── fixtures/extension.js      # Custom fixture loading extension into Chromium
 │   ├── helpers/                   # Tab management, popup interaction, assertions
@@ -132,7 +132,7 @@ pnpm run test:coverage   # With coverage report
 `tests/routing.test.js` sends every action the service worker handles through its real `onMessage` listener, from the page that sends it (with the sender Chrome gives that page), and checks the reply and the Chrome call the handler makes. The dispatcher is an if/else chain on `message.action`, except the popup's logging message, which is keyed on `message.type`, and its first branch, the sender check: only Huddle's own pages (a sender `url` under `chrome-extension://<id>/`) may send anything but `clumpOpenUrls`, the one action the link clumper's content script sends. The test reads every branch of that chain from the source, fails on a branch it does not understand, and checks its table against the actions (and the logging message) found there and against what each page's scripts send; it also sends every row's message from the content script and expects `forbidden`. So a new worker action needs a row there. The test's `dispatch(message, sender)` (in `tests/setup.js`) resolves with the worker's reply, and fails when an action that replies later does not keep the channel open by returning `true`.
 
 ### E2E Tests (Playwright + real Chromium)
-127 tests across 19 spec files that load the extension into a real browser:
+128 tests across 19 spec files that load the extension into a real browser:
 
 | Spec File | Tests | Coverage |
 |---|---|---|
@@ -145,7 +145,7 @@ pnpm run test:coverage   # With coverage report
 | remove-duplicates-globally | 7 | Cross-window dedup |
 | move-all-to-single-window | 7 | Consolidation, group recreation |
 | copy-all-tabs | 8 | Clipboard copy, window vs all-windows scope, group sections, feedback |
-| popup-ui | 8 | Mode switching, button visibility |
+| popup-ui | 9 | Mode switching, button visibility, no text below 10.5px but the key badges |
 | confirmation-dialog | 5 | Confirm/cancel flow, the result shown in the dialog, keyboard |
 | flatten-window | 3 | Ungrouping, pinned immunity |
 | split-view-compact | 2 | Compact then Expand; pinned/group runs, existing splits, no tab moves (skips below Chrome 155) |

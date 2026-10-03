@@ -40,19 +40,21 @@ The mark is three tabs huddled into one group, on Chrome blue, over a group line
 ## Type
 
 - **Atkinson Hyperlegible Next** for all UI text, and **Atkinson Hyperlegible Mono** for keys, counts and times. Both are bundled in `src/fonts/` (OFL) rather than loaded from Google, so the popup doesn't wait on the network or fail offline.
-- They were chosen for legibility at the popup's small sizes (10–12px), which is where Huddle lives, not for a subject association.
+- They were chosen for legibility at the popup's small sizes (10.5–12px), which is where Huddle lives, not for a subject association.
 - **Scale:**
   - popup body text 11–12px;
+  - a **compact 10.5px** step for the popup's small control labels (the Groups/Flat toggle, the mini and snooze buttons, Wake, Undo, Nap room, Settings) and for its mono counts and times (group counts, sleeping times, the footer's tab count and shortcut);
   - section chips 10.5px/700;
   - brand 15px/700;
-  - keys and counts 8.5–10px mono.
+  - hotkey badges 8.5px mono, the only text below 10.5px.
+- The brand has no subtitle: the Groups/Flat toggle beside it already shows the mode.
 
 ## Layout and components (popup)
 
-- **Width** is fixed at 380px, and the popup must stay under Chrome's **600px** cap in its heaviest normal state (the Split View row, several sleeping items). Measured: 598px on Chrome 155.
-- **Buttons** are neutral surfaces (`--comp`) with a `--bd-control` edge. The Groups/Flat toggle's active side is a solid blue fill. "Organize with AI" is a button like any other.
+- **Width** is fixed at 380px, and the popup must stay under Chrome's **600px** cap in its heaviest normal state (the Split View row, several sleeping items). Measured: 593px with the Split View row and three sleeping items (Chrome for Testing 151).
+- **Buttons** are neutral surfaces (`--comp`) with a `--bd-control` edge. The Groups/Flat toggle's active side is a solid blue fill. "Organize with AI" is a button like any other. Under WCAG 1.4.12 text spacing, a label that no longer fits wraps onto a second line rather than pushing its hotkey badge out of the button.
 - **Hotkey badges** use `--kbd-bg`/`--kbd-tx` and show the bare key (`D`, or a row digit).
-- **Feedback** (the result line, Undo, "Copied!") floats as toasts over the bottom edge. The popup's Undo takes focus and has no time limit; the next press of another button dismisses it. While one shows, the page reserves its height at the bottom, so a toast never covers the footer or the picker's last row. Errors keep an opaque surface and wrap instead of truncating.
+- **Feedback** (the result line, Undo, "Copied!") floats as toasts over the bottom edge. The popup's Undo takes focus and has no time limit; the next press of another button dismisses it. While one shows, the page reserves its height at the bottom, so a toast never covers the footer or the picker's last row, and the same height is the page's scroll padding, so Tab to a control behind a toast (Settings, in the tallest states) scrolls it clear. Errors keep an opaque surface and wrap instead of truncating.
 - **The snooze picker is modal:** the rest of the popup steps aside while it's open, the header is `inert`, and opening it by hotkey puts focus on its unit chip.
 - **A running action** marks its button `aria-busy`, which dims it to 0.7 with a progress cursor until the reply.
 - **Icons** are drawn SVG at a 1.5px stroke in `currentColor`: settings sliders, "open" arrow, and a close mark for discarding a sleeping item (a dismissal in the nap voice, not a trash can). No emoji or Unicode glyphs stand in for icons. `⇧` and `⌘` appear only as key notation.
