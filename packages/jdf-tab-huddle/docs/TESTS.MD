@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Unit Tests**: 932 tests across 21 Vitest files (mocked Chrome APIs)
+- **Unit Tests**: 947 tests across 21 Vitest files (mocked Chrome APIs)
 - **E2E Tests**: 127 tests across 19 Playwright spec files (real Chromium browser)
-- **Total**: 1059 tests
+- **Total**: 1074 tests
 
 ## Unit Tests (Vitest)
 
@@ -25,11 +25,11 @@
 | content-clumper.test.js | 60 | Link clumping content script: only trusted events, the confirm and the 25 cap, letting go on blur and hidden tabs, Cmd+Z, an orphaned copy after an update; the worker's top-frame, http(s) and 25-link checks; it runs on http(s) pages only, and an install, update or reload puts it into the http(s) tabs already open |
 | options.test.js | 31 | Settings page |
 | options-ai.test.js | 18 | Settings: the AI section |
-| ai-config.test.js | 42 | Key checks, key form and model picker shared by Settings and the organize page |
-| ai-models.test.js | 48 | Key expiry, model catalog helpers, JSON schema |
-| ai-service.test.js | 27 | Key encoding and expiry, query stripping, the prompt |
-| openrouter-requests.test.js | 35 | What is asked of OpenRouter, model by model, and its refusals |
-| ai-runtime.test.js | 26 | The OpenRouter client: error statuses, streaming, JSON fallback |
+| ai-config.test.js | 43 | Key checks, key form and model picker shared by Settings and the organize page; a confirmed unlisted default is kept |
+| ai-models.test.js | 49 | Key expiry, model catalog helpers (a catalog cut off by the timeout reads as no answer), JSON schema |
+| ai-service.test.js | 29 | Key encoding and expiry, query stripping, the prompt, reading the model's answer (null answers and groups) |
+| openrouter-requests.test.js | 38 | What is asked of OpenRouter, model by model (the output cap as `max_tokens` or `max_completion_tokens`, and its size), and its refusals; a key save keeps a confirmed unlisted default |
+| ai-runtime.test.js | 34 | The OpenRouter client: error statuses (mid-stream ones keep their kind), streaming and its edge cases, the idle timer (keep-alives count), JSON fallback |
 | ai-handlers.test.js | 44 | Worker AI handlers: runs, Apply, window scoping, pinned tabs; a content script's port is closed |
 | ai-proposal.test.js | 71 | The organize page |
 | simple.test.js | 6 | Framework and Chrome API mock verification |

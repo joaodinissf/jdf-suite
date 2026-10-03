@@ -254,6 +254,7 @@ export default [
         renderGroup: 'readonly',
         setupActionButtons: 'readonly',
         callOpenRouter: 'readonly',
+        readOpenRouterResponse: 'readonly',
         handleAiGroupTabs: 'readonly',
         handleApplyAiProposal: 'readonly',
         saveAiDefaultModel: 'readonly',

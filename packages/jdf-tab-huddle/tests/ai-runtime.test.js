@@ -15,7 +15,7 @@ function makeNonStreamingResponse(content) {
 }
 
 // Builds a fake `Response` whose `.body.getReader()` yields the given raw
-// text chunks (already SSE-formatted) one at a time, then signals done.
+// chunks (SSE-formatted text, or bytes) one at a time, then signals done.
 function makeStreamingResponse(chunks) {
   const encoder = new TextEncoder();
   let i = 0;
@@ -27,7 +27,7 @@ function makeStreamingResponse(chunks) {
       getReader: () => ({
         read: async () => {
           if (i < chunks.length) {
-            const value = encoder.encode(chunks[i]);
+            const value = typeof chunks[i] === 'string' ? encoder.encode(chunks[i]) : chunks[i];
             i += 1;
             return { done: false, value };
           }
@@ -37,6 +37,34 @@ function makeStreamingResponse(chunks) {
     },
   };
 }
+
+// A stream whose reads arrive on a clock: each step is { after (ms since the
+// previous read), text }, or { stall: true } for a read that never answers.
+// Like a real fetch body, a pending read rejects once the request aborts.
+function makeTimedStream(steps, signal) {
+  const encoder = new TextEncoder();
+  let i = 0;
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => 'text/event-stream' },
+    body: {
+      getReader: () => ({
+        read: () => new Promise((resolve, reject) => {
+          const step = steps[i++];
+          if (!step) return resolve({ done: true, value: undefined });
+          const timer = step.stall ? null : setTimeout(() => resolve({ done: false, value: encoder.encode(step.text) }), step.after);
+          signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            reject(new DOMException('aborted', 'AbortError'));
+          }, { once: true });
+        }),
+      }),
+    },
+  };
+}
+
+const sse = (content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`;
 
 describe('callOpenRouter - error status mapping', () => {
   const withBody = (status, message, provider) => ({
@@ -152,6 +180,20 @@ describe('callOpenRouter - errors inside a 200', () => {
     await expect(callOpenRouter('key', 'model', [])).rejects.toThrow(/stopped mid-answer.*502: Upstream provider disconnected/);
   });
 
+  // The cause's kind and retryability lead the page to the right fix: Add
+  // credits for a 402, not Retry or Change model.
+  test.each([
+    [402, { kind: 'credits', retryable: false, status: 402 }],
+    ['server_error', { kind: 'transient', status: 502 }],
+  ])('a mid-stream error with code %s keeps its kind and retryability', async (code, expected) => {
+    global.fetch = vi.fn().mockResolvedValue(makeStreamingResponse([
+      `data: ${JSON.stringify({ error: { code, message: 'Provider said no' }, choices: [{ delta: {}, finish_reason: 'error' }] })}\n\n`,
+    ]));
+    const err = await callOpenRouter('key', 'model', []).catch((e) => e);
+    expect(err).toMatchObject(expected);
+    expect(err.message).toMatch(/^The provider stopped mid-answer\./);
+  });
+
   test('a JSON error body with status 200 is reported as that error', async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -208,6 +250,74 @@ describe('callOpenRouter - SSE streaming', () => {
 
     expect(onChunk).not.toHaveBeenCalled();
     expect(result).toBe('');
+  });
+});
+
+describe('readOpenRouterResponse - SSE edge cases', () => {
+  test('a chunk with no content (role or reasoning only) adds nothing', async () => {
+    const onChunk = vi.fn();
+    const result = await readOpenRouterResponse(makeStreamingResponse([
+      'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n',
+      'data: {"choices":[{"delta":{"reasoning":"thinking"}}]}\n\n',
+      sse('{}'),
+    ]), onChunk);
+    expect(result.text).toBe('{}');
+    expect(onChunk.mock.calls).toEqual([['{}']]);
+  });
+
+  test('a character split across two reads arrives whole', async () => {
+    const bytes = new TextEncoder().encode(sse('Café'));
+    const cut = bytes.indexOf(0xc3) + 1; // inside the two bytes of "é"
+    const result = await readOpenRouterResponse(makeStreamingResponse([bytes.slice(0, cut), bytes.slice(cut)]), null);
+    expect(result.text).toBe('Café');
+  });
+
+  test('finish_reason "error" with no error object still fails, keeping no partial answer', async () => {
+    await expect(readOpenRouterResponse(makeStreamingResponse([
+      sse('{"groups": ['),
+      'data: {"choices":[{"delta":{},"finish_reason":"error"}]}\n\n',
+    ]), null)).rejects.toThrow(/^The provider stopped mid-answer\./);
+  });
+
+  test('the finish reason survives a later chunk that carries none', async () => {
+    const result = await readOpenRouterResponse(makeStreamingResponse([
+      'data: {"choices":[{"delta":{"content":"x"},"finish_reason":"length"}]}\n\n',
+      'data: {"choices":[{"delta":{}}],"usage":{"completion_tokens":1}}\n\n',
+      'data: [DONE]\n\n',
+    ]), null);
+    expect(result).toEqual({ text: 'x', finishReason: 'length' });
+  });
+});
+
+// The idle timer restarts on every read, so a long answer that keeps arriving
+// finishes. OpenRouter's keep-alive comments count too: a reasoning model can
+// think silently for longer than the idle limit behind them.
+describe('callOpenRouter - the idle timer', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  test('a stream far longer than idleMs, never idle that long, completes', async () => {
+    const keepAlive = { after: 900, text: ': OPENROUTER PROCESSING\n\n' };
+    const steps = [
+      { after: 900, text: sse('a') }, keepAlive, keepAlive, keepAlive,
+      { after: 900, text: sse('b') }, { after: 900, text: sse('c') }, { after: 900, text: 'data: [DONE]\n\n' },
+    ];
+    global.fetch = vi.fn(async (_url, init) => makeTimedStream(steps, init.signal));
+    const outcome = callOpenRouter('key', 'model', [], null, { idleMs: 1000, firstByteMs: 5000 })
+      .then((text) => ({ text }), (error) => ({ error }));
+    await vi.advanceTimersByTimeAsync(7 * 900);
+    await expect(outcome).resolves.toEqual({ text: 'abc' });
+  });
+
+  test('a stream that stalls for idleMs fails as a transient timeout', async () => {
+    global.fetch = vi.fn(async (_url, init) => makeTimedStream([{ after: 500, text: sse('a') }, { stall: true }], init.signal));
+    let settled = null;
+    callOpenRouter('key', 'model', [], null, { idleMs: 1000, firstByteMs: 5000 })
+      .then(() => { settled = { resolved: true }; }, (error) => { settled = { error }; });
+    await vi.advanceTimersByTimeAsync(1400); // 900 ms since the last chunk
+    expect(settled).toBeNull();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(settled.error).toMatchObject({ kind: 'transient', message: expect.stringMatching(/didn't answer within 1 s/) });
   });
 });
 

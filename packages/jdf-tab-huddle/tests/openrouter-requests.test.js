@@ -13,6 +13,9 @@ const LUNA_PARAMS = ['include_reasoning', 'max_completion_tokens', 'max_tokens',
 const HAIKU_PARAMS = ['include_reasoning', 'max_completion_tokens', 'max_tokens', 'reasoning',
   'response_format', 'stop', 'structured_outputs', 'temperature', 'tool_choice', 'tools', 'top_k', 'top_p'];
 const JSON_ONLY_PARAMS = ['response_format', 'temperature'];
+// GPT-5.2 Codex and five other picker models cap output only this way.
+const CODEX_PARAMS = ['include_reasoning', 'max_completion_tokens', 'reasoning', 'reasoning_effort',
+  'response_format', 'seed', 'structured_outputs', 'tool_choice', 'tools'];
 
 const HAIKU = 'anthropic/claude-haiku-4.5';
 const DEEPSEEK = 'deepseek/deepseek-v4.1-flash';
@@ -83,6 +86,17 @@ describe('the request follows the model\'s catalog capabilities', () => {
     expect(body.response_format).toEqual({ type: 'json_object' });
     expect(body.provider).toBeUndefined();
     expect(body.max_tokens).toBe(2000);
+    expect(body).not.toHaveProperty('max_completion_tokens');
+  });
+
+  // Uncapped, OpenRouter reserves credit for the model's whole output limit
+  // (about $1.79 for GPT-5.2 Codex), which a small balance can't cover.
+  test('a model that lists only max_completion_tokens is capped with it', () => {
+    for (const strict of [true, false]) {
+      const body = buildOpenRouterRequestBody('openai/gpt-5.2-codex', [], { params: CODEX_PARAMS, jsonSchema: schema, strict, maxTokens: 2000 });
+      expect(body.max_completion_tokens).toBe(2000);
+      expect(body).not.toHaveProperty('max_tokens');
+    }
   });
 
   test('a known model that lists no response_format gets none, strict or not', () => {
@@ -215,6 +229,14 @@ describe('recommended models', () => {
   });
 });
 
+describe('maxTokensForTabs', () => {
+  test('2000 tokens, plus 100 per tab, capped at 16000', () => {
+    expect(maxTokensForTabs(0)).toBe(2000);
+    expect(maxTokensForTabs(10)).toBe(3000);
+    expect(maxTokensForTabs(200)).toBe(16000);
+  });
+});
+
 describe('resolveDefaultModel', () => {
   const catalog = (...ids) => new Set(ids);
 
@@ -250,6 +272,17 @@ describe('resolveDefaultModel', () => {
     expect(stored.unlistedModel).toBe('acme/private');
     await saveAiDefaultModel(HAIKU);
     expect(stored.unlistedModel).toBeNull();
+  });
+
+  test('saving a new key keeps a confirmed unlisted default; a different model clears it', async () => {
+    let stored = { key: btoa('sk-or-old'), model: 'acme/private', unlistedModel: 'acme/private', expiresAt: null, expiryDuration: null };
+    chrome.storage.local.get.mockImplementation(async () => ({ aiConfig: stored }));
+    chrome.storage.local.set.mockImplementation(async ({ aiConfig }) => { stored = aiConfig; });
+    // The organize page's inline key form sends no model.
+    await saveAiConfig({ key: 'sk-or-new', expiryDuration: null, renew: true });
+    expect(stored).toMatchObject({ model: 'acme/private', unlistedModel: 'acme/private' });
+    await saveAiConfig({ key: 'sk-or-new', model: HAIKU, expiryDuration: null });
+    expect(stored).toMatchObject({ model: HAIKU, unlistedModel: null });
   });
 });
 

@@ -191,6 +191,22 @@ describe('AI Service - parseAiResponse', () => {
     expect(result.error).toContain('groups');
   });
 
+  // Models without structured outputs can answer this; it used to throw a raw TypeError.
+  test('a null answer is a missing groups array, not a crash', () => {
+    for (const answer of ['null', '```json\nnull\n```']) {
+      expect(parseAiResponse(answer, originalTabs)).toMatchObject({ success: false, error: expect.stringContaining('groups') });
+    }
+  });
+
+  test('null group entries are skipped and the valid groups kept', () => {
+    const result = parseAiResponse('{"groups":[null,{"name":"A","color":"blue","tabIds":[1,2]}]}', originalTabs);
+    expect(result.success).toBe(true);
+    expect(result.groups).toEqual([{ name: 'A', color: 'blue', tabIds: [1, 2] }]);
+    // Nothing usable at all: the existing "no group" error.
+    expect(parseAiResponse('{"groups":[null]}', originalTabs))
+      .toMatchObject({ success: false, error: expect.stringMatching(/didn't put any of your tabs in a group/) });
+  });
+
   test('skips groups with no valid tabs', () => {
     const response = JSON.stringify({
       groups: [
