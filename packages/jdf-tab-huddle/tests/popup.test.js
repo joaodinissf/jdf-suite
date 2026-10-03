@@ -30,6 +30,7 @@ describe('Popup Script', () => {
       <button id="aiOrganize">Organize with AI</button>
       <span id="statusThisWindow"></span>
       <span id="statusAllWindows"></span>
+      <div id="actionResult" hidden></div>
     `;
 
     chrome.storage.local.get.mockImplementation((keys, callback) => {
@@ -290,6 +291,11 @@ describe('Popup Script', () => {
     });
   });
 
+  test('the popup declares its language, like the other pages (M13)', () => {
+    const html = readFileSync(resolve(__dirname, '../src/popup.html'), 'utf8');
+    expect(html).toMatch(/<html lang="en">/);
+  });
+
   describe('Error handling', () => {
     test('should handle chrome.runtime.lastError in callbacks', () => {
       chrome.runtime.lastError = { message: 'Test error' };
@@ -301,6 +307,10 @@ describe('Popup Script', () => {
       callback({ success: false, error: 'Background error' });
 
       expect(consoleSpy).toHaveBeenCalled();
+      // The lost message is what the user reads, not the reply's own error.
+      const result = document.getElementById('actionResult');
+      expect(result.textContent).toBe("Couldn't sort: Test error");
+      expect(result.classList.contains('error')).toBe(true);
 
       delete chrome.runtime.lastError;
     });

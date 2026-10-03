@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="UTF-8">
@@ -188,6 +188,11 @@
     .btn.mini {
       padding: 6px 6px;
       font-size: 10.5px;
+    }
+
+    .btn[aria-busy="true"] {
+      cursor: progress;
+      opacity: .7;
     }
 
     .btn:disabled,
@@ -764,7 +769,7 @@
         <div class="multi-window-section"><span id="statusAllWindows"></span></div>
       </div>
       <div class="foot-right">
-        <button type="button" id="openOptions" class="gear"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 4h6.5M12.5 4H14M2 8h1.5M7.5 8H14M2 12h5.5M11.5 12H14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10.5" cy="4" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="5.5" cy="8" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="9.5" cy="12" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5"/></svg> Settings</button>
+        <button type="button" id="openOptions" class="gear" data-action="openOptions"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 4h6.5M12.5 4H14M2 8h1.5M7.5 8H14M2 12h5.5M11.5 12H14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10.5" cy="4" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="5.5" cy="8" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="9.5" cy="12" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5"/></svg> Settings</button>
         <span id="openShortcut" class="open-shortcut" hidden></span>
       </div>
     </div>

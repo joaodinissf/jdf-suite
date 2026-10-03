@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Unit Tests**: 947 tests across 21 Vitest files (mocked Chrome APIs)
+- **Unit Tests**: 955 tests across 21 Vitest files (mocked Chrome APIs)
 - **E2E Tests**: 127 tests across 19 Playwright spec files (real Chromium browser)
-- **Total**: 1074 tests
+- **Total**: 1082 tests
 
 ## Unit Tests (Vitest)
 
@@ -15,11 +15,11 @@
 | routing.test.js | 128 | Every worker action routed from its real caller; the table checked against the dispatcher's if/else chain and each page's scripts; which tabs each Deduplicate closes |
 | background.test.js | 50 | Worker logic: sort, dedupe, split domains, results |
 | snooze.test.js | 94 | Snoozing and waking: records, custom times, window groups, alarms, failed reads, a wake cut short and done again by a new worker, the window a wake opens in |
-| snooze-ui.test.js | 33 | Snooze controls in the popup and the nap room, including the waking state and failed reads |
+| snooze-ui.test.js | 38 | Snooze controls in the popup and the nap room, including the waking state and failed reads; keyboard focus after Wake, Discard and Undo, Undo with no time limit, the picker's focus and inert header |
 | nap-room.test.js | 22 | The nap room page |
-| popup.test.js | 73 | Popup UI and message passing |
-| popup-feedback.test.js | 23 | Popup result and error messages |
-| keyboard.test.js | 28 | Popup hotkeys |
+| popup.test.js | 74 | Popup UI and message passing |
+| popup-feedback.test.js | 24 | Popup result and error messages; a running action's button is `aria-busy` |
+| keyboard.test.js | 29 | Popup hotkeys, including I for Settings in the real popup |
 | split-view.test.js | 45 | Split view compact, expand and repair |
 | confirmation-dialog.test.js | 28 | Split domains dialog |
 | content-clumper.test.js | 60 | Link clumping content script: only trusted events, the confirm and the 25 cap, letting go on blur and hidden tabs, Cmd+Z, an orphaned copy after an update; the worker's top-frame, http(s) and 25-link checks; it runs on http(s) pages only, and an install, update or reload puts it into the http(s) tabs already open |

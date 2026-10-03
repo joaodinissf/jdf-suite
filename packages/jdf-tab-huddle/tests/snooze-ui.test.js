@@ -9,6 +9,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const popupHtml = readFileSync(resolve(__dirname, '../src/popup.html'), 'utf8');
 
 const POPUP_DOM = `
+  <div class="p-head"><button id="modeGroups" data-action="setRespectGroups">Groups</button></div>
   <div class="grp multi-window-section"><button id="sortAllWindows" data-action="sortAllWindows">Sort all</button></div>
   <div class="grp" id="snoozeSection">
     <div class="snooze-targets">
@@ -148,6 +149,74 @@ describe('Popup: Wake / Discard / Undo report what happened', () => {
   });
 });
 
+// Keyboard focus survives the list being rebuilt (M12), and Undo has no time
+// limit: it stays until another button is pressed (D2).
+describe('Popup: focus and Undo around Wake and Discard', () => {
+  const item = (id) => ({ id, type: 'tab', summary: `${id} tab`, wakeAt: Date.now() + 3600000, tabs: [{ url: `https://${id}/` }] });
+  const button = (id, action) => document.querySelector(`.snoozed-item[data-id="${id}"] [data-action="${action}"]`);
+  let items;
+  let held;
+
+  beforeEach(() => {
+    items = [item('a'), item('b'), item('c')];
+    held = routeMessages({
+      listSnoozed: () => ({ success: true, items }),
+      getSnoozePresets: () => ({ success: true, presets: PRESETS }),
+    });
+    initSnoozeUi();
+  });
+
+  // The storage change after the worker's write re-renders the list.
+  const storageChange = (next) => { items = next; renderSnoozedList(); };
+  const reply = (action, response) => held.find((h) => h.message.action === action).callback(response);
+
+  test('Wake on the middle row: focus moves to the Wake of the row that takes its place', () => {
+    button('b', 'wake').focus();
+    button('b', 'wake').click();
+    storageChange([item('a'), item('c')]);
+    expect(document.activeElement).toBe(button('c', 'wake'));
+    reply('wakeSnoozed', { success: true, createdCount: 1, failedCount: 0 });
+    expect(document.activeElement).toBe(button('c', 'wake'));
+  });
+
+  test('Discard focuses Undo, even when the list is rebuilt before the reply', () => {
+    button('b', 'discard').focus();
+    button('b', 'discard').click();
+    storageChange([item('a'), item('c')]);
+    reply('cancelSnoozed', { success: true, record: item('b') });
+    expect(document.activeElement.id).toBe('discardUndo');
+    storageChange([item('a'), item('c')]);
+    expect(document.activeElement.id).toBe('discardUndo');
+  });
+
+  test('Undo puts focus back on the row it brought back', () => {
+    button('b', 'discard').focus();
+    button('b', 'discard').click();
+    reply('cancelSnoozed', { success: true, record: item('b') });
+    storageChange([item('a'), item('c')]);
+    document.getElementById('discardUndo').click();
+    reply('restoreSnoozed', { success: true });
+    storageChange([item('a'), item('b'), item('c')]);
+    expect(document.activeElement).toBe(button('b', 'discard'));
+  });
+
+  test('Undo has no time limit; pressing another button dismisses it', () => {
+    vi.useFakeTimers();
+    try {
+      showDiscardNotice(item('b'));
+      vi.advanceTimersByTime(60 * 60 * 1000);
+      const notice = document.getElementById('discardNotice');
+      expect(notice.hidden).toBe(false);
+      document.getElementById('discardUndo').click(); // an Undo still pending keeps it
+      expect(notice.hidden).toBe(false);
+      document.getElementById('sortAllWindows').click();
+      expect(notice.hidden).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('Popup: snooze picker', () => {
   test('preset buttons stay disabled, with no key, until their times arrive', () => {
     const held = routeMessages({ listSnoozed: () => ({ success: true, items: [] }) });
@@ -207,6 +276,15 @@ describe('Popup: snooze picker', () => {
     const rule = popupHtml.match(/\n\s*#snoozeFeedback\s*\{([^}]*)\}/)[1];
     expect(rule).toContain('var(--danger)');
     expect(rule).not.toContain('var(--ac-txt)');
+  });
+
+  test('opening by hotkey focuses the chip, and the header is inert while picking (L39)', () => {
+    expect(document.activeElement).toBe(document.body);
+    openSnoozePicker('window');
+    expect(document.activeElement.id).toBe('snoozeWindow');
+    expect(document.querySelector('.p-head').hasAttribute('inert')).toBe(true);
+    closeSnoozePicker();
+    expect(document.querySelector('.p-head').hasAttribute('inert')).toBe(false);
   });
 
   test('a failed presets load says so when the picker opens', () => {

@@ -1,3 +1,9 @@
+import { readFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 // Unit tests for the popup keyboard-shortcut engine (redesigned single-panel DOM).
 // Globals (buildHotkeyMap, refreshHotkeys, handleHotkeyKeydown,
 // isTextInputTarget, isHotkeyVisible) are exposed via tests/setup.js.
@@ -406,10 +412,14 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
       refreshHotkeys();
       const ev = keyEvent('z'); // 'z' is not a preferred mnemonic in the base state
       handleHotkeyKeydown(ev);
-      if (!ev.defaultPrevented) {
-        expect(ev.defaultPrevented).toBe(false);
-      }
+      expect(ev.defaultPrevented).toBe(false);
     });
+  });
+
+  test('in the real popup, I opens Settings (L41)', () => {
+    const html = readFileSync(resolve(__dirname, '../src/popup.html'), 'utf8');
+    document.body.innerHTML = html.match(/<body>([\s\S]*)<\/body>/)[1];
+    expect(buildHotkeyMap().get('i')?.id).toBe('openOptions');
   });
 
   describe('refreshHotkeys — hint rendering', () => {

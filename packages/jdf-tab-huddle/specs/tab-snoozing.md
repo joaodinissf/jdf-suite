@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add **tab snoozing**: hide the current tab, the highlighted tabs, a whole window, or a tab group *now*, and have Huddle automatically reopen ("wake") them at a chosen time. Waking recreates the tabs in the **background** of the current window (or recreates a whole window) and fires a Chrome notification summarizing what woke. A minimal "Sleeping" list in the popup shows everything currently snoozed, with per-item **Wake now** and **Discard** actions. Discard drops the sleeping tabs without reopening them, and offers **Undo** for 10 seconds (it was called Cancel until the 2026-09 UI review, which found that "cancel" read as "bring it back").
+Add **tab snoozing**: hide the current tab, the highlighted tabs, a whole window, or a tab group *now*, and have Huddle automatically reopen ("wake") them at a chosen time. Waking recreates the tabs in the **background** of the current window (or recreates a whole window) and fires a Chrome notification summarizing what woke. A minimal "Sleeping" list in the popup shows everything currently snoozed, with per-item **Wake now** and **Discard** actions. Discard drops the sleeping tabs without reopening them, and offers **Undo**: in the popup until another button is pressed or the popup closes, and in the nap room for 10 seconds. (It was called Cancel until the 2026-09 UI review, which found that "cancel" read as "bring it back".)
 
 Inspired by [snoozz](https://github.com/rohanb10/snoozz-tab-snoozing), but deliberately simpler: no recurring snoozes, no history, no time-editing of existing snoozes, no dedicated dashboard page.
 
@@ -51,7 +51,7 @@ Preset labels/times are fetched from the background on popup load via the `getSn
 Each list row (`<li class="snoozed-item" data-id="...">`) shows:
 - The record `summary` (truncated with `text-overflow: ellipsis`),
 - The wake time formatted by `formatWakeTime()` ("Today 18:00", "Tomorrow 09:00", "Sat 09:00", "12 Jul, 09:00"),
-- A **Wake now** button (`class="snoozed-wake"`, `data-action="wake"`) and a **Discard** button (`class="snoozed-discard"`, `data-action="discard"`). Discard never gets a hotkey. After a discard, a `role="status"` notice offers **Undo** (hotkey Z) for 10 seconds.
+- A **Wake now** button (`class="snoozed-wake"`, `data-action="wake"`) and a **Discard** button (`class="snoozed-discard"`, `data-action="discard"`). Discard never gets a hotkey. After a discard, a `role="status"` notice offers **Undo** (hotkey Z) and takes focus. It has no time limit: a press of any other popup button (or its hotkey) dismisses it, and the record it holds goes with it. Keyboard focus survives the list being rebuilt: after Wake now it lands on the same button of the row now in that place, and after Undo on the row that came back.
 
 Wake now's digit (1–9) is the row's place in the list. A row whose Wake now is disabled (its request is running, or it is waking) keeps its digit unbound, so pressing the same digit twice never wakes the next row; the digit comes back when the row is enabled again.
 

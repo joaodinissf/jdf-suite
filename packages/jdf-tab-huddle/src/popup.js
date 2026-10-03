@@ -157,9 +157,13 @@ const pendingActions = new Set();
 function sendAction(action, data = {}) {
   if (pendingActions.has(action)) return;
   pendingActions.add(action);
+  // Says the button is working until the reply (Merge windows can take a second).
+  const button = document.querySelector(`[data-action="${action}"]`);
+  if (button) button.setAttribute('aria-busy', 'true');
   const message = { action, ...data };
   chrome.runtime.sendMessage(message, function (response) {
     pendingActions.delete(action);
+    if (button) button.removeAttribute('aria-busy');
     if (chrome.runtime.lastError) {
       log(`Error from background for action "${action}":`, chrome.runtime.lastError.message);
       showActionResult(`Couldn't ${ACTION_VERBS[action] || 'do that'}: ${chrome.runtime.lastError.message}`, 'error');
@@ -598,6 +602,14 @@ function initSnoozeUi() {
   const undoBtn = document.getElementById('discardUndo');
   if (undoBtn) undoBtn.addEventListener('click', () => undoDiscard());
 
+  // Undo stays until the next button press anywhere else (hotkeys click too).
+  document.addEventListener('click', (event) => {
+    const btn = event.target.closest && event.target.closest('button');
+    if (pendingDiscard && btn && !btn.closest('#discardNotice')) hideDiscardNotice();
+  });
+
+  document.addEventListener('focusin', rememberListFocus);
+
   // Live-refresh the list when an alarm fires (or any snooze mutation happens).
   if (chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener((changes, area) => {
@@ -686,8 +698,14 @@ function openSnoozePicker(unit) {
   if (snoozePresetsFailed) showSnoozeFeedback('Could not load snooze times');
   panel.hidden = false;
   document.body.classList.add('picking');
+  // Every other section is hidden while picking; the header is the one left.
+  const head = document.querySelector('.p-head');
+  if (head) head.toggleAttribute('inert', true);
   // The picker is now the active (modal) hotkey set.
   refreshHotkeys();
+  // Opened by hotkey, focus would stay on <body>: start Tab from the chip.
+  const chip = document.getElementById(SNOOZE_UNIT_TO_BUTTON_ID[unit]);
+  if (chip) chip.focus();
 }
 
 // Hiding the panel would drop focus on <body> if it was inside it; hand it
@@ -699,6 +717,8 @@ function closeSnoozePicker({ restoreFocus = false } = {}) {
   const focusWasInside = !!(panel && panel.contains(document.activeElement));
   if (panel) panel.hidden = true;
   document.body.classList.remove('picking');
+  const head = document.querySelector('.p-head');
+  if (head) head.toggleAttribute('inert', false);
   pendingSnoozeUnit = null;
   markSelectedUnitButton(null);
   // Back to the main hotkey set.
@@ -849,7 +869,40 @@ function renderSnoozedList() {
     if (section) section.hidden = items.length === 0;
     // The sleeping list (and its Wake now/Discard buttons) was rebuilt — recompute hotkeys.
     refreshHotkeys();
+    restoreListFocus();
   });
+}
+
+// The sleeping-list button that last had focus, as { id, index, action }.
+// Recorded on focusin, because disabling a row's buttons while its request runs
+// (setSnoozedRowPending) can drop focus before the list is rebuilt.
+let lastListFocus = null;
+
+function rememberListFocus(event) {
+  const btn = event.target.closest && event.target.closest('#snoozedList button[data-action]');
+  const li = btn && btn.closest('.snoozed-item[data-id]');
+  if (!li) return;
+  const rows = [...document.querySelectorAll('#snoozedList .snoozed-item[data-id]')];
+  lastListFocus = { id: li.getAttribute('data-id'), index: rows.indexOf(li), action: btn.getAttribute('data-action') };
+}
+
+// Only when focus was lost (fell to <body>): put it back on the same button of
+// the same row, else on that button in the row now at the same place, skipping
+// rows whose buttons are disabled (being woken).
+function restoreListFocus() {
+  if (!lastListFocus || document.activeElement !== document.body) return;
+  const { id, index, action } = lastListFocus;
+  const button = (li) => li && li.querySelector(`button[data-action="${action}"]:not(:disabled)`);
+  const rows = [...document.querySelectorAll('#snoozedList .snoozed-item[data-id]')];
+  const same = button(rows.find((li) => li.getAttribute('data-id') === id));
+  const usable = rows.filter(button);
+  const target = same || button(usable[Math.min(index, usable.length - 1)]);
+  if (!target) return;
+  const record = lastListFocus;
+  target.focus();
+  // A stand-in row keeps the record, so focus goes back to the row if it
+  // returns (Undo).
+  if (!same) lastListFocus = record;
 }
 
 // Disables (or re-enables) a sleeping row's buttons while its request runs,
@@ -909,9 +962,9 @@ const DISMISS_ICON = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidde
   + 'stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
 
 // Discarding drops the snoozed tabs for good (they were closed at snooze time),
-// so it is undoable for a few seconds instead of asking for confirmation.
-const DISCARD_UNDO_MS = 10000;
-let pendingDiscard = null; // { record, timer }
+// so it is undoable instead of asking for confirmation. There is no time limit:
+// the notice stays until another button is pressed or the popup closes.
+let pendingDiscard = null; // { record, undoing }
 
 function discardSnooze(id) {
   chrome.runtime.sendMessage({ action: 'cancelSnoozed', id }, (response) => {
@@ -934,21 +987,27 @@ function showDiscardNotice(record) {
   const notice = document.getElementById('discardNotice');
   const text = document.getElementById('discardNoticeText');
   if (!notice || !text) return;
-  if (pendingDiscard) clearTimeout(pendingDiscard.timer);
-  pendingDiscard = { record, timer: setTimeout(hideDiscardNotice, DISCARD_UNDO_MS) };
+  pendingDiscard = { record };
   text.textContent = `Discarded ${record.summary}.`;
   notice.hidden = false;
   updateToastSpace();
   refreshHotkeys();
+  const undo = document.getElementById('discardUndo');
+  if (undo) undo.focus();
 }
 
 function hideDiscardNotice() {
-  if (pendingDiscard) clearTimeout(pendingDiscard.timer);
   pendingDiscard = null;
   const notice = document.getElementById('discardNotice');
-  if (notice) notice.hidden = true;
+  if (notice) {
+    // Chrome moves focus off a hidden Undo only later; drop it now, so the
+    // list can take it back.
+    if (notice.contains(document.activeElement)) document.activeElement.blur();
+    notice.hidden = true;
+  }
   updateToastSpace();
   refreshHotkeys();
+  restoreListFocus();
 }
 
 // The notice (and its record) stays until the background confirms the record
@@ -1044,6 +1103,8 @@ const HOTKEY_PREFERENCES = {
   snoozeGroup: ['r'],                 // gRoup
   // Sleeping preview
   expandSleeping: ['n'],              // Nap room
+  // Footer
+  openOptions: ['i'],                 // settIngs
   // Undo the last Discard (Discard itself never gets a hotkey)
   discardUndo: ['z'],
   // Snooze picker (modal set while the panel is open)
