@@ -20,7 +20,7 @@ jobs:
     name: Unit tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: actions/setup-python@v7
       with:
         python-version: '3.12'
@@ -38,7 +38,7 @@ jobs:
       matrix:
         manager: [precommit, lefthook]
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - uses: actions/setup-python@v7
       with:
         python-version: '3.12'
@@ -73,7 +73,7 @@ jobs:
     name: Validate lefthook config
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - run: npm install -g lefthook
     - name: Validate lefthook.yml
       # Lefthook resolves its config relative to the git root, not CWD,
