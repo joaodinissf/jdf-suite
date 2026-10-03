@@ -541,6 +541,19 @@
       border-color: var(--bd-control-hi);
     }
 
+    /* Narrow windows and high zoom: the title keeps the row's width, and the
+       Move menu takes its own line. */
+    @media (max-width: 480px) {
+      .tab-row {
+        flex-wrap: wrap;
+      }
+
+      .tab-move {
+        flex-basis: 100%;
+        max-width: 100%;
+      }
+    }
+
     .actions,
     .form-actions {
       display: flex;
