@@ -1,3 +1,9 @@
+import { readFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 describe('Nap Room', () => {
   // Fixed reference "now": Wed 2024-01-10 12:00 local time.
   const NOW = new Date(2024, 0, 10, 12, 0, 0).getTime();
@@ -68,6 +74,12 @@ describe('Nap Room', () => {
       const items = [{ wakeAt: at(3, 9, 0) }];
       expect(napNextWakeSummary(items, NOW)).toBe('next wakes Saturday at 09:00');
     });
+
+    test('counts overdue tabs, like the tab total beside it (L47)', () => {
+      const tabs = (n) => Array.from({ length: n }, (_, i) => ({ url: `https://e.test/${i}` }));
+      const items = [{ wakeAt: at(-3, 9), tabs: tabs(6) }, { wakeAt: at(1, 9), tabs: tabs(1) }];
+      expect(napNextWakeSummary(items, NOW)).toBe('6 overdue · next wakes tomorrow at 09:00');
+    });
   });
 
   describe('napRowTitle', () => {
@@ -85,6 +97,35 @@ describe('Nap Room', () => {
       const record = { type: 'group', tabs: [{ url: 'a' }, { url: 'b' }], summary: 'Group "Research" (2 tabs)' };
       expect(napRowTitle(record)).toBe('Group "Research" (2 tabs)');
     });
+
+    test('a named group\'s title is its tab count: the chip carries the name (L49)', () => {
+      const record = { type: 'group', tabs: [{ url: 'a' }, { url: 'b' }], summary: 'Group "Research" (2 tabs)', group: { title: 'Research', color: 'blue' } };
+      expect(napRowTitle(record)).toBe('2 tabs');
+      expect(napGroupBadge(record)).toBe('Research');
+    });
+  });
+
+  describe('napBuildRow', () => {
+    const record = (wakeAt) => ({ id: 'r', type: 'tab', summary: 'Quarterly planning', wakeAt, tabs: [{ url: 'https://docs.test/', title: 'Quarterly planning' }] });
+
+    test('Wake now\'s accessible name starts with its visible label (L45)', () => {
+      const wake = napBuildRow(record(at(1, 9)), NOW).querySelector('[data-action="wake"]');
+      expect(wake.textContent).toBe('Wake now');
+      expect(wake.getAttribute('aria-label')).toBe('Wake now: Quarterly planning');
+    });
+
+    test('an overdue row shows its date as well as its clock; a coming one only the clock (L47)', () => {
+      const overdue = napBuildRow(record(new Date(2024, 0, 7, 9, 0).getTime()), NOW).querySelector('.nap-when').textContent;
+      expect(overdue).toMatch(/\b7\b/);
+      expect(overdue).toMatch(/Jan/);
+      expect(overdue.endsWith(', 09:00')).toBe(true);
+      expect(napBuildRow(record(at(1, 9)), NOW).querySelector('.nap-when').textContent).toBe('09:00');
+    });
+  });
+
+  test('the page has a main landmark (L50)', () => {
+    const html = readFileSync(resolve(__dirname, '../src/nap-room.html'), 'utf8');
+    expect(html).toContain('<main class="nap">');
   });
 
   describe('napRowUrl', () => {

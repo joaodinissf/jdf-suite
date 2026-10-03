@@ -250,6 +250,8 @@ export default [
         napShowDiscardNotice: 'readonly',
         napUndoDiscard: 'readonly',
         napLoadAndRender: 'readonly',
+        napBuildRow: 'readonly',
+        napInit: 'readonly',
 
         // ai-proposal.js / callOpenRouter / handleAiGroupTabs exposures (loaded by setup.js)
         escapeHtml: 'readonly',

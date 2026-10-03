@@ -531,7 +531,7 @@ describe('Nap room: loading, failures and waking', () => {
 
   test('the page starts with "Loading…", not "Nothing sleeping"', () => {
     const html = readFileSync(resolve(__dirname, '../src/nap-room.html'), 'utf8');
-    expect(html).toContain('<p id="napSummary">Loading…</p>');
+    expect(html).toMatch(/<p id="napSummary"[^>]*>Loading…<\/p>/);
   });
 
   test('a failed read says so with Retry, never "Nothing sleeping"; Retry reads again', () => {
@@ -570,5 +570,114 @@ describe('Nap room: loading, failures and waking', () => {
     });
     await napWakeNow('b');
     expect(document.getElementById('napStatus').hidden).toBe(true);
+  });
+});
+
+// Keyboard focus survives the nap room being rebuilt (M10), and its Undo has
+// no time limit: it stays until its close mark or another button (M11). The
+// DOM is the real page's body.
+describe('Nap room: focus and Undo around Wake and Discard', () => {
+  const napHtml = readFileSync(resolve(__dirname, '../src/nap-room.html'), 'utf8');
+  const item = (id) => ({ id, type: 'tab', summary: `${id} tab`, wakeAt: Date.now() + 3600000, tabs: [{ url: `https://${id}/`, title: id }] });
+  const button = (id, action) => document.querySelector(`.nap-row[data-id="${id}"] [data-action="${action}"]`);
+  const notice = () => document.getElementById('discardNotice');
+  let items;
+  let held;
+  // Holds the list's reply, as Chrome delivers it: after the code that asked.
+  let holdList;
+
+  beforeEach(() => {
+    document.body.innerHTML = napHtml.match(/<body>([\s\S]*)<\/body>/)[1];
+    items = [item('a'), item('b'), item('c')];
+    holdList = false;
+    held = routeMessages({ listSnoozed: () => (holdList ? undefined : { success: true, items }) });
+    napInit();
+  });
+
+  // The storage change after the worker's write re-renders the page.
+  const storageChange = (next) => { items = next; napLoadAndRender(); };
+  const reply = async (action, response) => {
+    held.find((h) => h.message.action === action).callback(response);
+    await flush();
+  };
+
+  test('Wake now on the middle row: focus moves to the Wake now of the row that takes its place', async () => {
+    button('b', 'wake').focus();
+    button('b', 'wake').click();
+    storageChange([item('a'), item('c')]);
+    expect(document.activeElement).toBe(button('c', 'wake'));
+    await reply('wakeSnoozed', { success: true, createdCount: 1, failedCount: 0 });
+    expect(document.activeElement).toBe(button('c', 'wake'));
+  });
+
+  test('Discard focuses Undo, even when the list is rebuilt before the reply', async () => {
+    button('b', 'discard').focus();
+    button('b', 'discard').click();
+    storageChange([item('a'), item('c')]);
+    await reply('cancelSnoozed', { success: true, record: item('b') });
+    expect(document.activeElement.id).toBe('discardUndo');
+    storageChange([item('a'), item('c')]);
+    expect(document.activeElement.id).toBe('discardUndo');
+  });
+
+  test('Undo puts focus back on the row it brought back', async () => {
+    button('b', 'discard').focus();
+    button('b', 'discard').click();
+    storageChange([item('a'), item('c')]);
+    await reply('cancelSnoozed', { success: true, record: item('b') });
+    document.getElementById('discardUndo').click();
+    items = [item('a'), item('b'), item('c')];
+    await reply('restoreSnoozed', { success: true });
+    expect(notice().hidden).toBe(true);
+    expect(document.activeElement).toBe(button('b', 'discard'));
+  });
+
+  test('Undo of the only sleeping item puts focus back on it once the list arrives', async () => {
+    storageChange([item('a')]);
+    button('a', 'discard').focus();
+    button('a', 'discard').click();
+    storageChange([]);
+    await reply('cancelSnoozed', { success: true, record: item('a') });
+    document.getElementById('discardUndo').click();
+    holdList = true;
+    await reply('restoreSnoozed', { success: true });
+    expect(notice().hidden).toBe(true);
+    items = [item('a')];
+    await reply('listSnoozed', { success: true, items });
+    expect(document.activeElement).toBe(button('a', 'discard'));
+  });
+
+  test('pressing Undo is not a dismissal: a failed Undo keeps the notice to try again', async () => {
+    napShowDiscardNotice(item('b'));
+    document.getElementById('discardUndo').click();
+    expect(notice().hidden).toBe(false);
+    await reply('restoreSnoozed', { success: false, error: 'storage full' });
+    expect(notice().hidden).toBe(false);
+  });
+
+  test('a background re-render keeps focus on the same button; an emptied list leaves it on the summary', () => {
+    button('a', 'wake').focus();
+    storageChange([item('a'), item('b'), item('c'), item('d')]);
+    expect(document.activeElement).toBe(button('a', 'wake'));
+    storageChange([]);
+    expect(document.activeElement.id).toBe('napSummary');
+  });
+
+  test('Undo has no time limit; its close mark or another button dismisses it', () => {
+    vi.useFakeTimers();
+    try {
+      napShowDiscardNotice(item('b'));
+      vi.advanceTimersByTime(60 * 1000);
+      expect(notice().hidden).toBe(false);
+      expect(document.activeElement.id).toBe('discardUndo');
+      document.getElementById('openSettings').click();
+      expect(notice().hidden).toBe(true);
+
+      napShowDiscardNotice(item('b'));
+      document.getElementById('discardClose').click();
+      expect(notice().hidden).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

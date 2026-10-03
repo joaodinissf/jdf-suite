@@ -280,8 +280,9 @@
       flex: 0 0 auto;
     }
 
-    /* Narrow windows: the title and URL take the first line, the badge,
-       wake time and actions wrap under them. */
+    /* Narrow windows: the title and URL take the first line, the badge and
+       wake time the second, and the actions a line of their own, at the
+       right, on every row. */
     @media (max-width: 560px) {
       .nap-row {
         flex-wrap: wrap;
@@ -295,6 +296,11 @@
       .nap-when {
         min-width: 0;
         margin-left: auto;
+      }
+
+      .nap-row-actions {
+        flex-basis: 100%;
+        justify-content: flex-end;
       }
     }
 
@@ -323,14 +329,14 @@
 </head>
 
 <body>
-  <div class="nap">
+  <main class="nap">
     <div class="nap-inner">
       <div class="nap-head">
         <div class="nap-title">
           <span class="nap-moon" aria-hidden="true"><svg viewBox="0 0 20 20" focusable="false"><path d="M15.5 12.6A6.5 6.5 0 0 1 7.4 4.5a6.5 6.5 0 1 0 8.1 8.1Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
           <div>
             <h1>Nap room</h1>
-            <p id="napSummary">Loading…</p>
+            <p id="napSummary" tabindex="-1">Loading…</p>
           </div>
         </div>
         <div class="nap-actions">
@@ -342,6 +348,7 @@
       <div id="discardNotice" class="undo-notice" role="status" aria-live="polite" hidden>
         <span id="discardNoticeText"></span>
         <button id="discardUndo" class="textbtn wake">Undo</button>
+        <button id="discardClose" class="textbtn" aria-label="Dismiss"><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
       </div>
 
       <div id="napStatus" class="nap-status" role="status" aria-live="polite" hidden></div>
@@ -349,7 +356,7 @@
       <div id="napDays"></div>
       <div id="napEmpty" class="empty-state" hidden>Nothing is sleeping right now. Snooze a tab from the popup to see it here.</div>
     </div>
-  </div>
+  </main>
 
   <script src="nap-room.js"></script>
 </body>

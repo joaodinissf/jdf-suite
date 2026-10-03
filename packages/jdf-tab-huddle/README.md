@@ -71,7 +71,7 @@ The link-clumping feature is inspired by [linkclump](https://github.com/benblack
 ### For Developers
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (996 tests)
+pnpm test              # Run unit tests (1008 tests)
 pnpm test:e2e          # Run E2E tests (130 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
@@ -102,7 +102,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Split domains confirmation and result
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (996 tests in 20 files)
+├── tests/                         # Vitest unit tests (1008 tests in 20 files)
 │   ├── setup.js                   # Chrome API mock, page scripts loaded, dispatch() to the worker
 │   ├── senders.js                 # The sender each caller (popup, pages, content script) arrives with
 │   ├── routing.test.js            # Every worker action, routed from its real caller; refused from a content script
@@ -124,7 +124,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ## Testing
 
 ### Unit Tests (Vitest + jest-chrome shim)
-996 tests across 20 files covering core logic with mocked Chrome APIs:
+1008 tests across 20 files covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report

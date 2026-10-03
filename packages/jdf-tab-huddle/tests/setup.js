@@ -475,6 +475,8 @@ const napRoomWrapper = `
   if (typeof napShowDiscardNotice !== 'undefined') global.napShowDiscardNotice = napShowDiscardNotice;
   if (typeof napUndoDiscard !== 'undefined') global.napUndoDiscard = napUndoDiscard;
   if (typeof napLoadAndRender !== 'undefined') global.napLoadAndRender = napLoadAndRender;
+  if (typeof napBuildRow !== 'undefined') global.napBuildRow = napBuildRow;
+  if (typeof napInit !== 'undefined') global.napInit = napInit;
 })();
 `;
 eval(napRoomWrapper);

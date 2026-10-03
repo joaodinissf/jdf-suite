@@ -54,11 +54,12 @@ function napDayInfo(wakeAt, now = Date.now()) {
 }
 
 // Human summary of the next wake, e.g. "today at 15:00", used in the header.
-// Overdue records are counted separately ("1 overdue · next wakes …").
+// Overdue tabs are counted separately ("1 overdue · next wakes …"), in tabs
+// like the "N tabs sleeping" before it.
 function napNextWakeSummary(items, now = Date.now()) {
   if (!items || items.length === 0) return null;
   // `items` is expected sorted ascending by wakeAt
-  const overdue = items.filter((r) => r.wakeAt <= now).length;
+  const overdue = items.filter((r) => r.wakeAt <= now).reduce((sum, r) => sum + (r.tabs ? r.tabs.length : 1), 0);
   const next = items.find((r) => r.wakeAt > now);
   const parts = [];
   if (overdue > 0) parts.push(`${overdue} overdue`);
@@ -72,11 +73,13 @@ function napNextWakeSummary(items, now = Date.now()) {
 
 // Row title: the tab's own title for single-tab snoozes, otherwise the
 // summary captured at snooze time (already describes the group/window/set).
+// A named group's chip carries its name, so its title is just the tab count.
 function napRowTitle(record) {
   if (record.type === 'tab' && record.tabs && record.tabs[0]) {
     const t = record.tabs[0];
     return t.title || t.url || record.summary || '';
   }
+  if (record.type === 'group' && napGroupBadge(record)) return napPlural((record.tabs || []).length, 'tab');
   return record.summary || '';
 }
 
@@ -124,7 +127,13 @@ function napGroupByDay(items, now = Date.now()) {
 // DOM wiring
 // ============================================================
 
-function napBuildRow(record) {
+// An overdue row may have waited for days: its date, then its clock.
+function napOverdueWhen(wakeAt) {
+  const date = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(new Date(wakeAt));
+  return `${date}, ${napFormatClock(wakeAt)}`;
+}
+
+function napBuildRow(record, now = Date.now()) {
   const row = document.createElement('div');
   row.className = 'nap-row';
   row.setAttribute('data-id', record.id);
@@ -162,7 +171,10 @@ function napBuildRow(record) {
   zzz.className = 'zzz';
   when.appendChild(zzz);
   // A record the worker is waking right now says so in its wake time's place.
-  when.appendChild(document.createTextNode(record.waking ? 'Waking…' : napFormatClock(record.wakeAt)));
+  let whenText = napFormatClock(record.wakeAt);
+  if (record.waking) whenText = 'Waking…';
+  else if (record.wakeAt <= now) whenText = napOverdueWhen(record.wakeAt);
+  when.appendChild(document.createTextNode(whenText));
   row.appendChild(when);
   if (record.waking) row.setAttribute('data-waking', '');
 
@@ -172,7 +184,7 @@ function napBuildRow(record) {
   wakeBtn.className = 'textbtn wake';
   wakeBtn.setAttribute('data-action', 'wake');
   wakeBtn.textContent = 'Wake now';
-  wakeBtn.setAttribute('aria-label', `Wake ${record.summary} now`);
+  wakeBtn.setAttribute('aria-label', `Wake now: ${record.summary}`);
   const discardBtn = document.createElement('button');
   discardBtn.className = 'textbtn discard';
   discardBtn.setAttribute('data-action', 'discard');
@@ -191,7 +203,7 @@ function napBuildRow(record) {
   return row;
 }
 
-function napBuildDaySection(section) {
+function napBuildDaySection(section, now = Date.now()) {
   const day = document.createElement('div');
   day.className = 'day';
 
@@ -214,7 +226,7 @@ function napBuildDaySection(section) {
   const list = document.createElement('div');
   list.className = 'nap-list';
   for (const record of section.items) {
-    list.appendChild(napBuildRow(record));
+    list.appendChild(napBuildRow(record, now));
   }
   day.appendChild(list);
 
@@ -237,6 +249,7 @@ function napRenderAll(items, now = Date.now()) {
     if (emptyEl) emptyEl.hidden = false;
     if (summaryEl) summaryEl.textContent = 'Nothing sleeping right now';
     if (wakeAllBtn) wakeAllBtn.disabled = true;
+    napRestoreFocus();
     return;
   }
 
@@ -250,8 +263,43 @@ function napRenderAll(items, now = Date.now()) {
 
   const sections = napGroupByDay(items, now);
   for (const section of sections) {
-    daysEl.appendChild(napBuildDaySection(section));
+    daysEl.appendChild(napBuildDaySection(section, now));
   }
+  napRestoreFocus();
+}
+
+// The row button that last had focus, as { id, index, action }. Recorded on
+// focusin, because a rebuild (or a row's buttons disabled while its request
+// runs) drops focus before anything could read it.
+let napLastFocus = null;
+
+function napRememberFocus(event) {
+  const btn = event.target.closest && event.target.closest('#napDays button[data-action]');
+  const row = btn && btn.closest('.nap-row[data-id]');
+  if (!row) return;
+  const rows = [...document.querySelectorAll('#napDays .nap-row[data-id]')];
+  napLastFocus = { id: row.getAttribute('data-id'), index: rows.indexOf(row), action: btn.getAttribute('data-action') };
+}
+
+// Only when focus was lost (fell to <body>): put it back on the same button of
+// the same row, else on that button in the row now at the same place (skipping
+// rows being woken), else on Wake all, else on the summary line.
+function napRestoreFocus() {
+  if (!napLastFocus || document.activeElement !== document.body) return;
+  const { id, index, action } = napLastFocus;
+  const button = (row) => row && row.querySelector(`button[data-action="${action}"]:not(:disabled)`);
+  const rows = [...document.querySelectorAll('#napDays .nap-row[data-id]')];
+  const same = button(rows.find((row) => row.getAttribute('data-id') === id));
+  const usable = rows.filter(button);
+  const wakeAll = document.getElementById('wakeAll');
+  const target = same || button(usable[Math.min(index, usable.length - 1)])
+    || (wakeAll && !wakeAll.disabled ? wakeAll : document.getElementById('napSummary'));
+  if (!target) return;
+  const record = napLastFocus;
+  target.focus();
+  // A stand-in row keeps the record, so focus goes back to the row if it
+  // returns (Undo).
+  if (!same) napLastFocus = record;
 }
 
 // A read that failed never reads as "nothing sleeping": say so, with Retry.
@@ -360,10 +408,11 @@ function napWakeNow(id) {
   });
 }
 
-// Discarding drops the snoozed tabs for good, so it is undoable for a few
-// seconds instead of asking for confirmation (same as the popup).
-const NAP_UNDO_MS = 10000;
-let napPendingDiscard = null; // { record, timer }
+// Discarding drops the snoozed tabs for good, so it is undoable instead of
+// asking for confirmation (same as the popup). There is no time limit: the
+// notice stays until its close mark or another button is pressed, or the page
+// closes.
+let napPendingDiscard = null; // { record, undoing }
 
 function napDiscard(id) {
   return napSend({ action: 'cancelSnoozed', id }).then((response) => {
@@ -382,17 +431,24 @@ function napShowDiscardNotice(record) {
   const notice = document.getElementById('discardNotice');
   const text = document.getElementById('discardNoticeText');
   if (!notice || !text) return;
-  if (napPendingDiscard) clearTimeout(napPendingDiscard.timer);
-  napPendingDiscard = { record, timer: setTimeout(napHideDiscardNotice, NAP_UNDO_MS) };
+  napPendingDiscard = { record };
   text.textContent = `Discarded ${record.summary}.`;
   notice.hidden = false;
+  const undo = document.getElementById('discardUndo');
+  if (undo) undo.focus();
 }
 
-function napHideDiscardNotice() {
-  if (napPendingDiscard) clearTimeout(napPendingDiscard.timer);
+// After an Undo, focus waits for the list's reload instead (napUndoDiscard).
+function napHideDiscardNotice({ restoreFocus = true } = {}) {
   napPendingDiscard = null;
   const notice = document.getElementById('discardNotice');
-  if (notice) notice.hidden = true;
+  if (notice) {
+    // Chrome moves focus off a hidden Undo only later; drop it now, so the
+    // list can take it back.
+    if (notice.contains(document.activeElement)) document.activeElement.blur();
+    notice.hidden = true;
+  }
+  if (restoreFocus) napRestoreFocus();
 }
 
 // The notice (and its record) stays until the background confirms the record
@@ -403,13 +459,12 @@ function napUndoDiscard() {
   current.undoing = true;
   return napSend({ action: 'restoreSnoozed', record: current.record }).then((response) => {
     current.undoing = false;
-    napLoadAndRender();
     // { success: false } without an error: the record is already there.
-    if (response.error) {
-      napShowStatus(`Couldn't undo: ${response.error}`, 'error');
-      return;
-    }
-    if (napPendingDiscard === current) napHideDiscardNotice();
+    if (response.error) napShowStatus(`Couldn't undo: ${response.error}`, 'error');
+    else if (napPendingDiscard === current) napHideDiscardNotice({ restoreFocus: false });
+    // Reloaded after the notice is gone, so the render puts focus back on the
+    // row that came back.
+    napLoadAndRender();
   });
 }
 
@@ -458,7 +513,7 @@ async function napWakeAll() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function napInit() {
   napLoadAndRender();
   napScheduleMidnightRefresh();
 
@@ -490,6 +545,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const undoBtn = document.getElementById('discardUndo');
   if (undoBtn) undoBtn.addEventListener('click', () => napUndoDiscard());
+  const closeBtn = document.getElementById('discardClose');
+  if (closeBtn) closeBtn.addEventListener('click', () => napHideDiscardNotice());
+
+  // Undo stays until the next button press anywhere else on the page.
+  document.addEventListener('click', (event) => {
+    const btn = event.target.closest && event.target.closest('button');
+    if (napPendingDiscard && btn && !btn.closest('#discardNotice')) napHideDiscardNotice();
+  });
+
+  document.addEventListener('focusin', napRememberFocus);
 
   const settingsBtn = document.getElementById('openSettings');
   if (settingsBtn) {
@@ -507,4 +572,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-});
+}
+
+document.addEventListener('DOMContentLoaded', napInit);
