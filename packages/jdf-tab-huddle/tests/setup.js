@@ -10,6 +10,7 @@ const tabRemovedListeners = [];
 const tabDetachedListeners = [];
 const connectListeners = [];
 const alarmListeners = [];
+const installedListeners = [];
 // chrome.storage.session keeps real values, so a test can drop the worker's
 // in-memory state and check what survives. Emptied before each test.
 const sessionStore = {};
@@ -48,8 +49,13 @@ global.chrome = {
       addListener: vi.fn(),
     },
     onInstalled: {
-      addListener: vi.fn(),
+      addListener: vi.fn((fn) => installedListeners.push(fn)),
+      // Returns each listener's result, so a test can await async ones.
+      callListeners: (...args) => installedListeners.map(fn => fn(...args)),
     },
+  },
+  scripting: {
+    executeScript: vi.fn().mockResolvedValue([]),
   },
   tabs: {
     query: vi.fn(),

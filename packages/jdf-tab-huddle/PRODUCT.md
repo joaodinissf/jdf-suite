@@ -34,6 +34,7 @@ Huddle gathers scattered tabs back into order on the real tab strip. From the to
 
 - A Chrome extension (Manifest V3). The popup opens from the toolbar button or the Option+Shift+U / Alt+Shift+U command. The other surfaces are the options page, AI setup, the AI proposal review, the nap room and the Split domains confirmation, each opened as a tab.
 - Actions run in the background service worker. The popup sends a message and the work happens on the user's live tab strip, often across several windows.
+- Link clumping is a content script on every http and https page, on by default, and never on `file:`, `ftp:` or other pages. Its access to every website is accepted as the price of clumping working out of the box (audit L9, decided 2026-09-29).
 - Split View support is feature-detected: it reads `splitViewId` on Chrome 140+, and creates and removes splits on Chrome 155+.
 
 ## Capabilities and Constraints

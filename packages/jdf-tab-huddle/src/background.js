@@ -3680,6 +3680,17 @@ async function rearmKeyExpiryAlarm() {
   }
 }
 
+// Chrome runs the link clumper only in pages loaded after Huddle was
+// installed, updated or reloaded, and the copy left in an older page can no
+// longer open tabs (it never arms). So each open http(s) page gets a fresh
+// copy; a tab Chrome won't script (the Web Store, for one) is skipped.
+async function injectClumperIntoOpenTabs() {
+  const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+  for (const tab of tabs) {
+    chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content-clumper.js'] }).catch(() => {});
+  }
+}
+
 // ============================================================
 // Tab Snoozing — Top-level listener registrations (MV3: sync at top level)
 // ============================================================
@@ -3687,5 +3698,6 @@ async function rearmKeyExpiryAlarm() {
 chrome.alarms.onAlarm.addListener(handleSnoozeAlarm);
 chrome.runtime.onStartup.addListener(reconcileSnoozeAlarms);
 chrome.runtime.onInstalled.addListener(reconcileSnoozeAlarms);
+chrome.runtime.onInstalled.addListener(injectClumperIntoOpenTabs);
 chrome.notifications.onClicked.addListener(handleWakeNotificationClicked);
 rearmKeyExpiryAlarm();

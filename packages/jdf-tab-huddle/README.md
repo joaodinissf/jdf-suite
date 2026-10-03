@@ -47,9 +47,9 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 - On release, every selected link opens in a new background tab, adjacent to the current one, in DOM order, with duplicates filtered out
 - Up to 10 links open at once; for 11 to 25 the browser asks first, and above 25 it offers the first 25
 - Only your own key presses and drags count: a page's scripts can't make it open tabs
-- Works on any HTTP/HTTPS page
+- Runs on HTTP and HTTPS pages only, not on `file:`, `ftp:` or other pages. To be on by default it needs access to every website, which is accepted (audit L9)
 - Press Escape mid-drag to cancel without opening; switching tabs or windows, or clicking into a frame, also lets go of the key. Cmd+Z doesn't arm it
-- After Huddle is updated or reloaded, reload a page that was already open to clump links in it again
+- Keeps working in pages that were already open when Huddle is installed, updated or reloaded, without reloading them
 - Configure the key, optional modifier (Shift/Ctrl/Alt), or disable the feature via the **Settings** link in the popup — preferences sync across your Chrome signins
 
 ## Acknowledgements
@@ -69,7 +69,7 @@ The link-clumping feature is inspired by [linkclump](https://github.com/benblack
 ### For Developers
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (917 tests)
+pnpm test              # Run unit tests (919 tests)
 pnpm test:e2e          # Run E2E tests (124 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
@@ -100,7 +100,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Split domains confirmation and result
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (917 tests in 21 files)
+├── tests/                         # Vitest unit tests (919 tests in 21 files)
 │   ├── setup.js                   # Chrome API mock, page scripts loaded, dispatch() to the worker
 │   ├── senders.js                 # The sender each caller (popup, pages, content script) arrives with
 │   ├── routing.test.js            # Every worker action, routed from its real caller; refused from a content script
@@ -123,7 +123,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ## Testing
 
 ### Unit Tests (Vitest + jest-chrome shim)
-917 tests across 21 files covering core logic with mocked Chrome APIs:
+919 tests across 21 files covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report
@@ -174,6 +174,7 @@ CI lives at the monorepo root: [`.github/workflows/jdf-tab-huddle-ci.yml`](../..
 - **`windows`**: Manage browser windows
 - **`tabGroups`**: Preserve and manage tab groups
 - **`storage`**: Save user preferences (Tab Groups vs Individual mode)
+- **`scripting`** and site access to **`http://*/*`, `https://*/*`**: run link clumping in web pages, including pages already open when Huddle is installed, updated or reloaded (the content script alone already asks for every website, so this adds no install warning)
 
 ## Browser Compatibility
 
