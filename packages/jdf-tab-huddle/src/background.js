@@ -272,7 +272,9 @@ async function fetchOpenRouterModels() {
     data = await response.json();
   } catch (err) {
     console.error('[Huddle] Models catalog JSON parse error:', err);
-    throw new Error('OpenRouter sent a catalog Huddle can\'t read', { cause: err });
+    // The fetch's timeout also cuts a body that is still arriving.
+    const timedOut = err && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    throw new Error(timedOut ? 'OpenRouter didn\'t answer' : 'OpenRouter sent a catalog Huddle can\'t read', { cause: err });
   }
 
   const list = Array.isArray(data.data) ? data.data : [];
@@ -649,7 +651,10 @@ function buildOpenRouterRequestBody(model, messages, { params = null, jsonSchema
     messages,
     stream: true,
   };
-  if (Number.isFinite(maxTokens) && maxTokens > 0 && takes('max_tokens')) body.max_tokens = maxTokens;
+  if (Number.isFinite(maxTokens) && maxTokens > 0) {
+    if (takes('max_tokens')) body.max_tokens = maxTokens;
+    else if (known && params.includes('max_completion_tokens')) body.max_completion_tokens = maxTokens;
+  }
 
   if (strict && jsonSchema && known && params.includes('structured_outputs')) {
     body.response_format = {
@@ -825,8 +830,7 @@ async function readOpenRouterResponse(response, onChunk, { onActivity = () => {}
         const err = parsed.error || {};
         const cause = mapOpenRouterHttpError(Number(err.code) || 502,
           { message: err.message, provider: err.metadata && err.metadata.provider_name }, ctx);
-        throw aiError(`The provider stopped mid-answer. ${cause.message}`, cause.kind === 'transient' ? 'transient' : 'model',
-          { status: cause.status });
+        throw aiError(`The provider stopped mid-answer. ${cause.message}`, cause.kind, { status: cause.status, retryable: cause.retryable });
       }
       const content = choice.delta && choice.delta.content;
       if (content) {
@@ -965,7 +969,7 @@ function parseAiResponse(responseText, originalTabs) {
     return { success: false, error: 'AI returned invalid JSON. Please try again.' };
   }
 
-  if (!parsed.groups || !Array.isArray(parsed.groups)) {
+  if (!parsed || !Array.isArray(parsed.groups)) {
     return { success: false, error: 'AI response missing "groups" array.' };
   }
 
@@ -975,7 +979,7 @@ function parseAiResponse(responseText, originalTabs) {
   let unknownIds = 0;
 
   for (const group of parsed.groups) {
-    if (!group.name || !Array.isArray(group.tabIds)) continue;
+    if (!group || !group.name || !Array.isArray(group.tabIds)) continue;
 
     // Validate and filter tab IDs
     unknownIds += group.tabIds.filter(id => !validTabIds.has(id)).length;

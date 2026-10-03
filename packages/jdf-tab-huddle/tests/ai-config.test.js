@@ -384,6 +384,22 @@ describe('createModelPicker', () => {
   });
 });
 
+describe('resolveDefaultModel (the organize page)', () => {
+  // A loaded catalog that lacks the saved default.
+  const picker = {
+    catalogIds: () => new Set(['m1']),
+    firstRecommended: () => ({ id: 'm1' }),
+  };
+
+  test('a default the user confirmed although the catalog lacks it is kept, not swapped', () => {
+    expect(HuddleAi.resolveDefaultModel({ model: 'acme/private', unlistedModel: 'acme/private' }, 'm1', picker))
+      .toEqual({ model: 'acme/private', missing: null, mine: true });
+    // Not confirmed: the first recommended model stands in, and the page says so.
+    expect(HuddleAi.resolveDefaultModel({ model: 'acme/private', unlistedModel: null }, 'm1', picker))
+      .toEqual({ model: 'm1', missing: 'acme/private', mine: true });
+  });
+});
+
 describe('request', () => {
   afterEach(() => {
     chrome.runtime.lastError = null;

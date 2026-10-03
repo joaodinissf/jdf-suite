@@ -133,7 +133,7 @@ describe('runs over the organize page\'s port', () => {
     expect(proposal).toMatchObject({ windowId: 1, model: HAIKU, modelName: 'Claude Haiku 4.5' });
     const body = JSON.parse(global.fetch.mock.calls[0][1].body);
     expect(body.messages[1].content).toContain('by site');
-    expect(body.max_tokens).toBe(maxTokensForTabs(2));
+    expect(body.max_tokens).toBe(2200);
     expect(global.fetch.mock.calls[0][1].headers['X-Title']).toBe('Huddle');
   });
 

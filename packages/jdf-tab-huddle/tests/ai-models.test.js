@@ -402,6 +402,17 @@ describe('getOpenRouterModels', () => {
     expect(result.models.some((m) => m.id === 'stale/m')).toBe(true);
   });
 
+  test('a catalog body cut off by the timeout reads as no answer, not as unreadable', async () => {
+    chrome.storage.local.get.mockResolvedValue({});
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => { throw new DOMException('The operation timed out.', 'TimeoutError'); },
+    });
+    const result = await getOpenRouterModels({ forceRefresh: true });
+    expect(result.fallback).toBe(true);
+    expect(result.error).toBe('OpenRouter didn\'t answer');
+  });
+
   test('falls back to curated when no cache and fetch fails', async () => {
     chrome.storage.local.get.mockResolvedValue({});
     global.fetch.mockRejectedValue(new Error('network down'));
