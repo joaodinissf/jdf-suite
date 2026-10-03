@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Unit Tests**: 917 tests across 21 Vitest files (mocked Chrome APIs)
+- **Unit Tests**: 919 tests across 21 Vitest files (mocked Chrome APIs)
 - **E2E Tests**: 124 tests across 19 Playwright spec files (real Chromium browser)
-- **Total**: 1041 tests
+- **Total**: 1043 tests
 
 ## Unit Tests (Vitest)
 
@@ -22,7 +22,7 @@
 | keyboard.test.js | 28 | Popup hotkeys |
 | split-view.test.js | 45 | Split view compact, expand and repair |
 | confirmation-dialog.test.js | 28 | Split domains dialog |
-| content-clumper.test.js | 58 | Link clumping content script: only trusted events, the confirm and the 25 cap, letting go on blur and hidden tabs, Cmd+Z, an orphaned copy after an update; the worker's top-frame, http(s) and 25-link checks |
+| content-clumper.test.js | 60 | Link clumping content script: only trusted events, the confirm and the 25 cap, letting go on blur and hidden tabs, Cmd+Z, an orphaned copy after an update; the worker's top-frame, http(s) and 25-link checks; it runs on http(s) pages only, and an install, update or reload puts it into the http(s) tabs already open |
 | options.test.js | 31 | Settings page |
 | options-ai.test.js | 18 | Settings: the AI section |
 | ai-config.test.js | 42 | Key checks, key form and model picker shared by Settings and the organize page |
