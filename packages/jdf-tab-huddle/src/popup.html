@@ -72,14 +72,6 @@
       color: var(--tx);
     }
 
-    .brand small {
-      display: block;
-      font-size: 9.5px;
-      color: var(--tx-dim);
-      letter-spacing: .04em;
-      margin-top: -1px;
-    }
-
     .seg {
       display: inline-flex;
       background: var(--comp);
@@ -133,7 +125,7 @@
     }
 
     .group-chip .count-pill {
-      font: 700 10px/1.4 var(--mono);
+      font: 700 10.5px/1.4 var(--mono);
       padding: 0 5px;
       border-radius: 99px;
       background: rgba(0, 0, 0, .14);
@@ -170,9 +162,9 @@
       padding: 6px 8px;
       cursor: pointer;
       transition: background .12s, border-color .12s, transform .06s;
-      white-space: nowrap;
+      /* A label that no longer fits (WCAG 1.4.12 text spacing) wraps onto a
+         second line instead of pushing its key badge out of the button. */
       overflow: hidden;
-      text-overflow: ellipsis;
     }
 
     /* :where keeps these at .btn:hover weight. */
@@ -219,6 +211,8 @@
       color: var(--kbd-tx);
       vertical-align: middle;
       pointer-events: none;
+      /* Never the part a tight button squeezes or clips (text spacing). */
+      flex: none;
     }
 
     .seg button .hotkey-hint {
@@ -405,7 +399,7 @@
       gap: 4px;
       margin-left: auto;
       font-family: var(--ui);
-      font-size: 10px;
+      font-size: 10.5px;
       font-weight: 600;
       letter-spacing: .04em;
       color: var(--ac-txt);
@@ -471,7 +465,7 @@
 
     .snoozed-time {
       flex: 0 0 auto;
-      font-size: 10px;
+      font-size: 10.5px;
       color: var(--tx-dim);
       font-family: var(--mono);
       white-space: nowrap;
@@ -489,7 +483,7 @@
 
     .snoozed-item button {
       flex: 0 0 auto;
-      font-size: 10px;
+      font-size: 10.5px;
       font-weight: 600;
       color: var(--tx-dim);
       background: transparent;
@@ -596,6 +590,12 @@
       padding-bottom: calc(var(--toast-space, 34px) + 10px);
     }
 
+    /* Keyboard focus scrolls a control clear of the toast (its height plus
+       its 10px inset), not under it. */
+    html:has(body.has-toast) {
+      scroll-padding-bottom: calc(var(--toast-space, 34px) + 10px);
+    }
+
     /* footer */
     .foot {
       display: flex;
@@ -608,7 +608,7 @@
 
     .stat {
       font-family: var(--mono);
-      font-size: 10px;
+      font-size: 10.5px;
       color: var(--tx-dim);
       line-height: 1.5;
     }
@@ -640,7 +640,7 @@
 
     .open-shortcut {
       font-family: var(--mono);
-      font-size: 10px;
+      font-size: 10.5px;
       color: var(--tx-dim);
     }
 
@@ -662,10 +662,7 @@
           <path d="M21 21V14q0-2 2-2h2q2 0 2 2v7Z" fill="#fff"/>
           <rect x="5" y="23.5" width="22" height="3" rx="1.5" fill="#fdd663"/>
         </svg>
-        <div>
-          <h2>Huddle</h2>
-          <small id="modeSubtitle">respecting groups</small>
-        </div>
+        <h2>Huddle</h2>
       </div>
       <div class="seg" role="group" aria-label="Respect groups">
         <button id="modeGroups" data-action="setRespectGroups" data-value="true" aria-pressed="true">Groups</button>

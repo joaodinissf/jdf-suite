@@ -36,13 +36,11 @@ test('kbd 2: the mode hotkeys flip the Groups/Flat toggle', async ({ context, ex
   await popup.keyboard.press('f');
   await expect(popup.locator('#modeFlat')).toHaveAttribute('aria-pressed', 'true');
   await expect(popup.locator('#modeGroups')).toHaveAttribute('aria-pressed', 'false');
-  await expect(popup.locator('#modeSubtitle')).toHaveText('flat mode');
 
   // Press "g" → back to Groups.
   await popup.keyboard.press('g');
   await expect(popup.locator('#modeGroups')).toHaveAttribute('aria-pressed', 'true');
   await expect(popup.locator('#modeFlat')).toHaveAttribute('aria-pressed', 'false');
-  await expect(popup.locator('#modeSubtitle')).toHaveText('respecting groups');
 
   await popup.close();
 });

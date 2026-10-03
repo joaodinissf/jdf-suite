@@ -10,7 +10,6 @@ describe('Popup Script', () => {
     document.body.innerHTML = `
       <button id="modeGroups" aria-pressed="true">Groups</button>
       <button id="modeFlat" aria-pressed="false">Flat</button>
-      <small id="modeSubtitle"></small>
       <button id="sortAllWindows">Sort All Windows</button>
       <button id="sortCurrentWindow">Sort Current Window</button>
       <button id="removeDuplicatesWindow">Remove Duplicates</button>
@@ -52,7 +51,6 @@ describe('Popup Script', () => {
       expect(getRespectGroups()).toBe(false);
       expect(document.getElementById('modeGroups').getAttribute('aria-pressed')).toBe('false');
       expect(document.getElementById('modeFlat').getAttribute('aria-pressed')).toBe('true');
-      expect(document.getElementById('modeSubtitle').textContent).toBe('flat mode');
     });
 
     test('setRespectGroups(true) restores the Groups state', () => {
@@ -61,7 +59,6 @@ describe('Popup Script', () => {
       expect(getRespectGroups()).toBe(true);
       expect(document.getElementById('modeGroups').getAttribute('aria-pressed')).toBe('true');
       expect(document.getElementById('modeFlat').getAttribute('aria-pressed')).toBe('false');
-      expect(document.getElementById('modeSubtitle').textContent).toBe('respecting groups');
     });
 
     test('persists to chrome.storage.local under "respectGroups" by default', () => {

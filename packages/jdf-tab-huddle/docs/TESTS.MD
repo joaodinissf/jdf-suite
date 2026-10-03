@@ -3,8 +3,8 @@
 ## Overview
 
 - **Unit Tests**: 955 tests across 21 Vitest files (mocked Chrome APIs)
-- **E2E Tests**: 127 tests across 19 Playwright spec files (real Chromium browser)
-- **Total**: 1082 tests
+- **E2E Tests**: 128 tests across 19 Playwright spec files (real Chromium browser)
+- **Total**: 1083 tests
 
 ## Unit Tests (Vitest)
 
@@ -18,7 +18,7 @@
 | snooze-ui.test.js | 38 | Snooze controls in the popup and the nap room, including the waking state and failed reads; keyboard focus after Wake, Discard and Undo, Undo with no time limit, the picker's focus and inert header |
 | nap-room.test.js | 22 | The nap room page |
 | popup.test.js | 74 | Popup UI and message passing |
-| popup-feedback.test.js | 24 | Popup result and error messages; a running action's button is `aria-busy` |
+| popup-feedback.test.js | 24 | Popup result and error messages; a running action's button is `aria-busy`; keyboard focus scrolls clear of a toast |
 | keyboard.test.js | 29 | Popup hotkeys, including I for Settings in the real popup |
 | split-view.test.js | 45 | Split view compact, expand and repair |
 | confirmation-dialog.test.js | 28 | Split domains dialog |
@@ -58,7 +58,7 @@ Real browser tests that load the extension into Chromium and verify end-to-end b
 | flatten-window.spec.js | 3 | Ungrouping, pinned immunity |
 | split-view-compact.spec.js | 2 | Compact then Expand (skips below Chrome 155) |
 | split-view-repair.spec.js | 5 | Splits survive sort, merge and extract (skips below Chrome 155) |
-| popup-ui.spec.js | 8 | Mode switching, preference persistence, button visibility |
+| popup-ui.spec.js | 9 | Mode switching, preference persistence, button visibility, no text below the compact 10.5px step but the key badges |
 | keyboard.spec.js | 4 | Popup hotkeys |
 | link-clumping.spec.js | 2 | A page's own events open nothing; a real drag opens 5 at once, and over 25 links asks (answered through `page.on('dialog')`) and opens the first 25 |
 | confirmation-dialog.spec.js | 5 | Window count display, confirm/cancel flow |

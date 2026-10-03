@@ -15,7 +15,6 @@ test('54: Default toggle is "Groups"', async ({ context, extensionId }) => {
   // The Groups segment should be pressed by default.
   await expect(popup.locator('#modeGroups')).toHaveAttribute('aria-pressed', 'true');
   await expect(popup.locator('#modeFlat')).toHaveAttribute('aria-pressed', 'false');
-  await expect(popup.locator('#modeSubtitle')).toHaveText('respecting groups');
 
   await popup.close();
 });
@@ -28,7 +27,6 @@ test('55: Switch to Flat mode', async ({ context, extensionId }) => {
   // The Flat segment should now be pressed.
   await expect(popup.locator('#modeFlat')).toHaveAttribute('aria-pressed', 'true');
   await expect(popup.locator('#modeGroups')).toHaveAttribute('aria-pressed', 'false');
-  await expect(popup.locator('#modeSubtitle')).toHaveText('flat mode');
 
   await popup.close();
 });
@@ -174,6 +172,24 @@ test('59b: The popup says what an action did (closed duplicates) and refreshes i
   await expect(popup.locator('#actionResult')).toHaveAttribute('role', 'status');
   // The footer counts refresh to the new total instead of staying stale.
   await expect(status).toHaveText(`${before - 2} tabs`);
+
+  await popup.close();
+});
+
+test('59c: No popup text is below the compact 10.5px step, apart from hotkey badges', async ({ sw, context, extensionId }) => {
+  // One sleeping item, so the list's time, Wake, Discard and Nap room show too.
+  await sw.evaluate(() => chrome.storage.local.set({ snoozedItems: [createSnoozeRecord({
+    type: 'tab', tabs: [{ url: 'https://example.com/', title: 'Example', index: 0 }],
+    windowId: 1, wakeAt: Date.now() + 3600e3, preset: 'custom',
+  })] }));
+  const popup = await openPopup(context, extensionId);
+  await expect(popup.locator('.snoozed-item')).toHaveCount(1);
+  const small = await popup.evaluate(() => [...document.querySelectorAll('body *')]
+    .filter((el) => el.checkVisibility() && !el.closest('.hotkey-hint') &&
+      [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()))
+    .map((el) => `${el.id || el.className} ${getComputedStyle(el).fontSize}`)
+    .filter((s) => parseFloat(s.split(' ').pop()) < 10.5));
+  expect(small).toEqual([]);
 
   await popup.close();
 });

@@ -70,9 +70,6 @@ function setRespectGroups(value, options = {}) {
   if (groupsBtn) groupsBtn.setAttribute('aria-pressed', String(value));
   if (flatBtn) flatBtn.setAttribute('aria-pressed', String(!value));
 
-  const subtitle = document.getElementById('modeSubtitle');
-  if (subtitle) subtitle.textContent = value ? 'respecting groups' : 'flat mode';
-
   if (persist) saveUserPreference('respectGroups', value);
 
   // The Groups/Flat toggle changed — recompute hotkeys/hints.
@@ -290,7 +287,8 @@ function showActionResult(text, kind = 'ok') {
 
 // The toasts float over the bottom of the popup. While any is showing, pad the
 // page by the stack's height so the footer (or the picker's last row) sits
-// above it instead of under it, where clicks would land on the toast.
+// above it instead of under it, where clicks would land on the toast. The
+// height goes on the root element, whose scroll padding also uses it.
 function updateToastSpace() {
   const stack = document.querySelector('.toasts');
   if (!stack) return;
@@ -298,8 +296,9 @@ function updateToastSpace() {
     (!el.classList.contains('copy-feedback') || el.classList.contains('visible')));
   document.body.classList.toggle('has-toast', showing);
   const height = showing ? stack.getBoundingClientRect().height : 0;
-  if (height > 0) document.body.style.setProperty('--toast-space', `${Math.ceil(height)}px`);
-  else document.body.style.removeProperty('--toast-space');
+  const root = document.documentElement.style;
+  if (height > 0) root.setProperty('--toast-space', `${Math.ceil(height)}px`);
+  else root.removeProperty('--toast-space');
 }
 
 // Sort tabs by URL across all windows
