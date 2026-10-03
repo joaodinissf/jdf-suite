@@ -160,6 +160,34 @@ describe('the mode the popup brings to an open organize page', () => {
     const port = await organize();
     expect(port.startMessage().respectGroups).toBe(true);
   });
+
+  test('with a proposal on screen it is for Run again: Apply keeps the mode the proposal was made in', async () => {
+    loadPage({ search: '?respectGroups=false' });
+    await flush();
+    await toProposal({ ...PROPOSAL, respectGroups: false });
+    pageListener()({ type: 'ai-set-mode', respectGroups: true }, workerSender);
+    expect($('modelNote').textContent).toBe('Made in Flat mode · Run again to use Groups');
+    expect($('runAgainButton').classList.contains('primary')).toBe(true);
+    expect($('applyButton').classList.contains('primary')).toBe(false);
+    expect($('proposalKeys').textContent).toMatch(/run again/);
+    $('applyButton').click();
+    expect(sent('applyAiProposal')[0].respectGroups).toBe(false);
+    $('runAgainButton').click();
+    await flush();
+    expect(ports[1].startMessage().respectGroups).toBe(true);
+  });
+
+  test('back to the proposal\'s own mode, Apply is the primary again and the note goes', async () => {
+    loadPage({ search: '?respectGroups=false' });
+    await flush();
+    await toProposal({ ...PROPOSAL, respectGroups: false });
+    pageListener()({ type: 'ai-set-mode', respectGroups: true }, workerSender);
+    pageListener()({ type: 'ai-set-mode', respectGroups: false }, workerSender);
+    expect($('modelNote').textContent).toBe('');
+    expect($('applyButton').classList.contains('primary')).toBe(true);
+    key('Enter', { metaKey: true });
+    expect(sent('applyAiProposal')[0].respectGroups).toBe(false);
+  });
 });
 
 describe('starting a run', () => {
@@ -202,6 +230,18 @@ describe('starting a run', () => {
     organizeButton.click();
     await flush();
     expect(chrome.runtime.connect).toHaveBeenCalledTimes(1);
+  });
+
+  test('Escape in the instructions before a run leaves the field; the next closes the page', async () => {
+    loadPage();
+    await flush();
+    await flush();
+    expect(document.activeElement).toBe($('userInstructions'));
+    key('Escape');
+    expect(document.activeElement).not.toBe($('userInstructions'));
+    expect(sent('cancelAiProposal')).toHaveLength(0);
+    key('Escape');
+    expect(sent('cancelAiProposal')).toHaveLength(1);
   });
 
   test('Cmd/Ctrl+Enter in the instructions organizes', async () => {
@@ -808,7 +848,7 @@ describe('the proposal', () => {
     await flush();
     await toProposal();
     $('applyButton').click();
-    expect($('applyError').textContent).toBe('Grouped 2 tabs into 1 group. 1 proposed tab was closed or moved to another window, so it was left out.');
+    expect($('applyError').textContent).toBe('Grouped 2 tabs into 1 group. 1 proposed tab was closed, moved or pinned, so it was left out.');
     expect(document.activeElement).toBe($('closeAfterApply'));
   });
 
@@ -821,7 +861,7 @@ describe('the proposal', () => {
     // Its group had no other tab, so the card goes and the count follows.
     expect(content().textContent).not.toContain('0 tabs');
     expect(content().querySelector('.proposal-head').textContent).toMatch(/1 group, 2 tabs/);
-    expect($('applyError').textContent).toMatch(/1 proposed tab was closed or moved to another window/);
+    expect($('applyError').textContent).toMatch(/1 proposed tab was closed, moved or pinned, so it was taken out of the proposal/);
     $('applyButton').click();
     expect(sent('applyAiProposal')[0].leftOut).toBe(1);
   });
@@ -840,7 +880,7 @@ describe('the proposal', () => {
       detached.forEach((fn) => fn(2, { oldWindowId: 42, oldPosition: 1 }));
       expect(content().textContent).not.toContain('Two');
       expect(content().querySelector('.proposal-head').textContent).toMatch(/2 groups, 2 tabs/);
-      expect($('applyError').textContent).toMatch(/1 proposed tab was closed or moved to another window/);
+      expect($('applyError').textContent).toMatch(/1 proposed tab was closed, moved or pinned, so it was taken out of the proposal/);
       $('applyButton').click();
       const [apply] = sent('applyAiProposal');
       expect(apply.groups).toEqual([
@@ -883,6 +923,81 @@ describe('the proposal', () => {
     $('runAgainButton').click();
     await flush();
     expect(ports[1].startMessage().instructions).toBe('by topic');
+  });
+
+  test('Cmd/Ctrl+Enter in the instructions for Run again runs again, never applies', async () => {
+    loadPage();
+    await flush();
+    await toProposal();
+    $('userInstructions').focus();
+    $('userInstructions').value = 'by topic';
+    $('userInstructions').dispatchEvent(new window.Event('input'));
+    key('Enter', { metaKey: true });
+    await flush();
+    expect(sent('applyAiProposal')).toHaveLength(0);
+    expect(ports).toHaveLength(2);
+    expect(ports[1].startMessage().instructions).toBe('by topic');
+  });
+
+  test('Escape in a group name puts back the name it had and leaves the field; only the next closes the page', async () => {
+    loadPage();
+    await flush();
+    await toProposal();
+    const name = content().querySelector('.group-name');
+    name.focus();
+    name.value = 'Typo';
+    key('Escape');
+    expect(name.value).toBe('Group A');
+    expect(document.activeElement).not.toBe(name);
+    expect(sent('cancelAiProposal')).toHaveLength(0);
+    key('Escape');
+    expect(sent('cancelAiProposal')).toHaveLength(1);
+  });
+
+  test('Escape in the instructions for Run again puts back the ones it had, and Run again uses them', async () => {
+    loadPage();
+    await flush();
+    await toProposal();
+    const field = $('userInstructions');
+    field.focus();
+    field.value = 'by topic';
+    field.dispatchEvent(new window.Event('input'));
+    key('Escape');
+    expect(field.value).toBe('');
+    expect($('nextRun').querySelector('.summary-text').textContent).toBe('none');
+    expect(sent('cancelAiProposal')).toHaveLength(0);
+    $('runAgainButton').click();
+    await flush();
+    expect(ports[1].startMessage().instructions).toBe('');
+  });
+
+  test('a group whose name is cleared is "Unnamed group N" in every Move menu and its labels', async () => {
+    loadPage();
+    await flush();
+    await toProposal();
+    const name = content().querySelector('.group-name');
+    name.value = '';
+    name.dispatchEvent(new window.Event('change'));
+    await flush();
+    for (const select of content().querySelectorAll('select.tab-move')) {
+      expect(select.options[0].textContent).toBe('Unnamed group 1');
+    }
+    const card = content().querySelector('.group-card');
+    expect(card.getAttribute('aria-label')).toBe('Group Unnamed group 1, 2 tabs');
+    expect(card.querySelector('.color-select').getAttribute('aria-label')).toBe('Colour for Unnamed group 1');
+  });
+
+  test('group names stop at 40 characters as they are typed, and Apply sends them without outer spaces', async () => {
+    loadPage();
+    await flush();
+    await toProposal();
+    const name = content().querySelector('.group-name');
+    expect(name.maxLength).toBe(40);
+    name.value = '  Reading list  ';
+    name.dispatchEvent(new window.Event('change'));
+    await flush();
+    $('applyButton').click();
+    expect(sent('applyAiProposal')[0].groups[0].name).toBe('Reading list');
   });
 });
 
