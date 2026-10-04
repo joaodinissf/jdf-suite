@@ -144,6 +144,8 @@ describe('Settings: AI section', () => {
 
     $('settingsExpiry').value = '86400000';
     $('aiSaveKey').click();
+    // No key was typed, so nothing is checked and Settings doesn't say it is.
+    expect($('ai-status').textContent).not.toBe('Checking the key with OpenRouter…');
     await flushPromises();
 
     expect(global.fetch).not.toHaveBeenCalled();
@@ -218,6 +220,8 @@ describe('Settings: AI section', () => {
     $('aiSaveKey').click();
     await flushPromises();
     expect($('aiKeyError').textContent).toBe('quota exceeded');
+    // "Checking the key…" does not stay next to the error.
+    expect($('ai-status').textContent).toBe('');
   });
 
   test('Enter in the key field saves the key', async () => {
@@ -227,6 +231,101 @@ describe('Settings: AI section', () => {
     $('aiKeyCard').requestSubmit();
     await flushPromises();
     expect(sent('saveAiConfig')).toHaveLength(1);
+  });
+
+  test('while OpenRouter checks a key, Settings says so until the answer (L54)', async () => {
+    loadSettingsPage({
+      loadAiConfig: loadResponse(null),
+      saveAiConfig: (m) => ({ success: true, config: { key: btoa(m.config.key), expiresAt: null } }),
+    });
+    await flushPromises();
+    let answer;
+    global.fetch = vi.fn(() => new Promise((r) => { answer = r; }));
+    vi.useFakeTimers();
+    try {
+      $('settingsKeyInput').value = 'sk-or-v1-new';
+      $('aiSaveKey').click();
+      // Well past the fade of an ordinary status line.
+      await vi.advanceTimersByTimeAsync(5000);
+      expect($('ai-status').textContent).toBe('Checking the key with OpenRouter…');
+      expect($('ai-status').classList.contains('visible')).toBe(true);
+      answer({ ok: true, status: 200 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect($('ai-status').textContent).toBe('Key saved');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('Save stays focusable while the key is checked, and a second press does nothing (L52)', async () => {
+    loadSettingsPage({
+      loadAiConfig: loadResponse(null),
+      saveAiConfig: (m) => ({ success: true, config: { key: btoa(m.config.key), expiresAt: null } }),
+    });
+    await flushPromises();
+    let answer;
+    global.fetch = vi.fn(() => new Promise((r) => { answer = r; }));
+    $('settingsKeyInput').value = 'sk-or-v1-new';
+    $('aiSaveKey').focus();
+    $('aiSaveKey').click();
+    await flushPromises();
+
+    expect($('aiSaveKey').disabled).toBe(false);
+    expect($('aiSaveKey').getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe($('aiSaveKey'));
+    $('aiSaveKey').click();
+    $('aiKeyCard').requestSubmit();
+    await flushPromises();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    answer({ ok: true, status: 200 });
+    await flushPromises();
+    expect(sent('saveAiConfig')).toHaveLength(1);
+    expect($('aiSaveKey').hasAttribute('aria-disabled')).toBe(false);
+  });
+
+  test('a key or model id error describes its field and marks it invalid, until it clears (L55)', async () => {
+    loadSettingsPage({
+      loadAiConfig: loadResponse(null),
+      saveAiConfig: (m) => ({ success: true, config: { key: btoa(m.config.key), expiresAt: null } }),
+      saveAiDefaultModel: { success: false, error: 'No such model.' },
+    });
+    await flushPromises();
+    const attrs = (id) => [$(id).getAttribute('aria-invalid'), $(id).getAttribute('aria-describedby')];
+
+    global.fetch.mockResolvedValue({ ok: false, status: 401 });
+    $('settingsKeyInput').value = 'sk-or-v1-revoked';
+    $('aiSaveKey').click();
+    await flushPromises();
+    expect(attrs('settingsKeyInput')).toEqual(['true', 'aiKeyError']);
+
+    $('settingsCustom').value = 'acme/model';
+    $('settingsCustom').dispatchEvent(new window.Event('input'));
+    $('aiSaveModel').click();
+    await flushPromises();
+    expect($('aiModelError').textContent).toBe('No such model.');
+    expect(attrs('settingsCustom')).toEqual(['true', 'aiModelError']);
+
+    // Another choice clears the model error; a key OpenRouter takes, the key's.
+    $('settingsCustom').value = 'acme/other';
+    $('settingsCustom').dispatchEvent(new window.Event('input'));
+    expect(attrs('settingsCustom')).toEqual([null, null]);
+    global.fetch.mockResolvedValue({ ok: true, status: 200 });
+    $('settingsKeyInput').value = 'sk-or-v1-good';
+    $('aiSaveKey').click();
+    await flushPromises();
+    expect(attrs('settingsKeyInput')).toEqual([null, null]);
+  });
+
+  test('Keep, focused when the delete question appears, is described by the question (L53)', async () => {
+    loadSettingsPage({
+      loadAiConfig: loadResponse({ key: btoa('sk-or-k'), model: 'm2', expiresAt: null, expiryDuration: null }),
+    });
+    await flushPromises();
+    $('aiDeleteKey').click();
+    expect(document.activeElement).toBe($('aiConfirmDeleteNo'));
+    const question = document.getElementById($('aiConfirmDeleteNo').getAttribute('aria-describedby'));
+    expect(question && question.textContent).toBe('Delete the saved key?');
   });
 
   test('Delete key asks first, then drops the key, says so and keeps focus in the card', async () => {
@@ -267,6 +366,35 @@ describe('Settings: AI section', () => {
     expect($('ai-model-status').textContent).toBe('Default model: Model One');
     // Choosing a default never touches the key.
     expect(sent('saveAiConfig')).toHaveLength(0);
+  });
+
+  test('Enter in the model id field, the filter or the list saves the default model, once each (L51)', async () => {
+    loadSettingsPage({
+      loadAiConfig: loadResponse({ key: btoa('sk-or-k'), model: 'm1', expiresAt: null, expiryDuration: null }),
+      saveAiDefaultModel: (m) => ({ success: true, config: { key: btoa('sk-or-k'), model: m.model } }),
+    });
+    await flushPromises();
+    const enter = (el) => el.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    const saved = () => sent('saveAiDefaultModel').map((m) => m.model);
+
+    $('settingsCustom').value = 'm2';
+    $('settingsCustom').dispatchEvent(new window.Event('input'));
+    enter($('settingsCustom'));
+    await flushPromises();
+    expect(saved()).toEqual(['m2']);
+
+    $('settingsCustom').value = '';
+    $('settingsCustom').dispatchEvent(new window.Event('input'));
+    $('settingsFilter').value = 'one';
+    $('settingsFilter').dispatchEvent(new window.Event('input'));
+    enter($('settingsFilter'));
+    await flushPromises();
+    expect(saved()).toEqual(['m2', 'm1']);
+
+    enter($('settingsSelect'));
+    await flushPromises();
+    expect(saved()).toEqual(['m2', 'm1', 'm1']);
+    expect($('ai-model-status').textContent).toBe('Default model: Model One');
   });
 
   test('an id the catalog does not list needs a second Save, even before a key is on file', async () => {

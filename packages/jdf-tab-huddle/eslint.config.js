@@ -95,6 +95,8 @@ export default [
         atob: 'readonly',
         setImmediate: 'readonly',
         navigator: 'readonly',
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
 
         // Node.js globals for test setup
         eval: 'readonly',
