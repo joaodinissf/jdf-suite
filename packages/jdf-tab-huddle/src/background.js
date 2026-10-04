@@ -703,7 +703,7 @@ function describeRequestTried(tried) {
 const ROUTING_REFUSAL_TEXT = /parameter|require_parameters|routing|no endpoints found (that|matching)/i;
 
 // Settings' data-collection checkbox, as its label reads, for the error that
-// says it left no provider ("No endpoints found matching your data policy").
+// says it, or the account's privacy settings, left no provider ("… data policy").
 const DATA_COLLECTION_SETTING = 'Don\'t use providers that train on my prompts';
 
 function aiError(message, kind, extra = {}) {
@@ -745,9 +745,13 @@ function mapOpenRouterHttpError(status, detail = {}, ctx = {}) {
   } else if (status === 403) {
     // Moderation or a region/provider block: the same request is refused again.
     error = aiError(`OpenRouter refused this request for ${who} (${code}). Pick another model.`, 'model', { retryable: false });
-  } else if ((status === 404 || status === 400) && ctx.denyDataCollection && /data policy/i.test(said)) {
+  } else if ((status === 404 || status === 400) && /data policy/i.test(said)) {
     // Checked before the routing refusal, whose pattern matches this text too.
-    error = aiError(`No provider for ${who} meets your "${DATA_COLLECTION_SETTING}" setting (${code}). Pick another model, or change it in Settings.`, 'model', { retryable: false });
+    // The account's own OpenRouter privacy settings refuse with the same words,
+    // so they are named whether or not Huddle's setting is on.
+    error = ctx.denyDataCollection
+      ? aiError(`No provider for ${who} meets your "${DATA_COLLECTION_SETTING}" setting or your OpenRouter privacy settings (${code}). Pick another model, or change either one.`, 'model', { retryable: false })
+      : aiError(`No provider for ${who} meets your OpenRouter privacy settings (${code}). Pick another model, or change them at openrouter.ai/settings/privacy.`, 'model', { retryable: false });
   } else if ((status === 404 || status === 400) && ROUTING_REFUSAL_TEXT.test(said)) {
     // The model exists; no provider of it takes what the request asked for.
     const tried = Array.isArray(ctx.tried) && ctx.tried.length ? ` ${describeRequestTried(ctx.tried)}.` : '';
