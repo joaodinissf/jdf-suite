@@ -192,9 +192,9 @@ test('5: Mix grouped + ungrouped (groups mode)', async ({ sw, context, extension
   expect(maxUngroupedIndex).toBeLessThan(minGroupedIndex);
 });
 
-test('6: Tabs with pendingUrl (both modes)', async ({ sw, context, extensionId }) => {
-  // Create tabs normally - the sort logic uses pendingUrl where present
-  // We create tabs with various URLs to test sorting behavior
+test('6: Tabs opened just before the click are sorted', async ({ sw, context, extensionId }) => {
+  // The tabs have finished navigating by the click, so no pendingUrl is
+  // involved: the unit test in split-view.test.js covers a loading tab.
   const urls = [URLS.WIKI_A, URLS.EXAMPLE_A, URLS.TEST_A];
   await createTabs(sw, urls);
   await sleep(500);
@@ -207,7 +207,7 @@ test('6: Tabs with pendingUrl (both modes)', async ({ sw, context, extensionId }
   await waitForSorted(sw, windowId, 5000);
   await popup.close();
 
-  // Tabs should be sorted using url or pendingUrl
+  // Tabs should be sorted by URL
   await assertTabsSorted(sw, windowId);
 });
 

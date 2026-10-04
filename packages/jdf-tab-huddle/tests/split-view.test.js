@@ -74,6 +74,11 @@ describe('sortTabsAsUnits', () => {
     ]);
   });
 
+  test('a loading tab sorts by the URL it is loading (pendingUrl)', () => {
+    const tabs = [t(1, 'https://b.test'), t(2, 'https://z.test', { pendingUrl: 'https://a.test' })];
+    expect(sortTabsAsUnits(tabs).map((x) => x.id)).toEqual([2, 1]);
+  });
+
   test('sentinel splitViewId of -1 never pairs tabs', () => {
     const tabs = [
       t(1, 'https://c.test', { splitViewId: -1 }),

@@ -273,8 +273,10 @@ test('individual mode removes cross-group duplicates', async ({
   expect(tabs[0].url).toBe(URLS.EXAMPLE_A);
 });
 
-// #35 - Uses pendingUrl for comparison
-test('uses pendingUrl for duplicate comparison', async ({ sw, context, extensionId }) => {
+// #35 - A duplicate opened just before the click is still removed. Both tabs
+// have finished navigating by then, so no pendingUrl is involved: the unit test
+// in background.test.js covers a loading tab's pendingUrl.
+test('removes a duplicate opened just before the click (both modes)', async ({ sw, context, extensionId }) => {
   for (const mode of ['groups', 'individual']) {
     await resetBrowserState(sw, context);
 
@@ -283,9 +285,8 @@ test('uses pendingUrl for duplicate comparison', async ({ sw, context, extension
     // Create one tab that has fully loaded
     const tabIds = await createTabs(sw, [URLS.EXAMPLE_A]);
 
-    // Create a tab that might still be loading (pendingUrl)
-    // We create it with the same URL - Chrome will set pendingUrl while loading
-    const [pendingTabId] = await createTabs(sw, [URLS.EXAMPLE_A]);
+    // Open the same URL again
+    await createTabs(sw, [URLS.EXAMPLE_A]);
     await sleep(200);
 
     const tabsBefore = await getWindowTabs(sw, wid);
@@ -304,7 +305,7 @@ test('uses pendingUrl for duplicate comparison', async ({ sw, context, extension
     await waitForUrlCount(sw, wid, URLS.EXAMPLE_A, 1);
     await popup.close();
 
-    // Duplicate should be detected even if one tab uses pendingUrl
+    // The second copy is gone
     await waitForTabCount(sw, wid, 1);
     const tabs = await getWindowTabs(sw, wid);
     expect(tabs[0].url).toBe(URLS.EXAMPLE_A);

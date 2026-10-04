@@ -232,6 +232,7 @@ const backgroundWrapper = `
   if (typeof handleSnoozeAlarm !== 'undefined') global.handleSnoozeAlarm = handleSnoozeAlarm;
   if (typeof wakeSnoozedRecord !== 'undefined') global.wakeSnoozedRecord = wakeSnoozedRecord;
   if (typeof reconcileSnoozeAlarms !== 'undefined') global.reconcileSnoozeAlarms = reconcileSnoozeAlarms;
+  if (typeof handleWakeNotificationClicked !== 'undefined') global.handleWakeNotificationClicked = handleWakeNotificationClicked;
   if (typeof SNOOZE_PRESETS !== 'undefined') global.SNOOZE_PRESETS = SNOOZE_PRESETS;
 
   // AI proposal / grouping exposures

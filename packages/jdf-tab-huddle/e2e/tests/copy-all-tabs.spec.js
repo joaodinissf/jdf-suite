@@ -84,6 +84,8 @@ test('62: Copy tabs (individual mode) returns flat list without headers', async 
   // Should NOT have group headers in individual mode
   expect(text).not.toContain('Work');
   expect(text).not.toContain('Ungrouped');
+  // Nor the blank lines that separate groups in Groups mode
+  expect(text).not.toContain('\n\n');
   // Should have all URLs
   expect(text).toContain('https://example.com/aaa');
   expect(text).toContain('https://example.com/bbb');
