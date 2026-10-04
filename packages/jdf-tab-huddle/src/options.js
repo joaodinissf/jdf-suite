@@ -92,9 +92,10 @@ function writeFormState(settings) {
 
 const statusHideTimers = {};
 
-// Success messages fade after 1.8s; errors stay until the next successful save.
-// Each call cancels the previous fade so a quick second save is not hidden early.
-function showStatus(message, { error = false, target = 'clumping-status' } = {}) {
+// Success messages fade after 1.8s; errors, and progress (fade: false), stay
+// until the next message. Each call cancels the previous fade so a quick
+// second save is not hidden early.
+function showStatus(message, { error = false, fade = !error, target = 'clumping-status' } = {}) {
   const statusEl = document.getElementById(target);
   if (!statusEl) return;
   clearTimeout(statusHideTimers[target]);
@@ -102,7 +103,7 @@ function showStatus(message, { error = false, target = 'clumping-status' } = {})
   statusEl.textContent = message;
   statusEl.classList.toggle('error', error);
   statusEl.classList.add('visible');
-  if (!error) {
+  if (fade) {
     statusHideTimers[target] = setTimeout(() => {
       statusEl.classList.remove('visible');
       // Emptied after the fade, so the line gives its room back.
@@ -141,11 +142,24 @@ let aiModelPicker = null;
 // An id the catalog does not list, which a second Save keeps anyway.
 let aiUnlistedConfirm = null;
 
+// Each error belongs to a field: while it shows, the field is invalid and
+// described by it, so a screen reader reads it there.
+const AI_ERROR_FIELDS = { aiKeyError: 'settingsKeyInput', aiModelError: 'settingsCustom' };
+
 function showAiError(id, msg) {
   const el = document.getElementById(id);
   if (!el) return;
   el.textContent = msg || '';
   el.hidden = !msg;
+  const field = document.getElementById(AI_ERROR_FIELDS[id]);
+  if (!field) return;
+  if (msg) {
+    field.setAttribute('aria-invalid', 'true');
+    field.setAttribute('aria-describedby', id);
+  } else {
+    field.removeAttribute('aria-invalid');
+    field.removeAttribute('aria-describedby');
+  }
 }
 
 function renderAiKeyState() {
@@ -168,14 +182,21 @@ function renderAiKeyState() {
 
 // Replace the key or change its expiry: the same checks as the organize
 // page's key form, OpenRouter's included. The default model is left alone.
+// While it checks, Save is aria-disabled, not disabled, so focus stays on it;
+// a second press meanwhile does nothing.
 async function saveAiKey() {
   const button = document.getElementById('aiSaveKey');
+  if (button.getAttribute('aria-disabled') === 'true') return;
   showAiError('aiKeyError', '');
-  clearStatus('ai-status');
-  button.disabled = true;
+  button.setAttribute('aria-disabled', 'true');
+  // Only a newly typed key is checked; an expiry-only save isn't.
+  if (document.getElementById('settingsKeyInput').value.trim()) {
+    showStatus('Checking the key with OpenRouter…', { target: 'ai-status', fade: false });
+  }
   const result = await aiKeyForm.collect({ storedConfig: aiConfig, allowKeep: true });
   if (!result.ok) {
-    button.disabled = false;
+    button.removeAttribute('aria-disabled');
+    clearStatus('ai-status');
     showAiError('aiKeyError', result.error);
     return;
   }
@@ -189,8 +210,9 @@ async function saveAiKey() {
   } catch (err) {
     response = { success: false, error: err.message };
   }
-  button.disabled = false;
+  button.removeAttribute('aria-disabled');
   if (!response || !response.success) {
+    clearStatus('ai-status');
     showAiError('aiKeyError', (response && response.error) || 'Failed to save configuration.');
     return;
   }
@@ -304,6 +326,8 @@ async function initAiSection() {
   aiModelPicker = HuddleAi.createModelPicker(document.getElementById('aiModelPicker'), {
     idPrefix: 'settings',
     onChange: () => { aiUnlistedConfirm = null; showAiError('aiModelError', ''); renderAiDefaultNote(); },
+    // Enter in the filter, the list or the id field saves, as Save does.
+    onCommit: () => document.getElementById('aiModelCard').requestSubmit(),
   });
   document.getElementById('aiKeyCard').addEventListener('submit', (e) => {
     e.preventDefault();

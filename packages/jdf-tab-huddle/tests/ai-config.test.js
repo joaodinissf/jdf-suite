@@ -108,6 +108,17 @@ describe('createKeyForm', () => {
     expect(input.type).toBe('password');
   });
 
+  test('the show toggle keeps its name; only aria-pressed changes (L56)', () => {
+    const toggle = document.querySelector('.key-toggle');
+    expect(toggle.getAttribute('aria-label')).toBe('Show key');
+    toggle.click();
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    expect(toggle.getAttribute('aria-label')).toBe('Show key');
+    toggle.click();
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    expect(toggle.getAttribute('aria-label')).toBe('Show key');
+  });
+
   test('an empty field is refused', async () => {
     typeKey('   ');
     expect(await form.collect()).toEqual({ ok: false, error: 'Please enter your OpenRouter API key.' });
@@ -157,6 +168,36 @@ describe('createKeyForm', () => {
     global.fetch.mockResolvedValue({ ok: false, status: 503 });
     typeKey('sk-or-v1-abc');
     expect((await form.collect()).error).toMatch(/HTTP 503/);
+  });
+
+  test('a check OpenRouter never answers gives up after 15 s, as a connection failure (M14)', async () => {
+    vi.useFakeTimers();
+    // AbortSignal.timeout runs on the platform's own timer, which fake timers
+    // do not reach: this one aborts the same way, on the faked clock.
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new DOMException('The operation timed out.', 'TimeoutError')), ms);
+      return controller.signal;
+    });
+    try {
+      // A stalled network: the request never settles unless its signal aborts.
+      global.fetch = vi.fn((_url, init) => new Promise((_resolve, reject) => {
+        if (init && init.signal) init.signal.addEventListener('abort', () => reject(init.signal.reason));
+      }));
+      typeKey('sk-or-v1-abc');
+      let settled = null;
+      form.collect().then((r) => { settled = r; });
+      await vi.advanceTimersByTimeAsync(14000);
+      expect(settled).toBeNull();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(settled).toEqual({
+        ok: false,
+        error: 'Couldn\'t reach OpenRouter to check this key. Check your connection and try again.',
+      });
+    } finally {
+      vi.useRealTimers();
+      timeout.mockRestore();
+    }
   });
 
   test('a network failure during the check means the key is refused', async () => {
@@ -300,6 +341,17 @@ describe('createModelPicker', () => {
     expect(hint()).toMatch(/exact answer format/);
     expect(hint()).not.toMatch(/structured|schema|JSON/i);
     expect(onChange).toHaveBeenLastCalledWith('m2');
+  });
+
+  test('while the catalog loads, the chosen model gets no warning (L58)', async () => {
+    let answer;
+    chrome.runtime.sendMessage.mockImplementation((message, cb) => { answer = () => cb(catalog); });
+    picker.setModelId('m1');
+    const loading = picker.load();
+    expect(hint()).toBe('');
+    answer();
+    await loading;
+    expect(hint()).toBe('');
   });
 
   test('an unknown structured-output flag says nothing', async () => {

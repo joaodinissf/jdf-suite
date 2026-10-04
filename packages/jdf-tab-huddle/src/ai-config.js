@@ -127,7 +127,8 @@ const HuddleAi = (() => {
     return null;
   }
 
-  // Asks OpenRouter whether it accepts the key before it is stored.
+  // Asks OpenRouter whether it accepts the key before it is stored. A
+  // network that stalls gives up after 15 s, with the connection message.
   async function verifyOpenRouterKey(key) {
     let response;
     try {
@@ -137,6 +138,7 @@ const HuddleAi = (() => {
           'Accept': 'application/json',
           'Authorization': `Bearer ${key}`,
         },
+        signal: AbortSignal.timeout(15000),
       });
     } catch (err) {
       // Building the request fails on a character a header cannot carry;
@@ -190,7 +192,6 @@ const HuddleAi = (() => {
       keyInput.type = keyInput.type === 'password' ? 'text' : 'password';
       const shown = keyInput.type === 'text';
       toggle.setAttribute('aria-pressed', String(shown));
-      toggle.setAttribute('aria-label', shown ? 'Hide key' : 'Show key');
     });
 
     function setExpiryPresets(presets, selected) {
@@ -257,7 +258,6 @@ const HuddleAi = (() => {
       keyInput.value = '';
       keyInput.type = 'password';
       toggle.setAttribute('aria-pressed', 'false');
-      toggle.setAttribute('aria-label', 'Show key');
     }
 
     return { keyInput, expirySelect, setExpiryPresets, setKeepHint, collect, clear };
@@ -457,8 +457,11 @@ const HuddleAi = (() => {
         hintEl.textContent = 'Batch models can\'t organize tabs: they only take offline batch jobs. Pick another model.';
       } else if (!model && goneNames.has(id) && catalogIds()) {
         hintEl.textContent = `OpenRouter no longer lists ${goneNames.get(id)}. Pick another model.`;
+      } else if (!model && !loaded) {
+        // Nothing to say while the catalog loads: the id is likely listed.
+        hintEl.textContent = '';
       } else if (!model) {
-        hintEl.textContent = loaded && modelsMeta && !modelsMeta.fallback
+        hintEl.textContent = modelsMeta && !modelsMeta.fallback
           ? 'Not in OpenRouter\'s list of models Huddle can use: it may not exist, or may not answer in JSON.'
           : 'Huddle can\'t check this id until the catalog loads.';
       } else if (model.supportsStructuredOutputs === false) {
