@@ -61,7 +61,6 @@ describe('Settings: AI section', () => {
     expect($('aiSection')).not.toBeNull();
     expect($('settingsKeyInput').type).toBe('password');
     expect($('settingsExpiry').options.length).toBe(2);
-    expect($('settingsSelect').options.length).toBe(2);
     expect($('aiKeyStatus').textContent).toBe('Not set');
     expect($('aiDeleteKey').hidden).toBe(true);
   });
@@ -264,7 +263,7 @@ describe('Settings: AI section', () => {
     $('aiSaveModel').click();
     await flushPromises();
 
-    expect(sent('saveAiDefaultModel')).toEqual([{ action: 'saveAiDefaultModel', model: 'm1', allowUnlisted: false }]);
+    expect(sent('saveAiDefaultModel')).toEqual([{ action: 'saveAiDefaultModel', model: 'm1', allowUnlisted: false, denyDataCollection: true }]);
     expect($('ai-model-status').textContent).toBe('Default model: Model One');
     // Choosing a default never touches the key.
     expect(sent('saveAiConfig')).toHaveLength(0);
@@ -277,6 +276,8 @@ describe('Settings: AI section', () => {
         ? { success: true, config: { key: null, model: m.model } }
         : { success: false, unlisted: true, error: `${m.model} isn't in OpenRouter's list of models Huddle can use.` }),
     });
+    await flushPromises();
+    $('settingsCustom').focus(); // With no key, the list loads once it is used.
     await flushPromises();
     expect($('settingsSelect').value).toBe('m1'); // the built-in default
 
@@ -291,8 +292,8 @@ describe('Settings: AI section', () => {
     await flushPromises();
 
     expect(sent('saveAiDefaultModel')).toEqual([
-      { action: 'saveAiDefaultModel', model: 'acme/model', allowUnlisted: false },
-      { action: 'saveAiDefaultModel', model: 'acme/model', allowUnlisted: true },
+      { action: 'saveAiDefaultModel', model: 'acme/model', allowUnlisted: false, denyDataCollection: true },
+      { action: 'saveAiDefaultModel', model: 'acme/model', allowUnlisted: true, denyDataCollection: true },
     ]);
     expect($('ai-model-status').textContent).toBe('Default model: acme/model');
   });
@@ -306,6 +307,8 @@ describe('Settings: a default the catalog no longer lists', () => {
   test('says so, and shows the model organize uses instead', async () => {
     loadSettingsPage({ loadAiConfig: loadResponse({ key: null, model: 'qwen/qwen3.5-flash-20260224' }) });
     await flushPromises();
+    $('settingsFilter').focus();
+    await flushPromises();
     await flushPromises();
     expect($('aiDefaultNote').hidden).toBe(false);
     expect($('aiDefaultNote').textContent)
@@ -316,8 +319,98 @@ describe('Settings: a default the catalog no longer lists', () => {
   test('a listed default has no note', async () => {
     loadSettingsPage({ loadAiConfig: loadResponse({ key: null, model: 'm2' }) });
     await flushPromises();
+    $('settingsFilter').focus();
+    await flushPromises();
     await flushPromises();
     expect($('aiDefaultNote').hidden).toBe(true);
     expect($('settingsSelect').value).toBe('m2');
+  });
+});
+
+// L25: Settings contacts OpenRouter (the catalog the worker fetches for
+// loadOpenRouterModels) only with a key on file, or once the model list is
+// used; PRODUCT.md says so.
+describe('Settings: the model catalog loads only when needed', () => {
+  beforeEach(() => {
+    chrome.runtime.lastError = null;
+  });
+
+  test('with no key, nothing is fetched until focus enters the picker, then once', async () => {
+    loadSettingsPage({ loadAiConfig: loadResponse(null) });
+    await flushPromises();
+    await flushPromises();
+    expect(sent('loadOpenRouterModels')).toHaveLength(0);
+    expect($('settingsSelect').options.length).toBe(0);
+
+    $('settingsSelect').focus();
+    await flushPromises();
+    expect(sent('loadOpenRouterModels')).toHaveLength(1);
+    expect($('settingsSelect').options.length).toBe(2);
+
+    $('settingsCustom').focus();
+    $('settingsFilter').focus();
+    await flushPromises();
+    expect(sent('loadOpenRouterModels')).toHaveLength(1);
+  });
+
+  test('with no key, the recommended models show before the catalog, with nothing fetched (D4)', async () => {
+    loadSettingsPage({ loadAiConfig: { ...loadResponse(null), models: [{ id: 'm1', name: 'Model one' }] } });
+    await flushPromises();
+    await flushPromises();
+    expect(sent('loadOpenRouterModels')).toHaveLength(0);
+    expect([...$('settingsSelect').options].map((o) => o.value)).toEqual(['m1']);
+    expect(document.querySelector('#aiModelPicker').textContent).toContain('Recommended models');
+
+    $('settingsSelect').focus();
+    await flushPromises();
+    expect(sent('loadOpenRouterModels')).toHaveLength(1);
+    expect($('settingsSelect').options.length).toBe(2);
+  });
+
+  test.each(['settingsFilter', 'settingsCustom'])('focus in %s loads it too', async (id) => {
+    loadSettingsPage({ loadAiConfig: loadResponse({ key: null, model: 'm2', keyExpiredAt: 1 }) });
+    await flushPromises();
+    expect(sent('loadOpenRouterModels')).toHaveLength(0);
+    $(id).focus();
+    await flushPromises();
+    expect(sent('loadOpenRouterModels')).toHaveLength(1);
+  });
+
+  test('with a key on file, it loads at once', async () => {
+    loadSettingsPage({ loadAiConfig: loadResponse({ key: btoa('sk-or-k'), model: 'm2', expiresAt: null, expiryDuration: null }) });
+    await flushPromises();
+    await flushPromises();
+    expect(sent('loadOpenRouterModels')).toHaveLength(1);
+    expect($('settingsSelect').value).toBe('m2');
+  });
+});
+
+// L24: the data-collection checkbox, on by default, saved with the model.
+describe('Settings: don\'t use providers that train on my prompts', () => {
+  beforeEach(() => {
+    chrome.runtime.lastError = null;
+  });
+
+  test('its label, on with nothing stored', async () => {
+    loadSettingsPage({ loadAiConfig: loadResponse(null) });
+    await flushPromises();
+    expect(document.querySelector('label[for="aiDenyDataCollection"]').textContent)
+      .toBe('Don\'t use providers that train on my prompts');
+    expect($('aiDenyDataCollection').checked).toBe(true);
+  });
+
+  test('shows a stored off, and Save sends what it shows', async () => {
+    loadSettingsPage({
+      loadAiConfig: loadResponse({ key: btoa('sk-or-k'), model: 'm1', expiresAt: null, expiryDuration: null, denyDataCollection: false }),
+      saveAiDefaultModel: (m) => ({ success: true, config: { key: btoa('sk-or-k'), model: m.model, denyDataCollection: m.denyDataCollection } }),
+    });
+    await flushPromises();
+    expect($('aiDenyDataCollection').checked).toBe(false);
+    $('aiSaveModel').click();
+    await flushPromises();
+    $('aiDenyDataCollection').checked = true;
+    $('aiSaveModel').click();
+    await flushPromises();
+    expect(sent('saveAiDefaultModel').map((m) => m.denyDataCollection)).toEqual([false, true]);
   });
 });

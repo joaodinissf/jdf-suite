@@ -12,7 +12,8 @@
     "storage",
     "alarms",
     "notifications",
-    "scripting"
+    "scripting",
+    "favicon"
   ],
   "host_permissions": [
     "https://openrouter.ai/*",

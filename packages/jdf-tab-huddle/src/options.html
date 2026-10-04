@@ -283,6 +283,28 @@
     .error-msg[hidden] {
       display: none;
     }
+
+    /* A checkbox beside its label, in a card of stacked fields. */
+    .check-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .ai-form .check-row input {
+      flex: 0 0 auto;
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      padding: 0;
+      accent-color: var(--ac);
+      cursor: pointer;
+    }
+
+    .ai-form .check-row label {
+      margin: 0;
+    }
   </style>
 </head>
 <body>
@@ -353,6 +375,11 @@
         <h3 class="card-title">Default model</h3>
         <div id="aiModelPicker"></div>
         <p id="aiDefaultNote" class="field-help" role="status" hidden></p>
+        <div class="check-row">
+          <input type="checkbox" id="aiDenyDataCollection" aria-describedby="aiDenyDataCollectionHelp" checked>
+          <label for="aiDenyDataCollection">Don't use providers that train on my prompts</label>
+        </div>
+        <p id="aiDenyDataCollectionHelp" class="field-help">Some models have no such provider, and won't run while this is on. Saved with the default model.</p>
         <div id="aiModelError" class="error-msg" role="alert" hidden></div>
         <div class="card-actions">
           <button type="submit" class="btn primary" id="aiSaveModel" disabled>Save default model</button>

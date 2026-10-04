@@ -127,6 +127,105 @@ describe('the request follows the model\'s catalog capabilities', () => {
   });
 });
 
+// L24: with Settings' "Don't use providers that train on my prompts" on (the
+// default), every request asks OpenRouter to skip providers that train on
+// prompts; a refusal for that names the setting.
+const DATA_POLICY_404 = 'No endpoints found matching your data policy (Paid model training). Configure: https://openrouter.ai/settings/privacy';
+
+describe('data collection: deny', () => {
+  test('the strict request keeps require_parameters and adds data_collection', () => {
+    const body = buildOpenRouterRequestBody(LUNA, [], { params: LUNA_PARAMS, jsonSchema: schema, maxTokens: 2000, denyDataCollection: true });
+    expect(body.provider).toEqual({ require_parameters: true, data_collection: 'deny' });
+    expect(body.response_format.type).toBe('json_schema');
+  });
+
+  test('the plain request carries it too', () => {
+    for (const opts of [{ params: LUNA_PARAMS, strict: false }, { params: null }, { params: JSON_ONLY_PARAMS }]) {
+      const body = buildOpenRouterRequestBody(LUNA, [], { ...opts, jsonSchema: schema, maxTokens: 2000, denyDataCollection: true });
+      expect(body.provider).toEqual({ data_collection: 'deny' });
+    }
+  });
+
+  test('off, the bodies are as before', () => {
+    expect(buildOpenRouterRequestBody(LUNA, [], { params: LUNA_PARAMS, jsonSchema: schema, denyDataCollection: false }).provider)
+      .toEqual({ require_parameters: true });
+    expect(buildOpenRouterRequestBody(LUNA, [], { params: null, jsonSchema: schema }).provider).toBeUndefined();
+  });
+
+  test('the plain retry after a strict refusal keeps it', async () => {
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(errorAnswer(404, ROUTING_404))
+      .mockResolvedValueOnce(okAnswer('{"groups":[]}'));
+    await callOpenRouter('k', LUNA, [], null, { params: LUNA_PARAMS, jsonSchema: schema, denyDataCollection: true });
+    expect(bodyOf(0).provider).toEqual({ require_parameters: true, data_collection: 'deny' });
+    expect(bodyOf(1).provider).toEqual({ data_collection: 'deny' });
+  });
+
+  test('no provider meets it: the error names the setting, and Change model leads', async () => {
+    global.fetch = vi.fn().mockResolvedValue(errorAnswer(404, DATA_POLICY_404));
+    const error = await callOpenRouter('k', LUNA, [], null, {
+      params: LUNA_PARAMS, jsonSchema: schema, denyDataCollection: true, ctx: { modelName: 'GPT-6 Luna' },
+    }).catch((e) => e);
+    expect(error.message).toBe('No provider for GPT-6 Luna meets your "Don\'t use providers that train on my prompts" setting (404: '
+      + 'No endpoints found matching your data policy (Paid model training). Configure: https://openrouter.ai/settings/privacy). '
+      + 'Pick another model, or change it in Settings.');
+    expect(error).toMatchObject({ kind: 'model', retryable: false, status: 404 });
+  });
+
+  test('a 400 about the data policy names the setting too', () => {
+    const error = mapOpenRouterHttpError(400, { message: DATA_POLICY_404 }, { modelName: 'GPT-6 Luna', denyDataCollection: true });
+    expect(error.message).toMatch(/^No provider for GPT-6 Luna meets your "Don't use providers that train on my prompts" setting \(400: /);
+    expect(error).toMatchObject({ kind: 'model', retryable: false });
+  });
+
+  test('with the setting off, the same refusal (the account\'s own policy) is not blamed on it', () => {
+    const error = mapOpenRouterHttpError(404, { message: DATA_POLICY_404 }, { modelName: 'GPT-6 Luna' });
+    expect(error.message).toMatch(/^OpenRouter found no provider that can run GPT-6 Luna/);
+  });
+
+  test('a run sends it unless Settings turned it off', async () => {
+    const TABS = [{ id: 20, url: 'https://x.com', title: 'X', pinned: false, groupId: -1 }];
+    for (const [stored, expected] of [[undefined, 'deny'], [true, 'deny'], [false, undefined]]) {
+      global.fetch = vi.fn().mockResolvedValue(okAnswer(JSON.stringify({ groups: [{ name: 'G', color: 'blue', tabIds: [20] }] })));
+      chrome.storage.local.get.mockImplementation(async () => ({ aiConfig: { key: btoa('sk-or-test'), expiresAt: null, model: 'acme/custom', denyDataCollection: stored } }));
+      chrome.storage.local.set.mockResolvedValue(undefined);
+      chrome.tabs.query.mockResolvedValue(TABS);
+      chrome.tabGroups.query.mockResolvedValue([]);
+      chrome.windows.getCurrent.mockResolvedValue({ id: 1 });
+      const posted = [];
+      const listeners = [];
+      chrome.runtime.onConnect.callListeners({
+        name: 'huddle-ai-run',
+        sender: { ...organizeSender, tab: { id: 10, windowId: 1 } },
+        postMessage: (m) => posted.push(m),
+        onMessage: { addListener: (fn) => listeners.push(fn) },
+        onDisconnect: { addListener: () => {} },
+      });
+      listeners.forEach((fn) => fn({ type: 'start', protocol: AI_PROTOCOL, instructions: '', model: 'acme/custom', respectGroups: true }));
+      await vi.waitFor(() => expect(posted.some((m) => m.type === 'ai-proposal')).toBe(true));
+      const chat = global.fetch.mock.calls.find(([url]) => url.endsWith('/chat/completions'));
+      expect(JSON.parse(chat[1].body).provider && JSON.parse(chat[1].body).provider.data_collection).toBe(expected);
+    }
+  });
+
+  test('stored with the AI config: on by default, kept by a key save, set by a model save that says', async () => {
+    let stored = null;
+    chrome.storage.local.get.mockImplementation(async () => (stored ? { aiConfig: stored } : {}));
+    chrome.storage.local.set.mockImplementation(async ({ aiConfig }) => { stored = aiConfig; });
+    await saveAiConfig({ key: 'sk-or-a', expiryDuration: null });
+    expect(stored.denyDataCollection).toBe(true);
+    await saveAiDefaultModel(HAIKU, { denyDataCollection: false });
+    expect(stored.denyDataCollection).toBe(false);
+    await saveAiConfig({ key: 'sk-or-b', expiryDuration: null, renew: true });
+    expect(stored.denyDataCollection).toBe(false);
+    // The organize page's Make default sends no setting: it is kept.
+    await saveAiDefaultModel(GEMINI);
+    expect(stored.denyDataCollection).toBe(false);
+    await saveAiDefaultModel(GEMINI, { denyDataCollection: true });
+    expect(stored.denyDataCollection).toBe(true);
+  });
+});
+
 describe('a strict request OpenRouter refuses is retried once, whatever it says', () => {
   beforeEach(() => {
     global.fetch = vi.fn();
@@ -196,10 +295,10 @@ describe('the error says what OpenRouter refused', () => {
 });
 
 describe('recommended models', () => {
-  test('Claude Haiku 4.5 (the default), DeepSeek V4.1 Flash, Gemini 3.1 Flash Lite, GPT-6 Luna', () => {
+  // DeepSeek V4.1 Flash left the list: its only provider trains on prompts.
+  test('Claude Haiku 4.5 (the default), Gemini 3.1 Flash Lite, GPT-6 Luna', () => {
     expect(AI_MODELS.map((m) => [m.id, m.name])).toEqual([
       [HAIKU, 'Claude Haiku 4.5'],
-      [DEEPSEEK, 'DeepSeek V4.1 Flash'],
       [GEMINI, 'Gemini 3.1 Flash Lite'],
       [LUNA, 'GPT-6 Luna'],
     ]);
@@ -209,7 +308,6 @@ describe('recommended models', () => {
   test('offline prices are the catalog\'s', () => {
     expect(AI_MODELS.map((m) => formatModelCost(m.pricing))).toEqual([
       '$1.00 in · $5.00 out per M',
-      '$0.30 in · $1.20 out per M',
       '$0.25 in · $1.50 out per M',
       '$0.10 in · $0.50 out per M',
     ]);
@@ -250,8 +348,8 @@ describe('resolveDefaultModel', () => {
   });
 
   test('Huddle\'s own default gone: the next recommended model', () => {
-    expect(resolveDefaultModel(null, catalog(GEMINI, DEEPSEEK)))
-      .toEqual({ model: DEEPSEEK, missing: HAIKU, mine: false });
+    expect(resolveDefaultModel(null, catalog(LUNA, GEMINI, DEEPSEEK)))
+      .toEqual({ model: GEMINI, missing: HAIKU, mine: false });
   });
 
   test('no catalog: kept as it is', () => {
@@ -341,7 +439,8 @@ describe('a run builds its request from the cached catalog', () => {
     expect(body.model).toBe(LUNA);
     expect(body).not.toHaveProperty('temperature');
     expect(body.response_format.type).toBe('json_schema');
-    expect(body.provider).toEqual({ require_parameters: true });
+    // The Settings checkbox is on until turned off.
+    expect(body.provider).toEqual({ require_parameters: true, data_collection: 'deny' });
   });
 
   test('a saved default the catalog dropped runs with the first recommended model listed', async () => {
@@ -356,6 +455,6 @@ describe('a run builds its request from the cached catalog', () => {
     await run('acme/custom');
     expect(bodyOf(0).model).toBe('acme/custom');
     expect(bodyOf(0).response_format).toEqual({ type: 'json_object' });
-    expect(bodyOf(0).provider).toBeUndefined();
+    expect(bodyOf(0).provider).toEqual({ data_collection: 'deny' });
   });
 });

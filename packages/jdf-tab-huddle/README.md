@@ -19,10 +19,12 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 - **Copy this window / Copy all windows**: Copy tab URLs to the clipboard (current window only, or every window), paragraph-separated by tab group when Groups mode is on
 - **Organize with AI** (OpenRouter): the popup's Organize with AI opens the organize page, which proposes groups you can edit before applying them. When the chosen model supports structured outputs, Huddle requests a strict JSON schema; otherwise it uses JSON object mode. Responses are always reconciled so no input tab is dropped.
   - **Model for this run**: the organize page names the model at the top. Change it (recommended + full OpenRouter list, filterable, or a custom model id) and press Run again to re-run in the same tab; the choice applies to that run only, and **Make default** saves it as the default.
+  - **What is sent**: a line under Organize says that the window's tab titles and addresses go to OpenRouter, which passes them to a provider it picks for the model. Addresses go without their query and fragment; a `data:` address keeps only its type, a `blob:` one only its origin, and a `file:` one only the file name. Titles are cut at 200 characters and addresses at 300; a `data:`, `blob:` or `file:` tab's title is replaced by its cleaned address, since Chrome titles such a page with its whole address or local path. Tab icons on the page come from Chrome's favicon cache, never from the site.
+  - **Don't use providers that train on my prompts** (Settings, on by default, saved with the default model): every request asks OpenRouter to skip providers that train on prompts (`provider.data_collection: deny`). Providers that keep prompts without training on them still qualify. A model with no such provider then fails with an error that names the setting; pick another model or turn the setting off. The recommended models are Claude Haiku 4.5 (default), Gemini 3.1 Flash Lite and GPT-6 Luna.
   - **No key yet, an expired one, or one OpenRouter rejects**: the organize page asks for the key inline (checked with OpenRouter before it is saved) and starts the run once it is saved. An expired key is deleted from the browser, not just hidden.
   - **Errors say what to do**: a model or provider refusal offers Change model, a key problem the key form, Groups mode with nothing ungrouped offers Flat, and a stuck request can be stopped (Esc). A run always ends in a proposal, an error or "This run has ended", never a spinner that never stops. Cmd/Ctrl+Enter runs or applies.
   - **After switching branches** in a clone, reload Huddle at `chrome://extensions`: Chrome keeps running the old background worker until then. The organize page notices and offers **Reload Huddle**.
-  - **Settings → Organize with AI**: the key's status, replacing or deleting the key, when it expires, and the default model.
+  - **Settings → Organize with AI**: the key's status, replacing or deleting the key, when it expires, and the default model with Don't use providers that train on my prompts. With no key on file, Settings contacts OpenRouter only once you use the model list (its filter, the list or the model id field).
 
 ### Duplicate Management
 - **Remove Duplicates (Window)**: Remove duplicates within current window
@@ -69,8 +71,8 @@ The link-clumping feature is inspired by [linkclump](https://github.com/benblack
 ### For Developers
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (955 tests)
-pnpm test:e2e          # Run E2E tests (128 tests, requires Chromium)
+pnpm test              # Run unit tests (988 tests)
+pnpm test:e2e          # Run E2E tests (129 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
 pnpm run package       # Create extension zip
@@ -100,7 +102,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Split domains confirmation and result
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (955 tests in 21 files)
+├── tests/                         # Vitest unit tests (988 tests in 21 files)
 │   ├── setup.js                   # Chrome API mock, page scripts loaded, dispatch() to the worker
 │   ├── senders.js                 # The sender each caller (popup, pages, content script) arrives with
 │   ├── routing.test.js            # Every worker action, routed from its real caller; refused from a content script
@@ -109,11 +111,11 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── snooze.test.js             # Snoozing and waking, through the worker's handlers
 │   ├── confirmation-dialog.test.js
 │   └── simple.test.js             # Framework verification
-├── e2e/                           # Playwright E2E tests (128 tests)
+├── e2e/                           # Playwright E2E tests (129 tests)
 │   ├── playwright.config.js       # Playwright configuration
 │   ├── fixtures/extension.js      # Custom fixture loading extension into Chromium
 │   ├── helpers/                   # Tab management, popup interaction, assertions
-│   └── tests/                     # 18 spec files covering all features
+│   └── tests/                     # 19 spec files covering all features
 ├── docs/                          # Documentation
 ├── .github/workflows/             # CI/CD (test, e2e, lint, build, release)
 ├── package.json
@@ -123,7 +125,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ## Testing
 
 ### Unit Tests (Vitest + jest-chrome shim)
-955 tests across 21 files covering core logic with mocked Chrome APIs:
+988 tests across 21 files covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report
@@ -132,7 +134,7 @@ pnpm run test:coverage   # With coverage report
 `tests/routing.test.js` sends every action the service worker handles through its real `onMessage` listener, from the page that sends it (with the sender Chrome gives that page), and checks the reply and the Chrome call the handler makes. The dispatcher is an if/else chain on `message.action`, except the popup's logging message, which is keyed on `message.type`, and its first branch, the sender check: only Huddle's own pages (a sender `url` under `chrome-extension://<id>/`) may send anything but `clumpOpenUrls`, the one action the link clumper's content script sends. The test reads every branch of that chain from the source, fails on a branch it does not understand, and checks its table against the actions (and the logging message) found there and against what each page's scripts send; it also sends every row's message from the content script and expects `forbidden`. So a new worker action needs a row there. The test's `dispatch(message, sender)` (in `tests/setup.js`) resolves with the worker's reply, and fails when an action that replies later does not keep the channel open by returning `true`.
 
 ### E2E Tests (Playwright + real Chromium)
-128 tests across 19 spec files that load the extension into a real browser:
+129 tests across 19 spec files that load the extension into a real browser:
 
 | Spec File | Tests | Coverage |
 |---|---|---|
@@ -153,7 +155,7 @@ pnpm run test:coverage   # With coverage report
 | keyboard | 4 | Popup hotkey dispatch |
 | link-clumping | 2 | A page's own events open nothing; a real drag opens 5 at once, and over 25 links asks and opens the first 25 |
 | snooze | 13 | Tab/window/group snooze, wake, alarms, edge cases; the Group button follows the active tab |
-| ai-flow | 21 | Organize with AI against a fake OpenRouter: runs, Apply, errors; only the organize page's window is sent, Apply never takes a tab from another window or unpins a tab, and Escape and Cmd/Ctrl+Enter in the proposal's fields |
+| ai-flow | 22 | Organize with AI against a fake OpenRouter: runs, Apply, errors, the line under Organize and `data_collection: deny`; Settings with no key contacts OpenRouter only once the model list is used; only the organize page's window is sent, Apply never takes a tab from another window or unpins a tab, and Escape and Cmd/Ctrl+Enter in the proposal's fields |
 | trust-boundary | 2 | From the content script in a web page: `storage.local` (the key) is refused and `storage.sync` still read; every action but `clumpOpenUrls` is forbidden and an organize port is closed |
 
 ```bash
@@ -174,11 +176,12 @@ CI lives at the monorepo root: [`.github/workflows/jdf-tab-huddle-ci.yml`](../..
 - **`windows`**: Manage browser windows
 - **`tabGroups`**: Preserve and manage tab groups
 - **`storage`**: Save user preferences (Tab Groups vs Individual mode)
+- **`favicon`**: show each tab's icon on the organize page from Chrome's own favicon cache, so reviewing a proposal never fetches a site's icon (with its cookies); no install warning
 - **`scripting`** and site access to **`http://*/*`, `https://*/*`**: run link clumping in web pages, including pages already open when Huddle is installed, updated or reloaded (the content script alone already asks for every website, so this adds no install warning)
 
 ## Browser Compatibility
 
-- **Chrome**: Manifest V3 (Chrome 147+: `chrome.storage.local.setAccessLevel` keeps the stored OpenRouter key away from the content script in web pages, and 147 is the oldest Chrome the e2e suite proves it on); Split View Compact/Expand need Chrome 155+ and are hidden on older versions
+- **Chrome**: Manifest V3 (Chrome 147+: `chrome.storage.local.setAccessLevel` keeps the stored OpenRouter key away from the content script in web pages, and 147 is the oldest Chrome the e2e suite proves it on; the organize page's `_favicon` icons need 104+, which 147 covers); Split View Compact/Expand need Chrome 155+ and are hidden on older versions
 - **Edge**: Chromium-based Edge
 - **Firefox**: Not supported (uses Chrome-specific APIs)
 

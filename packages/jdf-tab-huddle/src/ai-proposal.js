@@ -219,6 +219,16 @@ function modelLabel(id) {
   return (modelPicker && modelPicker.modelName(id)) || id;
 }
 
+// What a run sends, and to whom, under the form's buttons whenever the form
+// is on screen. OpenRouter picks the provider, so none is named.
+function renderSendNote() {
+  const note = document.getElementById('sendNote');
+  if (!note) return;
+  const id = nextModel();
+  note.textContent = 'Organize sends this window\'s tab titles and addresses to OpenRouter, which passes them to a provider it picks'
+    + (id ? ` for ${modelLabel(id)}.` : '.');
+}
+
 function setModelNote(text) {
   const note = document.getElementById('modelNote');
   if (note) note.textContent = text;
@@ -237,6 +247,7 @@ function updateModelBar() {
   bar.classList.toggle('pending', !id);
   nameEl.textContent = id ? modelLabel(id) : '';
   nameEl.title = id || '';
+  renderSendNote();
   syncProposalActions();
 
   const isDefault = !!id && id === savedDefaultModel();
@@ -744,6 +755,7 @@ function renderCompose({ notice = null, primaryLabel = 'Organize', onPrimary = n
       <div class="form-actions" id="composeActions">
         <button type="submit" class="btn primary" id="startOrganize" aria-keyshortcuts="Meta+Enter Control+Enter">Organize</button>
       </div>
+      <p class="send-note" id="sendNote"></p>
       <p class="keys-hint"><kbd>${MOD_KEY}</kbd><kbd>↵</kbd> <span id="primaryKeyLabel"></span> <span aria-hidden="true">·</span> <kbd>Esc</kbd> close</p>
     </form>`;
   if (notice) content.prepend(notice);
@@ -776,6 +788,7 @@ function renderCompose({ notice = null, primaryLabel = 'Organize', onPrimary = n
     onOrganize(onPrimary);
   });
   updateKeySection();
+  renderSendNote();
 }
 
 // Focus lands on what the user does next: the key while one is needed, the
@@ -1050,7 +1063,7 @@ function hideApplyNotice() {
 }
 
 function getTabMeta(tabId) {
-  return tabMap[tabId] || { id: tabId, title: '(unknown)', url: '', favIconUrl: '' };
+  return tabMap[tabId] || { id: tabId, title: '(unknown)', url: '' };
 }
 
 function showProposal(msg) {
@@ -1244,7 +1257,9 @@ function renderTabRow(tabId, groupIndex) {
   const favicon = document.createElement('img');
   favicon.className = 'tab-favicon';
   favicon.alt = '';
-  favicon.src = meta.favIconUrl || 'chrome://favicon/size/16/' + meta.url;
+  // Chrome's own cached icon, never the page's icon URL: fetching that would
+  // tell the site (with its cookies) when the proposal is reviewed.
+  favicon.src = chrome.runtime.getURL('/_favicon/?pageUrl=' + encodeURIComponent(meta.url) + '&size=16');
   favicon.onerror = () => { favicon.style.display = 'none'; };
 
   const info = document.createElement('div');

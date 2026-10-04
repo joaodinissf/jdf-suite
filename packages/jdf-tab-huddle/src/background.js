@@ -40,12 +40,12 @@ const OPENROUTER_API = 'https://openrouter.ai/api/v1';
 // Curated defaults, in the order the picker recommends them; the first is the
 // default model. Offered while the live catalog lists them, and on their own
 // when the catalog cannot be loaded. Prices are OpenRouter's, per token, and
-// only used offline; the catalog's own prices win.
+// only used offline; the catalog's own prices win. Each is served by
+// providers that don't train on prompts (DeepSeek V4.1 Flash left the list:
+// its only provider does).
 const AI_MODELS = [
   { id: 'anthropic/claude-haiku-4.5', name: 'Claude Haiku 4.5', provider: 'Anthropic',
     pricing: { prompt: '0.000001', completion: '0.000005' } },
-  { id: 'deepseek/deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash', provider: 'DeepSeek',
-    pricing: { prompt: '0.0000003', completion: '0.0000012' } },
   { id: 'google/gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', provider: 'Google',
     pricing: { prompt: '0.00000025', completion: '0.0000015' } },
   { id: 'openai/gpt-6-luna', name: 'GPT-6 Luna', provider: 'OpenAI',
@@ -505,6 +505,7 @@ async function saveAiConfig(config) {
     expiryDuration,
     keyExpiredAt: null,
     setupComplete: true,
+    denyDataCollection: !(previous && previous.denyDataCollection === false),
   };
 
   await chrome.storage.local.set({ aiConfig });
@@ -530,7 +531,10 @@ async function loadAiConfig() {
 // on its own: a config without a key still reads as "no key". An id the
 // catalog does not list (a typo, a retired model) is refused unless the user
 // confirmed it (allowUnlisted); with no catalog to check against it is kept.
-async function saveAiDefaultModel(model, { allowUnlisted = false } = {}) {
+// Settings saves its data-collection checkbox with the model
+// (denyDataCollection, a boolean); a save without one keeps the stored value,
+// which is on until turned off.
+async function saveAiDefaultModel(model, { allowUnlisted = false, denyDataCollection } = {}) {
   const id = typeof model === 'string' ? model.trim() : '';
   if (!id) throw new Error('Choose a model first.');
   if (isBatchModel(id)) {
@@ -551,6 +555,7 @@ async function saveAiDefaultModel(model, { allowUnlisted = false } = {}) {
   const aiConfig = previous
     ? { ...previous, model: id, unlistedModel }
     : { key: null, model: id, unlistedModel, expiresAt: null, expiryDuration: DEFAULT_EXPIRY, setupComplete: false };
+  if (typeof denyDataCollection === 'boolean') aiConfig.denyDataCollection = denyDataCollection;
   await chrome.storage.local.set({ aiConfig });
   return aiConfig;
 }
@@ -579,9 +584,14 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // AI Tab Grouping — Prompt Building and Response Parsing
 // ============================================================
 
+// What a tab's address tells the model: no query or fragment, no data: body
+// (a whole document), no blob: id, and of a local file only its name.
 function stripQueryParams(url) {
   try {
     const u = new URL(url);
+    if (u.protocol === 'data:') return `data:${u.pathname.split(/[;,]/)[0]}`;
+    if (u.protocol === 'blob:') return `blob:${u.origin}`;
+    if (u.protocol === 'file:') return `file:…/${u.pathname.split('/').pop()}`;
     return u.origin + u.pathname;
   } catch (_e) {
     return url;
@@ -598,8 +608,14 @@ function buildAiPrompt(tabs, instructions) {
 
   const tabLines = sortedTabs.map(tab => {
     const domain = lexHost(tab.url);
-    const title = tab.title || '(no title)';
-    const cleanUrl = stripQueryParams(tab.pendingUrl || tab.url);
+    // Capped: a title or address can be any length, and every character is
+    // sent and paid for.
+    const cleanUrl = stripQueryParams(tab.pendingUrl || tab.url).slice(0, 300);
+    // A local tab's title is its cleaned address: Chrome titles an untitled
+    // data: or file: page with its whole address (the document, or the local
+    // path) and a file: folder "Index of <path>".
+    const local = /^(data|blob|file):/i.test(tab.pendingUrl || tab.url || '');
+    const title = local ? cleanUrl : (tab.title || '(no title)').slice(0, 200);
     return `[id:${tab.id}] ${domain} — "${title}" — ${cleanUrl}`;
   }).join('\n');
 
@@ -643,7 +659,9 @@ function maxTokensForTabs(tabCount) {
 //     that honor it (require_parameters)
 //   response_format listed, or unknown: json_object, any provider
 // strict: false drops the json_schema and require_parameters (the fallback).
-function buildOpenRouterRequestBody(model, messages, { params = null, jsonSchema = null, strict = true, maxTokens = null } = {}) {
+// denyDataCollection (Settings, on by default) asks OpenRouter to skip
+// providers that train on prompts, on the strict and the plain request alike.
+function buildOpenRouterRequestBody(model, messages, { params = null, jsonSchema = null, strict = true, maxTokens = null, denyDataCollection = false } = {}) {
   const known = Array.isArray(params);
   const takes = (name) => !known || params.includes(name);
   const body = {
@@ -665,6 +683,7 @@ function buildOpenRouterRequestBody(model, messages, { params = null, jsonSchema
   } else if (takes('response_format')) {
     body.response_format = { type: 'json_object' };
   }
+  if (denyDataCollection) body.provider = { ...(body.provider || {}), data_collection: 'deny' };
 
   return body;
 }
@@ -682,6 +701,10 @@ function describeRequestTried(tried) {
 // "No endpoints found that can handle the requested parameters", "...that
 // support the provided 'response_format' parameter", provider routing.
 const ROUTING_REFUSAL_TEXT = /parameter|require_parameters|routing|no endpoints found (that|matching)/i;
+
+// Settings' data-collection checkbox, as its label reads, for the error that
+// says it left no provider ("No endpoints found matching your data policy").
+const DATA_COLLECTION_SETTING = 'Don\'t use providers that train on my prompts';
 
 function aiError(message, kind, extra = {}) {
   const error = new Error(message);
@@ -704,7 +727,8 @@ function statusWithDetail(status, said) {
 //   auth      a 401 not yet pinned on the key or the model (see classifyAuthError)
 //   credits   the account needs credits
 //   transient try again (rate limits, timeouts, server errors)
-// ctx: { model, modelName, tried: ['strict'?, 'plain'?] (what was sent) }
+// ctx: { model, modelName, tried: ['strict'?, 'plain'?] (what was sent),
+//        denyDataCollection (the request asked for data_collection: deny) }
 function mapOpenRouterHttpError(status, detail = {}, ctx = {}) {
   const said = detail.message || '';
   const provider = detail.provider || '';
@@ -721,6 +745,9 @@ function mapOpenRouterHttpError(status, detail = {}, ctx = {}) {
   } else if (status === 403) {
     // Moderation or a region/provider block: the same request is refused again.
     error = aiError(`OpenRouter refused this request for ${who} (${code}). Pick another model.`, 'model', { retryable: false });
+  } else if ((status === 404 || status === 400) && ctx.denyDataCollection && /data policy/i.test(said)) {
+    // Checked before the routing refusal, whose pattern matches this text too.
+    error = aiError(`No provider for ${who} meets your "${DATA_COLLECTION_SETTING}" setting (${code}). Pick another model, or change it in Settings.`, 'model', { retryable: false });
   } else if ((status === 404 || status === 400) && ROUTING_REFUSAL_TEXT.test(said)) {
     // The model exists; no provider of it takes what the request asked for.
     const tried = Array.isArray(ctx.tried) && ctx.tried.length ? ` ${describeRequestTried(ctx.tried)}.` : '';
@@ -852,14 +879,14 @@ async function readOpenRouterResponse(response, onChunk, { onActivity = () => {}
 // would fail identically, so they are never retried.
 const STRICT_REFUSAL_STATUSES = new Set([400, 404, 422, 501]);
 
-// options: { params, jsonSchema, maxTokens, signal, ctx, onFinish,
-//            firstByteMs, idleMs }
+// options: { params, jsonSchema, maxTokens, denyDataCollection, signal, ctx,
+//            onFinish, firstByteMs, idleMs }
 // Resolves with the model's text. See buildOpenRouterRequestBody for what is
 // sent, and STRICT_REFUSAL_STATUSES for the one retry.
 // Rejects with an error carrying .kind; an abort through `signal` rejects
 // with an AbortError.
 async function callOpenRouter(apiKey, model, messages, onChunk, options = {}) {
-  const ctx = { model, ...(options.ctx || {}) };
+  const ctx = { model, ...(options.ctx || {}), denyDataCollection: !!options.denyDataCollection };
   const firstByteMs = options.firstByteMs || CHAT_FIRST_BYTE_TIMEOUT_MS;
   const idleMs = options.idleMs || CHAT_IDLE_TIMEOUT_MS;
   const controller = new AbortController();
@@ -917,6 +944,7 @@ async function callOpenRouter(apiKey, model, messages, onChunk, options = {}) {
       params: Array.isArray(options.params) ? options.params : null,
       jsonSchema: options.jsonSchema || null,
       maxTokens: options.maxTokens || null,
+      denyDataCollection: !!options.denyDataCollection,
     };
     let response;
     try {
@@ -1146,6 +1174,7 @@ async function runAiOrganize({ tabId, windowId, start, signal, post }) {
         params: info.params,
         jsonSchema,
         maxTokens: maxTokensForTabs(unpinnedTabs.length),
+        denyDataCollection: config.denyDataCollection !== false,
         signal,
         ctx,
         onFinish: (reason) => { finishReason = reason; },
@@ -1178,7 +1207,6 @@ async function runAiOrganize({ tabId, windowId, start, signal, post }) {
       id: t.id,
       title: t.title || '(no title)',
       url: t.pendingUrl || t.url,
-      favIconUrl: t.favIconUrl || '',
     }));
 
     post({
@@ -1567,7 +1595,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Only the config: the catalog comes separately (loadOpenRouterModels), so
     // a slow catalog never holds up the key form.
     loadAiConfig().then((config) => {
-      sendResponse({ protocol: AI_PROTOCOL, config, expiryPresets: EXPIRY_PRESETS, defaultModel: DEFAULT_MODEL });
+      // models: Huddle's own recommendations, for a picker that has no catalog
+      // yet (Settings with no key fetches nothing until it is browsed).
+      sendResponse({ protocol: AI_PROTOCOL, config, expiryPresets: EXPIRY_PRESETS, defaultModel: DEFAULT_MODEL, models: curatedModelsAsPickerEntries() });
     }).catch((err) => {
       // error says the config could not be read, so config: null is not
       // "no key on file".
@@ -1590,7 +1620,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
     return true;
   } else if (message.action === 'saveAiDefaultModel') {
-    saveAiDefaultModel(message.model, { allowUnlisted: !!message.allowUnlisted }).then((saved) => {
+    saveAiDefaultModel(message.model, { allowUnlisted: !!message.allowUnlisted, denyDataCollection: message.denyDataCollection }).then((saved) => {
       sendResponse({ success: true, config: saved });
     }).catch((err) => {
       sendResponse({ success: false, error: err.message, unlisted: !!err.unlisted });

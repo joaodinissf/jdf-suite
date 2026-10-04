@@ -594,6 +594,47 @@ describe('a reload', () => {
   });
 });
 
+// L21: what Organize sends, and to whom, under its button, every time the
+// form is on screen, naming the model the next run uses (never a provider:
+// OpenRouter picks it).
+describe('the line under Organize', () => {
+  const NOTE = (model) => `Organize sends this window's tab titles and addresses to OpenRouter, which passes them to a provider it picks for ${model}.`;
+
+  test('names the default model, right under the primary button', async () => {
+    loadPage();
+    await flush();
+    await flush();
+    expect($('sendNote').textContent).toBe(NOTE('Model One'));
+    expect($('composeActions').nextElementSibling).toBe($('sendNote'));
+  });
+
+  test('follows the model picked for the next run', async () => {
+    loadPage();
+    await flush();
+    await flush();
+    $('changeModel').click();
+    $('runSelect').value = 'm2';
+    $('runSelect').dispatchEvent(new window.Event('change'));
+    expect($('sendNote').textContent).toBe(NOTE('Model Two'));
+  });
+
+  test('is there on the first run, with the key form, and after an error', async () => {
+    loadPage({ config: null });
+    await flush();
+    await flush();
+    expect($('keySetup').hidden).toBe(false);
+    expect($('sendNote').textContent).toBe(NOTE('Model One'));
+    loadPage();
+    await flush();
+    await flush();
+    const port = await organize();
+    port.emit({ type: 'started', protocol: 2 });
+    port.emit({ type: 'ai-error', kind: 'transient', error: 'Rate limited.' });
+    await flush();
+    expect($('sendNote').textContent).toBe(NOTE('Model One'));
+  });
+});
+
 describe('the model bar', () => {
   test('names the saved default and marks it', async () => {
     loadPage();
@@ -762,6 +803,26 @@ describe('the proposal', () => {
     await toProposal();
     const follows = $('modelBar').compareDocumentPosition($('actionsContainer'));
     expect(follows & window.Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  // L23: Chrome's cached icon through the _favicon API, never the page's own
+  // icon URL (which would tell the site, with its cookies, about the review).
+  test('tab icons come from Chrome\'s favicon cache, not the site', async () => {
+    loadPage();
+    await flush();
+    await toProposal({
+      ...PROPOSAL,
+      tabs: PROPOSAL.tabs.map((t) => ({ ...t, favIconUrl: 'https://tracker.example/px.png?uid=42' })),
+    });
+    const icons = Array.from(content().querySelectorAll('img.tab-favicon')).map((img) => img.getAttribute('src'));
+    expect(icons).toHaveLength(4);
+    expect(icons[0]).toBe(`chrome-extension://test-id//_favicon/?pageUrl=${encodeURIComponent('https://a.example.com/1')}&size=16`);
+    expect(icons.join(' ')).not.toMatch(/tracker\.example|chrome:\/\/favicon/);
+  });
+
+  test('the manifest asks for the favicon permission the _favicon API needs', () => {
+    const manifest = JSON.parse(readFileSync(resolve(__dirname, '../src/manifest.json'), 'utf8'));
+    expect(manifest.permissions).toContain('favicon');
   });
 
   test('moving tabs between groups and to Ungrouped', async () => {
