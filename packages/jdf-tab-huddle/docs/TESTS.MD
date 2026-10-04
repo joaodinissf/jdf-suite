@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Unit Tests**: 1008 tests across 20 Vitest files (mocked Chrome APIs)
+- **Unit Tests**: 1009 tests across 20 Vitest files (mocked Chrome APIs)
 - **E2E Tests**: 130 tests across 20 Playwright spec files (real Chromium browser)
-- **Total**: 1138 tests
+- **Total**: 1139 tests
 
 ## Unit Tests (Vitest)
 
@@ -28,7 +28,7 @@
 | ai-config.test.js | 46 | Key checks, key form and model picker shared by Settings and the organize page; a key check that never answers gives up after 15 s; a confirmed unlisted default is kept |
 | ai-models.test.js | 49 | Key expiry, model catalog helpers (a catalog cut off by the timeout reads as no answer), JSON schema |
 | ai-service.test.js | 41 | Key encoding and expiry, query stripping (`data:` keeps its type, `blob:` its origin, `file:` its file name), the prompt (titles capped at 200, addresses at 300, a `data:`, `blob:` or `file:` tab's title sent as its cleaned address), reading the model's answer (null answers and groups) |
-| openrouter-requests.test.js | 47 | What is asked of OpenRouter, model by model (the output cap as `max_tokens` or `max_completion_tokens`, and its size, and `data_collection: deny` unless Settings turned it off), and its refusals (one for the data policy names the setting); a key save keeps a confirmed unlisted default |
+| openrouter-requests.test.js | 48 | What is asked of OpenRouter, model by model (the output cap as `max_tokens` or `max_completion_tokens`, and its size, and `data_collection: deny` unless Settings turned it off), and its refusals (one for the data policy names the setting and the account's OpenRouter privacy settings); a key save keeps a confirmed unlisted default |
 | ai-runtime.test.js | 34 | The OpenRouter client: error statuses (mid-stream ones keep their kind), streaming and its edge cases, the idle timer (keep-alives count), JSON fallback |
 | ai-handlers.test.js | 44 | Worker AI handlers: runs, Apply, window scoping, pinned tabs; a content script's port is closed |
 | ai-proposal.test.js | 76 | The organize page; the line under Organize saying what it sends; tab icons from Chrome's favicon cache |

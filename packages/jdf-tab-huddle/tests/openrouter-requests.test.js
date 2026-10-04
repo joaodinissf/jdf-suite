@@ -130,7 +130,12 @@ describe('the request follows the model\'s catalog capabilities', () => {
 // L24: with Settings' "Don't use providers that train on my prompts" on (the
 // default), every request asks OpenRouter to skip providers that train on
 // prompts; a refusal for that names the setting.
+// OpenRouter's own texts (2026-10-04): with the request's deny, and from the
+// account's privacy settings alone.
 const DATA_POLICY_404 = 'No endpoints found matching your data policy (Paid model training). Configure: https://openrouter.ai/settings/privacy';
+const ACCOUNT_POLICY_404 = '0 endpoints out of 1 requested are available matching your guardrail restrictions and data policy. '
+  + 'We removed them for the following reasons (an endpoint may have matched multiple reasons):\n'
+  + 'Paid model training violation (account settings): 1 endpoint excluded; configurable at https://openrouter.ai/settings/privacy';
 
 describe('data collection: deny', () => {
   test('the strict request keeps require_parameters and adds data_collection', () => {
@@ -161,26 +166,37 @@ describe('data collection: deny', () => {
     expect(bodyOf(1).provider).toEqual({ data_collection: 'deny' });
   });
 
-  test('no provider meets it: the error names the setting, and Change model leads', async () => {
+  test('no provider meets it: the error names the setting and OpenRouter\'s privacy settings, and Change model leads', async () => {
     global.fetch = vi.fn().mockResolvedValue(errorAnswer(404, DATA_POLICY_404));
     const error = await callOpenRouter('k', LUNA, [], null, {
       params: LUNA_PARAMS, jsonSchema: schema, denyDataCollection: true, ctx: { modelName: 'GPT-6 Luna' },
     }).catch((e) => e);
-    expect(error.message).toBe('No provider for GPT-6 Luna meets your "Don\'t use providers that train on my prompts" setting (404: '
+    expect(error.message).toBe('No provider for GPT-6 Luna meets your "Don\'t use providers that train on my prompts" setting '
+      + 'or your OpenRouter privacy settings (404: '
       + 'No endpoints found matching your data policy (Paid model training). Configure: https://openrouter.ai/settings/privacy). '
-      + 'Pick another model, or change it in Settings.');
+      + 'Pick another model, or change either one.');
     expect(error).toMatchObject({ kind: 'model', retryable: false, status: 404 });
   });
 
   test('a 400 about the data policy names the setting too', () => {
     const error = mapOpenRouterHttpError(400, { message: DATA_POLICY_404 }, { modelName: 'GPT-6 Luna', denyDataCollection: true });
-    expect(error.message).toMatch(/^No provider for GPT-6 Luna meets your "Don't use providers that train on my prompts" setting \(400: /);
+    expect(error.message).toMatch(/^No provider for GPT-6 Luna meets your "Don't use providers that train on my prompts" setting or your OpenRouter privacy settings \(400: /);
     expect(error).toMatchObject({ kind: 'model', retryable: false });
   });
 
-  test('with the setting off, the same refusal (the account\'s own policy) is not blamed on it', () => {
-    const error = mapOpenRouterHttpError(404, { message: DATA_POLICY_404 }, { modelName: 'GPT-6 Luna' });
-    expect(error.message).toMatch(/^OpenRouter found no provider that can run GPT-6 Luna/);
+  test('with the setting off, the account\'s own policy is named, not the setting or Huddle\'s request', () => {
+    for (const said of [DATA_POLICY_404, ACCOUNT_POLICY_404]) {
+      const error = mapOpenRouterHttpError(404, { message: said }, { modelName: 'GPT-6 Luna' });
+      expect(error.message).toMatch(/^No provider for GPT-6 Luna meets your OpenRouter privacy settings \(404: /);
+      expect(error.message).toMatch(/Pick another model, or change them at openrouter\.ai\/settings\/privacy\.$/);
+      expect(error.message).not.toMatch(/train on my prompts|Huddle's request/);
+      expect(error).toMatchObject({ kind: 'model', retryable: false });
+    }
+  });
+
+  test('with the setting on, the account-settings refusal names both too', () => {
+    const error = mapOpenRouterHttpError(404, { message: ACCOUNT_POLICY_404 }, { modelName: 'GPT-6 Luna', denyDataCollection: true });
+    expect(error.message).toMatch(/^No provider for GPT-6 Luna meets your "Don't use providers that train on my prompts" setting or your OpenRouter privacy settings/);
   });
 
   test('a run sends it unless Settings turned it off', async () => {
