@@ -102,15 +102,14 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Split domains confirmation and result
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (996 tests in 21 files)
+├── tests/                         # Vitest unit tests (996 tests in 20 files)
 │   ├── setup.js                   # Chrome API mock, page scripts loaded, dispatch() to the worker
 │   ├── senders.js                 # The sender each caller (popup, pages, content script) arrives with
 │   ├── routing.test.js            # Every worker action, routed from its real caller; refused from a content script
 │   ├── background.test.js         # Background script logic tests
 │   ├── popup.test.js              # Popup UI tests
 │   ├── snooze.test.js             # Snoozing and waking, through the worker's handlers
-│   ├── confirmation-dialog.test.js
-│   └── simple.test.js             # Framework verification
+│   └── confirmation-dialog.test.js
 ├── e2e/                           # Playwright E2E tests (130 tests)
 │   ├── playwright.config.js       # Playwright configuration
 │   ├── fixtures/extension.js      # Custom fixture loading extension into Chromium
@@ -125,7 +124,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ## Testing
 
 ### Unit Tests (Vitest + jest-chrome shim)
-996 tests across 21 files covering core logic with mocked Chrome APIs:
+996 tests across 20 files covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report
@@ -145,7 +144,7 @@ pnpm run test:coverage   # With coverage report
 | remove-duplicates-window | 9 | Same/cross-group dedup, pinned immunity |
 | remove-duplicates-all-windows | 4 | Per-window independent dedup |
 | remove-duplicates-globally | 7 | Cross-window dedup |
-| move-all-to-single-window | 7 | Consolidation, group recreation |
+| move-all-to-single-window | 7 | Consolidation, group recreation; Flat leaves no groups and sorts |
 | copy-all-tabs | 8 | Clipboard copy, window vs all-windows scope, group sections, feedback |
 | popup-ui | 9 | Mode switching, button visibility, no text below 10.5px but the key badges |
 | confirmation-dialog | 5 | Confirm/cancel flow, the result shown in the dialog, keyboard |

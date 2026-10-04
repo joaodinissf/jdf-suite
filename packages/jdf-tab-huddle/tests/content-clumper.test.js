@@ -35,11 +35,10 @@ describe('clumperIsOpenableUrl', () => {
     expect(global.clumperIsOpenableUrl(undefined)).toBe(false);
   });
 
-  it('rejects hash-only fragments', () => {
-    // '#' resolves to current baseURI with fragment — should still be http(s)
-    // This matches the linkclump behavior of excluding fragment-only anchors
-    // as "no real target". We accept them since they resolve to http:; flag
-    // this as a deliberate deviation from the original for a less-surprising result.
+  it('accepts hash-only fragments', () => {
+    // '#' resolves against the page's own http(s) URL, so it is accepted. The
+    // original linkclump skipped fragment-only anchors; Huddle deliberately
+    // does not.
     expect(global.clumperIsOpenableUrl('#')).toBe(true);
   });
 });

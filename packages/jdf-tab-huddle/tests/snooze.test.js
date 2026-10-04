@@ -1259,6 +1259,32 @@ describe('Tab Snoozing', () => {
     });
   });
 
+  describe('clicking a notification', () => {
+    test('a wake notification focuses the woken window and activates its first tab', async () => {
+      useMemoryStore({ snoozedItems: [{
+        id: 'g1', type: 'tab', summary: 'One', wakeAt: at(4, 9), preset: 'tomorrow',
+        windowId: 1, tabs: [{ url: 'https://one.example/', title: 'One', pinned: false, index: 0 }],
+      }] });
+      chrome.windows.getLastFocused.mockResolvedValue({ id: 5 });
+      chrome.tabs.create.mockResolvedValue({ id: 300 });
+      await wakeSnoozedRecord('g1', { notify: true });
+
+      await handleWakeNotificationClicked('snooze-wake:g1');
+
+      expect(chrome.notifications.clear).toHaveBeenCalledWith('snooze-wake:g1');
+      expect(chrome.windows.update).toHaveBeenCalledWith(5, { focused: true });
+      expect(chrome.tabs.update).toHaveBeenCalledWith(300, { active: true });
+    });
+
+    test('one with no stored target (a split notice, or one from a stopped worker) is only cleared', async () => {
+      await handleWakeNotificationClicked('split:1700000000000');
+
+      expect(chrome.notifications.clear).toHaveBeenCalledWith('split:1700000000000');
+      expect(chrome.windows.update).not.toHaveBeenCalled();
+      expect(chrome.tabs.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('reconcileSnoozeAlarms', () => {
     test('wakes past-due records; re-arms missing future alarms; leaves live ones', async () => {
       const now = Date.now();

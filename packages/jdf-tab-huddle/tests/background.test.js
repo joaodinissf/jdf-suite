@@ -213,6 +213,19 @@ describe('Background Script', () => {
       // the second unpinned duplicate (id 3) is flagged for removal.
       expect(result.tabsToRemove).toEqual([3]);
     });
+
+    test('a loading tab is compared by the URL it is loading (pendingUrl), not the page it is leaving', () => {
+      const tabs = [
+        [
+          { id: 1, url: 'https://example.com', pinned: false, groupId: -1 },
+          { id: 2, url: 'https://old.test', pendingUrl: 'https://example.com', status: 'loading', pinned: false, groupId: -1 }
+        ]
+      ];
+
+      const result = findDuplicateTabs(tabs, false);
+
+      expect(result.tabsToRemove).toEqual([2]);
+    });
   });
 
   describe('analyzeDomainDistribution', () => {
@@ -340,6 +353,32 @@ describe('sortWindowTabs when a tab closes mid-sort', () => {
       success: false,
       error: "The window couldn't be sorted. Try again.",
     });
+  });
+});
+
+describe('sortWindowTabs in Groups mode', () => {
+  const tab = (id, url, groupId = -1, pinned = false) => ({ id, url, pinned, groupId, windowId: 101, index: id - 1 });
+
+  beforeEach(() => {
+    chrome.tabs.query.mockReset();
+    chrome.tabs.move.mockReset().mockResolvedValue([]);
+    chrome.tabGroups.query.mockReset().mockResolvedValue([{ id: 9, title: 'G', color: 'blue' }]);
+  });
+
+  test('sorts the ungrouped tabs, then each group, after the pinned tabs', async () => {
+    chrome.tabs.query.mockResolvedValue([
+      tab(1, 'https://p.test', -1, true),
+      tab(2, 'https://c.test'),
+      tab(3, 'https://z.test', 9),
+      tab(4, 'https://a.test'),
+      tab(5, 'https://b.test', 9),
+    ]);
+
+    await expect(sortWindowTabs(101, true)).resolves.toBe(true);
+
+    expect(chrome.tabs.move).toHaveBeenCalledTimes(2);
+    expect(chrome.tabs.move).toHaveBeenNthCalledWith(1, [4, 2], { index: 1 });
+    expect(chrome.tabs.move).toHaveBeenNthCalledWith(2, [5, 3], { index: 3 });
   });
 });
 
@@ -484,6 +523,26 @@ describe('Results say what actually happened (moves and follow-up sorts)', () =>
     await handleExtractAllDomains(true, sendResponse);
     expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'Tabs cannot be queried right now.' });
     expect(chrome.windows.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('Merge windows', () => {
+  test('moves the other windows\' tabs into the current window: the one with the active tab', async () => {
+    const tabs = [1, 2, 3].map((id) => ({ id, url: `https://${id}.test`, pinned: false, groupId: -1, windowId: id, index: 0 }));
+    // The active tab's window is neither the first nor the focused one.
+    chrome.windows.getAll.mockResolvedValue([
+      { id: 1, focused: true, tabs: [tabs[0]] },
+      { id: 2, tabs: [tabs[1]] },
+      { id: 3, tabs: [tabs[2]] },
+    ]);
+    chrome.tabs.query.mockReset().mockImplementation(async (q) => tabs.filter((t) => q.windowId === undefined || t.windowId === q.windowId));
+    chrome.tabs.move.mockReset().mockResolvedValue([]);
+    const sendResponse = vi.fn();
+
+    await handleMoveAllToSingleWindow({ activeTabId: 2, respectGroups: false }, sendResponse);
+
+    expect(chrome.tabs.move).toHaveBeenCalledWith([1, 3], { windowId: 2, index: -1 });
+    expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ success: true, moved: 2 }));
   });
 });
 

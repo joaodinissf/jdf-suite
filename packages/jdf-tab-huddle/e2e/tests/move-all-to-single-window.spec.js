@@ -158,7 +158,9 @@ test('49: Groups recreated in target window', async ({ sw, context }) => {
 
 test('50: Individual mode drops groups', async ({ sw, context }) => {
   const windowId = await getCurrentWindowId(sw);
-  const tabIds1 = await createTabs(sw, [URLS.EXAMPLE_A]);
+  // example.org sorts after the example.net tabs the merge appends, so the
+  // window is sorted only if the merge sorts it.
+  const tabIds1 = await createTabs(sw, [URLS.TEST_A]);
 
   // Create second window with grouped tabs
   const win2 = await createWindow(sw, [URLS.GITHUB_A, URLS.GITHUB_B]);
@@ -194,10 +196,8 @@ test('50: Individual mode drops groups', async ({ sw, context }) => {
   const unpinnedTabs = targetWindow.tabs.filter(t => !t.pinned);
   expect(unpinnedTabs.length).toBe(3);
 
-  // In individual mode, tabs are moved without recreating groups.
-  // However, Chrome may retain group membership when tabs from the same group
-  // are moved together. The key behavior: no NEW groups are created.
-  // Just verify all tabs arrived and window is sorted.
+  // Flat mode leaves no groups behind, in any window, and sorts the window.
+  expect(await getTabGroups(sw)).toEqual([]);
   await assertTabsSorted(sw, targetWindow.id);
 });
 
