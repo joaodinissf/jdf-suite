@@ -318,7 +318,7 @@ const HuddleAi = (() => {
       <p class="model-schema-hint"></p>
       <div class="model-actions">
         <button type="button" class="btn small model-refresh">Refresh catalog</button>
-        <span class="models-status" role="status" aria-live="polite">Loading catalog…</span>
+        <span class="models-status" role="status" aria-live="polite"></span>
       </div>
       <label for="${idPrefix}Custom" class="label-gap">Or a model id</label>
       <input type="text" id="${idPrefix}Custom" class="model-custom" placeholder="provider/model-name" autocomplete="off" spellcheck="false">`;
@@ -479,6 +479,15 @@ const HuddleAi = (() => {
       populate();
     }
 
+    // Before any catalog (no key yet): Huddle's own recommendations, with no
+    // network call. The catalog replaces them once the picker is browsed.
+    function showRecommended(list) {
+      if (loaded || !Array.isArray(list) || list.length === 0) return;
+      models = list;
+      populate();
+      setStatus('Recommended models · the full list loads when you browse it');
+    }
+
     async function refresh({ force = true } = {}) {
       refreshBtn.disabled = true;
       statusEl.textContent = 'Loading catalog…';
@@ -583,7 +592,7 @@ const HuddleAi = (() => {
     });
 
     return {
-      load, refresh, setModelId, getModelId, findModel, modelName, isListed, fitRows,
+      load, refresh, showRecommended, setModelId, getModelId, findModel, modelName, isListed, fitRows,
       catalogIds, firstRecommended,
       focus: () => {
         fitRows();

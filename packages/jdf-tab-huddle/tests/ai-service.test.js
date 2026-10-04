@@ -49,6 +49,22 @@ describe('AI Service - stripQueryParams', () => {
   test('handles invalid URLs gracefully', () => {
     expect(stripQueryParams('not-a-url')).toBe('not-a-url');
   });
+
+  // L22: a data: address is the whole document, a blob: one an id, and a
+  // file: one a local path with the user's name in it.
+  test('data: keeps only its MIME type', () => {
+    expect(stripQueryParams('data:text/html,<title>Draft</title><p>PRIVATE-NOTE-BODY</p>')).toBe('data:text/html');
+    expect(stripQueryParams(`data:text/html;base64,${'A'.repeat(200000)}`)).toBe('data:text/html');
+    expect(stripQueryParams('data:image/png;charset=utf-8,xyz')).toBe('data:image/png');
+  });
+
+  test('blob: keeps only the origin that made it', () => {
+    expect(stripQueryParams('blob:https://example.com/550e8400-e29b-41d4-a716-446655440000')).toBe('blob:https://example.com');
+  });
+
+  test('file: keeps only the file name', () => {
+    expect(stripQueryParams('file:///Users/someone/Private/tax-return-2026.pdf?x=1')).toBe('file:…/tax-return-2026.pdf');
+  });
 });
 
 describe('AI Service - buildAiPrompt', () => {
@@ -88,6 +104,75 @@ describe('AI Service - buildAiPrompt', () => {
     const githubPos = content.indexOf('github.com');
     const hnPos = content.indexOf('news.ycombinator.com');
     expect(githubPos).toBeLessThan(hnPos);
+  });
+
+  test('a 250-character title is cut to 200, a 400-character address to 300', () => {
+    const title = 'T'.repeat(250);
+    const url = `https://example.com/${'p'.repeat(400 - 'https://example.com/'.length)}`;
+    const line = buildAiPrompt([{ id: 7, url, title }])[1].content.split('\n').find((l) => l.startsWith('[id:7]'));
+    expect(line).toBe(`[id:7] example.com — "${'T'.repeat(200)}" — ${url.slice(0, 300)}`);
+  });
+
+  test('a data: tab sends its MIME type, not its document', () => {
+    const content = buildAiPrompt([{ id: 8, url: 'data:text/html,<p>PRIVATE-NOTE-BODY</p>', title: 'Draft' }])[1].content;
+    expect(content).not.toContain('PRIVATE-NOTE-BODY');
+    expect(content).toContain('— data:text/html');
+  });
+
+  // Chrome titles a page without a <title> with its address.
+  test('an untitled data: tab sends its MIME type as the title, not its document', () => {
+    const url = 'data:text/html,<p>UNTITLED-NOTE-BODY</p>';
+    const line = buildAiPrompt([{ id: 9, url, title: url }])[1].content.split('\n').find((l) => l.startsWith('[id:9]'));
+    expect(line).toBe('[id:9] data — "data:text/html" — data:text/html');
+  });
+
+  // Chrome unescapes the address it uses as the title, so title !== url.
+  test('an untitled percent-encoded data: tab sends its MIME type as the title', () => {
+    const url = 'data:text/html,%3Cp%3EESCAPED-NOTE-BODY%20caf%C3%A9%3C/p%3E';
+    const line = buildAiPrompt([{ id: 12, url, title: 'data:text/html,<p>ESCAPED-NOTE-BODY café</p>' }])[1].content
+      .split('\n').find((l) => l.startsWith('[id:12]'));
+    expect(line).toBe('[id:12] data — "data:text/html" — data:text/html');
+  });
+
+  // Chrome cuts the title at 4096 characters, so title !== url.
+  test('an untitled data: tab over 4096 characters sends its MIME type as the title', () => {
+    const url = `data:text/plain,LONG-NOTE-BODY ${'x'.repeat(20000)}`;
+    const line = buildAiPrompt([{ id: 13, url, title: url.slice(0, 4096) }])[1].content
+      .split('\n').find((l) => l.startsWith('[id:13]'));
+    expect(line).toBe('[id:13] data — "data:text/plain" — data:text/plain');
+  });
+
+  // Chrome titles a file: folder "Index of <its full path>".
+  test('a file: folder sends its cleaned address as the title, not its path', () => {
+    const url = 'file:///Users/someone/Private/files/';
+    const line = buildAiPrompt([{ id: 14, url, title: 'Index of /Users/someone/Private/files/' }])[1].content
+      .split('\n').find((l) => l.startsWith('[id:14]'));
+    expect(line).toBe('[id:14] file — "file:…/" — file:…/');
+  });
+
+  test('a local tab (file:, data:, blob:) always sends its cleaned address as the title', () => {
+    const lines = buildAiPrompt([
+      { id: 15, url: 'file:///Users/someone/Private/my%20notes.txt', title: 'my notes.txt' },
+      { id: 16, url: 'data:text/html,<title>Private plan</title>', title: 'Private plan' },
+      { id: 17, url: 'blob:https://app.example/1234-abcd', title: 'Export of my account' },
+    ])[1].content;
+    expect(lines).toContain('[id:15] file — "file:…/my%20notes.txt" — file:…/my%20notes.txt');
+    expect(lines).toContain('"data:text/html" — data:text/html');
+    expect(lines).toContain('"blob:https://app.example" — blob:https://app.example');
+    expect(lines).not.toMatch(/Private plan|Export of my account/);
+  });
+
+  test('a tab with no title still says (no title)', () => {
+    expect(buildAiPrompt([{ id: 11, url: 'https://example.com/a' }])[1].content).toContain('[id:11] example.com — "(no title)" — https://example.com/a');
+  });
+
+  test('a file: tab titled with its address sends only the file name', () => {
+    const url = 'file:///Users/someone/Private/tax-return-2026.pdf';
+    for (const tab of [{ id: 10, url, title: url }, { id: 10, url: 'chrome://newtab/', pendingUrl: url, title: url }]) {
+      const content = buildAiPrompt([tab])[1].content;
+      expect(content).not.toContain('/Users/someone');
+      expect(content).toContain('"file:…/tax-return-2026.pdf" — file:…/tax-return-2026.pdf');
+    }
   });
 
   test('lists available colors', () => {

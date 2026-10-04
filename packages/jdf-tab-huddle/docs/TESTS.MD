@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Unit Tests**: 955 tests across 21 Vitest files (mocked Chrome APIs)
-- **E2E Tests**: 128 tests across 19 Playwright spec files (real Chromium browser)
-- **Total**: 1083 tests
+- **Unit Tests**: 988 tests across 21 Vitest files (mocked Chrome APIs)
+- **E2E Tests**: 129 tests across 19 Playwright spec files (real Chromium browser)
+- **Total**: 1117 tests
 
 ## Unit Tests (Vitest)
 
@@ -24,14 +24,14 @@
 | confirmation-dialog.test.js | 28 | Split domains dialog |
 | content-clumper.test.js | 60 | Link clumping content script: only trusted events, the confirm and the 25 cap, letting go on blur and hidden tabs, Cmd+Z, an orphaned copy after an update; the worker's top-frame, http(s) and 25-link checks; it runs on http(s) pages only, and an install, update or reload puts it into the http(s) tabs already open |
 | options.test.js | 31 | Settings page |
-| options-ai.test.js | 18 | Settings: the AI section |
+| options-ai.test.js | 25 | Settings: the AI section; the model catalog loads only with a key on file or once the list is used (the recommended models show until then); the "Don't use providers that train on my prompts" checkbox |
 | ai-config.test.js | 43 | Key checks, key form and model picker shared by Settings and the organize page; a confirmed unlisted default is kept |
 | ai-models.test.js | 49 | Key expiry, model catalog helpers (a catalog cut off by the timeout reads as no answer), JSON schema |
-| ai-service.test.js | 29 | Key encoding and expiry, query stripping, the prompt, reading the model's answer (null answers and groups) |
-| openrouter-requests.test.js | 38 | What is asked of OpenRouter, model by model (the output cap as `max_tokens` or `max_completion_tokens`, and its size), and its refusals; a key save keeps a confirmed unlisted default |
+| ai-service.test.js | 41 | Key encoding and expiry, query stripping (`data:` keeps its type, `blob:` its origin, `file:` its file name), the prompt (titles capped at 200, addresses at 300, a `data:`, `blob:` or `file:` tab's title sent as its cleaned address), reading the model's answer (null answers and groups) |
+| openrouter-requests.test.js | 47 | What is asked of OpenRouter, model by model (the output cap as `max_tokens` or `max_completion_tokens`, and its size, and `data_collection: deny` unless Settings turned it off), and its refusals (one for the data policy names the setting); a key save keeps a confirmed unlisted default |
 | ai-runtime.test.js | 34 | The OpenRouter client: error statuses (mid-stream ones keep their kind), streaming and its edge cases, the idle timer (keep-alives count), JSON fallback |
 | ai-handlers.test.js | 44 | Worker AI handlers: runs, Apply, window scoping, pinned tabs; a content script's port is closed |
-| ai-proposal.test.js | 71 | The organize page |
+| ai-proposal.test.js | 76 | The organize page; the line under Organize saying what it sends; tab icons from Chrome's favicon cache |
 | simple.test.js | 6 | Framework and Chrome API mock verification |
 
 ```bash
@@ -63,7 +63,7 @@ Real browser tests that load the extension into Chromium and verify end-to-end b
 | link-clumping.spec.js | 2 | A page's own events open nothing; a real drag opens 5 at once, and over 25 links asks (answered through `page.on('dialog')`) and opens the first 25 |
 | confirmation-dialog.spec.js | 5 | Window count display, confirm/cancel flow |
 | snooze.spec.js | 13 | Snooze and wake; the Group button follows the active tab |
-| ai-flow.spec.js | 21 | Organize with AI against a fake OpenRouter; two-window cases for what is sent and what Apply moves; a tab pinned before Apply stays pinned; Escape and Cmd/Ctrl+Enter in the proposal's fields |
+| ai-flow.spec.js | 22 | Organize with AI against a fake OpenRouter (the line under Organize, `data_collection: deny` sent); Settings with no key contacts OpenRouter only once the model list is used; two-window cases for what is sent and what Apply moves; a tab pinned before Apply stays pinned; Escape and Cmd/Ctrl+Enter in the proposal's fields |
 | trust-boundary.spec.js | 2 | The content script in a web page: no `storage.local` (the key), `storage.sync` still read, only `clumpOpenUrls` accepted, no organize port |
 
 ```bash

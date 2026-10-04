@@ -287,9 +287,12 @@ const ROUTES = [
   }))),
   ...[optionsSender, organizeSender].map((sender) => ({
     action: 'saveAiDefaultModel', page: sender === optionsSender ? 'options.html' : 'ai-proposal.html', senders: [sender],
-    message: { action: 'saveAiDefaultModel', model: HAIKU },
+    // Settings also sends its privacy checkbox, which must reach storage.
+    message: { action: 'saveAiDefaultModel', model: HAIKU, ...(sender === optionsSender ? { denyDataCollection: false } : {}) },
     reply: { success: true, config: { model: HAIKU, key: null } },
-    effect: () => expect(chrome.storage.local.set).toHaveBeenCalledWith({ aiConfig: expect.objectContaining({ model: HAIKU }) }),
+    effect: () => expect(chrome.storage.local.set).toHaveBeenCalledWith({ aiConfig: expect.objectContaining({
+      model: HAIKU, ...(sender === optionsSender ? { denyDataCollection: false } : {}),
+    }) }),
   })),
   {
     action: 'deleteAiKey', page: 'options.html', senders: [optionsSender],

@@ -149,6 +149,7 @@ export async function installFakeOpenRouter(context, { slowMs = 4000 } = {}) {
         params: requestedParameters(body),
         responseFormat: body.response_format ? body.response_format.type : null,
         requireParameters: !!(body.provider && body.provider.require_parameters),
+        dataCollection: (body.provider && body.provider.data_collection) || null,
       });
       if (key !== GOOD_KEY) {
         reply = jsonReply(401, { error: { code: 401, message: 'User not found.' } });

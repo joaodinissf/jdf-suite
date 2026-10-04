@@ -244,7 +244,10 @@ async function saveAiDefaultModel() {
   const allowUnlisted = aiUnlistedConfirm === model;
   let response;
   try {
-    response = await HuddleAi.request({ action: 'saveAiDefaultModel', model, allowUnlisted });
+    response = await HuddleAi.request({
+      action: 'saveAiDefaultModel', model, allowUnlisted,
+      denyDataCollection: document.getElementById('aiDenyDataCollection').checked,
+    });
   } catch (err) {
     response = { success: false, error: err.message };
   }
@@ -289,7 +292,9 @@ function onAiStorageChanged(changes, area) {
 }
 
 // Buttons stay off until the config has loaded: an empty expiry select would
-// otherwise send no duration at all. The catalog loads on its own after.
+// otherwise send no duration at all. With a key on file the catalog loads on
+// its own after; without one, OpenRouter is contacted only once the model
+// list is used (focus in the filter, the list or the model id field).
 async function initAiSection() {
   if (!document.getElementById('aiSection')) return;
   aiKeyForm = HuddleAi.createKeyForm(document.getElementById('aiKeyForm'), {
@@ -334,10 +339,19 @@ async function initAiSection() {
   renderAiKeyState();
   document.getElementById('aiSaveKey').disabled = false;
   document.getElementById('aiSaveModel').disabled = false;
+  document.getElementById('aiDenyDataCollection').checked = !(aiConfig && aiConfig.denyDataCollection === false);
   aiModelPicker.setModelId((aiConfig && aiConfig.model) || aiBuiltInDefault);
-  await aiModelPicker.load();
-  const shown = renderAiDefaultNote();
-  if (shown && shown !== ((aiConfig && aiConfig.model) || aiBuiltInDefault)) aiModelPicker.setModelId(shown);
+  const loadCatalog = async () => {
+    await aiModelPicker.load();
+    const shown = renderAiDefaultNote();
+    if (shown && shown !== ((aiConfig && aiConfig.model) || aiBuiltInDefault)) aiModelPicker.setModelId(shown);
+  };
+  if (aiConfig && aiConfig.key) {
+    await loadCatalog();
+  } else {
+    aiModelPicker.showRecommended(data.models);
+    document.getElementById('aiModelPicker').addEventListener('focusin', loadCatalog, { once: true });
+  }
 }
 
 async function init() {

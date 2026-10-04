@@ -357,12 +357,14 @@ describe('messages every action answers', () => {
     expect(reply).toHaveBeenCalledWith({ success: false, error: 'unknown-action', protocol: AI_PROTOCOL });
   });
 
-  test('loadAiConfig answers with the config at once, without the catalog', async () => {
+  test('loadAiConfig answers with the config at once, with Huddle\'s own recommendations and no catalog', async () => {
     const reply = vi.fn();
     chrome.runtime.onMessage.callListeners({ action: 'loadAiConfig' }, organizeSender, reply);
     await vi.waitFor(() => expect(reply).toHaveBeenCalled());
     expect(reply.mock.calls[0][0]).toMatchObject({ protocol: AI_PROTOCOL, config: expect.objectContaining({ model: HAIKU }) });
-    expect(reply.mock.calls[0][0].models).toBeUndefined();
+    // Static, curated entries only: nothing is fetched for them.
+    expect(reply.mock.calls[0][0].models.length).toBeGreaterThan(0);
+    expect(reply.mock.calls[0][0].models.every((m) => m.curated)).toBe(true);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 });

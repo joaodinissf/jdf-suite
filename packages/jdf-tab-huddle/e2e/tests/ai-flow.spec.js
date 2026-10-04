@@ -40,7 +40,8 @@ async function openOrganize(context, extensionId) {
   }, { timeout: 10000 }).toBe(true);
   await popup.close();
   await page.waitForLoadState('domcontentloaded');
-  await expect(page.locator('.models-status')).not.toHaveText(/Loading/, { timeout: 10000 });
+  // Empty until the catalog starts loading, then "Loading catalog…".
+  await expect(page.locator('.models-status')).not.toHaveText(/^$|Loading/, { timeout: 10000 });
   return page;
 }
 
@@ -75,12 +76,15 @@ test.describe('Organize with AI', () => {
     const page = await openOrganize(context, extensionId);
 
     await expect(page.locator('#modelName')).toHaveText('Claude Haiku 4.5');
+    await expect(page.locator('#sendNote')).toHaveText('Organize sends this window\'s tab titles and addresses to OpenRouter, which passes them to a provider it picks for Claude Haiku 4.5.');
     await page.fill('#userInstructions', 'one group per site');
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter');
     await expect(groupNames(page)).toHaveCount(3);
     await expect(page.locator('#applyButton')).toBeFocused();
     expect(fake.chats).toHaveLength(1);
     expect(fake.chats[0].prompt).toContain('one group per site');
+    // Settings' "Don't use providers that train on my prompts" is on by default.
+    expect(fake.chats[0].dataCollection).toBe('deny');
     // Huddle's own pages are not tabs to organize.
     expect(fake.chats[0].prompt).not.toContain('ai-proposal.html');
 
@@ -454,6 +458,21 @@ test.describe('Organize with AI', () => {
     await page.click('#startOrganize');
     await expect(groupNames(page)).toHaveCount(3);
     expect(fake.chats.map((c) => c.model)).toEqual(['anthropic/claude-haiku-4.5']);
+  });
+
+  test('Settings with no key contacts OpenRouter only once the model list is used', async ({ context, sw, extensionId }) => {
+    const fake = await installFakeOpenRouter(context);
+    await seed(sw, context, { key: null });
+    const page = await context.newPage();
+    await page.goto(`chrome-extension://${extensionId}/options.html`);
+    await expect(page.locator('#aiKeyStatus')).toHaveText('Not set');
+    await sleep(1000);
+    expect(fake.requests).toEqual([]);
+    await page.click('#settingsFilter');
+    await expect(page.locator('#settingsSelect option')).not.toHaveCount(0);
+    expect(fake.requests.map((r) => r.path)).toEqual(['/api/v1/models']);
+    // On until turned off.
+    await expect(page.locator('#aiDenyDataCollection')).toBeChecked();
   });
 
   test('O again brings back the organize page already open', async ({ context, sw, extensionId }) => {
