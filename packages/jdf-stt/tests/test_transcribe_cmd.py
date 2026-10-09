@@ -135,3 +135,28 @@ def _with_mic(monkeypatch, **extra):
         return dataclasses.replace(real(ns, cfg), mic=True, **extra)
 
     return options_from_args
+
+
+def test_srt_and_json_into_a_folder_with_the_language_on_stderr(cli, setup, tmp_path, monkeypatch):
+    _, model, audio = setup
+    monkeypatch.setenv("FAKE_WHISPER_LANG", "pt")
+    out = tmp_path / "subs"
+    result = cli(audio, "-m", model, "-f", "srt", "-f", "json", "-o", out)
+    assert result.code == 0 and result.out == ""
+    assert "language: pt" in result.err.splitlines()
+    assert (out / "talk.srt").read_text(encoding="utf-8").startswith("1\n00:00:00,000 --> ")
+    assert '"language": "pt"' in (out / "talk.json").read_text(encoding="utf-8")
+
+
+def test_quiet_keeps_stderr_empty(cli, setup):
+    _, model, audio = setup
+    result = cli(audio, "-m", model, "--quiet")
+    assert (result.code, result.out, result.err) == (0, "Hello from the fake whisper.\n", "")
+
+
+def test_a_language_from_config_reaches_whisper_as_a_code(cli, setup, tmp_path):
+    fake_bin, model, audio = setup
+    (tmp_path / "jdf-stt-config.toml").write_text('[transcribe]\nvad = false\nlanguage = "PT-br"\n', encoding="utf-8")
+    cli(audio, "-m", model)
+    argv = fake_bin.calls("whisper-cli")[0]
+    assert argv[argv.index("-l") + 1] == "pt"

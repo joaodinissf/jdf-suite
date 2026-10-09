@@ -11,7 +11,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from jdf_stt import formats, mic, pipeline, registry
+from jdf_stt import formats, language, mic, pipeline, registry
 from jdf_stt.types import SttError, TranscribeOptions
 
 
@@ -24,12 +24,17 @@ def add_engine_options(group: argparse._ArgumentGroup) -> None:
     group.add_argument("-t", "--threads", type=int, default=None, metavar="N", help="CPU threads for the engine")
 
 
-def _write(t, base: Path, options: TranscribeOptions) -> None:
+def _note(message: str | None, quiet: bool) -> None:
+    if message and not quiet:
+        print(message, file=sys.stderr)
+
+
+def _write(t, base: Path, options: TranscribeOptions, quiet: bool = False) -> None:
     for path in formats.write_outputs(t, base, options.formats):
-        print(f"wrote {path}", file=sys.stderr)
+        _note(f"wrote {path}", quiet)
 
 
-def _transcribe_mic(options: TranscribeOptions) -> int:
+def _transcribe_mic(options: TranscribeOptions, quiet: bool = False) -> int:
     wav = Path(mic.record(options))
     try:
         t = pipeline.transcribe_file(wav, options)
@@ -39,24 +44,26 @@ def _transcribe_mic(options: TranscribeOptions) -> int:
             wav.unlink(missing_ok=True)
         elif wav.exists() and wav.resolve() != keep.resolve():
             shutil.move(wav, keep)
+    _note(language.describe(t), quiet)
     if options.output_dir:
-        _write(t, Path(options.output_dir) / wav.stem, options)
+        _write(t, Path(options.output_dir) / wav.stem, options, quiet)
     else:
         for fmt in options.formats:
             sys.stdout.write(formats.render(t, fmt))
     return 0
 
 
-def _transcribe_files(inputs: list[Path], options: TranscribeOptions) -> int:
+def _transcribe_files(inputs: list[Path], options: TranscribeOptions, quiet: bool = False) -> int:
     to_stdout = len(inputs) == 1 and len(options.formats) == 1 and not options.output_dir
     code = 0
     for src in inputs:
         try:
             t = pipeline.transcribe_file(src, options)
+            _note(language.describe(t), quiet)
             if to_stdout:
                 sys.stdout.write(formats.render(t, options.formats[0]))
             else:
-                _write(t, (Path(options.output_dir) if options.output_dir else src.parent) / src.stem, options)
+                _write(t, (Path(options.output_dir) if options.output_dir else src.parent) / src.stem, options, quiet)
         except SttError as e:
             if len(inputs) == 1:
                 raise
@@ -76,14 +83,17 @@ def setup(parser: argparse.ArgumentParser):
         metavar="DIR",
         help="write FILE.<format> here (default: stdout for one file and one format, else next to each file)",
     )
+    parser.add_argument(
+        "-q", "--quiet", action="store_true", help="no status lines on stderr (detected language, files written)"
+    )
     registry.add_transcribe_options(parser)
 
     def run(ns: argparse.Namespace) -> int:
         options = registry.options_from_args(ns)
         if options.mic:
-            return _transcribe_mic(options)
+            return _transcribe_mic(options, ns.quiet)
         if not ns.inputs:
             raise SttError("no input: give one or more audio files (or --mic). See jdf-stt transcribe --help")
-        return _transcribe_files([Path(p).expanduser() for p in ns.inputs], options)
+        return _transcribe_files([Path(p).expanduser() for p in ns.inputs], options, ns.quiet)
 
     return run
