@@ -34,6 +34,7 @@ def _write(t, base: Path, options: TranscribeOptions, quiet: bool = False) -> No
 
 
 def _transcribe_mic(options: TranscribeOptions, quiet: bool = False) -> int:
+    registry.check_options(options)  # a typo in --mode fails now, not after the dictation
     wav = Path(mic.record(options))
     try:
         t = pipeline.transcribe_file(wav, options)
