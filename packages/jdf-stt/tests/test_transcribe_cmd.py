@@ -112,6 +112,14 @@ def test_mic_recording_is_transcribed_and_deleted(cli, setup, tmp_path, monkeypa
     assert not recording.exists()
 
 
+def test_mic_with_a_mistyped_mode_fails_before_recording(cli, setup, monkeypatch):
+    _, model, _ = setup
+    monkeypatch.setattr(mic, "record", lambda options: pytest.fail("recorded before checking --mode"))
+    result = cli("--mic", "--mode", "emial", "-m", model)
+    assert result.code == 1
+    assert "unknown mode 'emial'" in result.err
+
+
 def test_mic_recording_kept_when_asked(cli, setup, tmp_path, monkeypatch):
     _, model, _ = setup
     keep = tmp_path / "kept.wav"
