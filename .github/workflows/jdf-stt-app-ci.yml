@@ -1,0 +1,32 @@
+name: jdf-stt-app CI
+on:
+  push:
+    branches: [main]
+    paths:
+    - packages/jdf-stt-app/**
+    - .github/workflows/jdf-stt-app-ci.yml
+  pull_request:
+    branches: [main]
+    paths:
+    - packages/jdf-stt-app/**
+    - .github/workflows/jdf-stt-app-ci.yml
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: packages/jdf-stt-app
+
+jobs:
+  build-and-test:
+    name: swift build + swift test
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - name: Swift version
+      run: swift --version
+    - name: Build
+      run: swift build
+    - name: Unit tests (fake jdf-stt, no permissions)
+      run: swift test

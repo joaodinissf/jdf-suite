@@ -1,12 +1,15 @@
 """`jdf-stt transcribe` (the default command): `jdf-stt FILE... [-m MODEL] [-o DIR] [--engine NAME]`.
 
 One input and one format without `-o` prints to stdout; otherwise each input's outputs are written
-into `-o`, or next to the input. With `--mic` (PR 05) it records first with `mic.record(options)`.
+into `-o`, or next to the input. `-o -` means no folder even when config.toml sets one (the Swift
+app passes it, so its dictation always comes back on stdout). With `--mic` (PR 05) it records
+first with `mic.record(options)`.
 """
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import sys
 from pathlib import Path
 
@@ -84,7 +87,8 @@ def setup(parser: argparse.ArgumentParser):
         dest="output_dir",
         default=None,
         metavar="DIR",
-        help="write FILE.<format> here (default: stdout for one file and one format, else next to each file)",
+        help="write FILE.<format> here (default: stdout for one file and one format, else next to each file;"
+        " - means that default even when config.toml sets output_dir)",
     )
     parser.add_argument(
         "-q", "--quiet", action="store_true", help="no status lines on stderr (detected language, files written)"
@@ -93,6 +97,8 @@ def setup(parser: argparse.ArgumentParser):
 
     def run(ns: argparse.Namespace) -> int:
         options = registry.options_from_args(ns)
+        if options.output_dir == "-":
+            options = dataclasses.replace(options, output_dir=None)
         if options.mic:
             return _transcribe_mic(options, ns.quiet)
         if not ns.inputs:

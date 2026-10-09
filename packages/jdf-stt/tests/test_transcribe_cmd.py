@@ -182,3 +182,20 @@ def test_a_language_from_config_reaches_whisper_as_a_code(cli, setup, tmp_path):
     cli(audio, "-m", model)
     argv = fake_bin.calls("whisper-cli")[0]
     assert argv[argv.index("-l") + 1] == "pt"
+
+
+def test_dash_output_dir_prints_even_when_config_sets_a_folder(cli, setup, tmp_path, monkeypatch):
+    """The Swift app passes `-o -`: a config.toml output_dir must not swallow its dictation."""
+    _, model, audio = setup
+    out = tmp_path / "configured"
+    (tmp_path / "jdf-stt-config.toml").write_text(
+        f'[transcribe]\nvad = false\noutput_dir = "{out}"\n', encoding="utf-8"
+    )
+    recording = tmp_path / "rec.wav"
+    recording.write_bytes(b"wav")
+    monkeypatch.setattr(mic, "record", lambda options: recording)
+    for args in (("--mic",), (audio,)):
+        result = cli(*args, "-m", model, "-o", "-", "-f", "json")
+        assert result.code == 0
+        assert '"text": "Hello from the fake whisper."' in result.out
+    assert not out.exists()
