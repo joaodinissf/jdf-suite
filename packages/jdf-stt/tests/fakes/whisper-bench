@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""Fake whisper-bench (whisper.cpp 1.9.4). Prints the real run's timing lines on stderr.
+
+The lines below are from a real `whisper-bench -m ggml-large-v3-turbo.bin -t 4 -w 0` on an
+M4 Pro (2026-10-10); the real program writes everything to stderr and exits 0.
+
+Behaviour: `-m` must name an existing file (else exit 1). FAKE_BENCH_EXIT exits with that code
+after printing FAKE_BENCH_STDERR (default "fake whisper-bench failure").
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+
+from _common import fail_if_asked, flag_value, log_call  # noqa: E402
+
+TIMINGS = """\
+system_info: n_threads = %(threads)s / 14 | WHISPER : COREML = 0 | MTL : EMBED_LIBRARY = 1 | (fake)
+whisper_init_from_file_with_params_no_state: loading model from '%(model)s'
+
+whisper_print_timings:     load time =  1552.03 ms
+whisper_print_timings:     fallbacks =   0 p /   0 h
+whisper_print_timings:      mel time =     0.00 ms
+whisper_print_timings:   sample time =     0.00 ms /     1 runs (     0.00 ms per run)
+whisper_print_timings:   encode time =   734.00 ms /     1 runs (   734.00 ms per run)
+whisper_print_timings:   decode time =   829.55 ms /   256 runs (     3.24 ms per run)
+whisper_print_timings:   batchd time =   271.93 ms /   320 runs (     0.85 ms per run)
+whisper_print_timings:   prompt time =   384.08 ms /  4096 runs (     0.09 ms per run)
+whisper_print_timings:    total time =  2220.70 ms
+
+If you wish, you can submit these results here:
+"""
+
+
+def main() -> int:
+    argv = sys.argv[1:]
+    log_call("whisper-bench")
+    model = flag_value(argv, "-m", "--model", default="models/ggml-base.en.bin")
+    if not os.path.isfile(model):
+        sys.stderr.write("whisper_init_from_file_with_params_no_state: failed to open '%s'\n" % model)
+        return 1
+    fail_if_asked("FAKE_BENCH", "fake whisper-bench failure")
+    sys.stderr.write(TIMINGS % {"threads": flag_value(argv, "-t", "--threads", default="4"), "model": model})
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
