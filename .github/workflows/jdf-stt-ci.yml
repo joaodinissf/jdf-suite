@@ -1,0 +1,78 @@
+name: jdf-stt CI
+on:
+  push:
+    branches: [main]
+    paths:
+    - packages/jdf-stt/**
+    - .github/workflows/jdf-stt-ci.yml
+    - uv.lock
+    - pyproject.toml
+  pull_request:
+    branches: [main]
+    paths:
+    - packages/jdf-stt/**
+    - .github/workflows/jdf-stt-ci.yml
+    - uv.lock
+    - pyproject.toml
+  # Started by hand: also runs the real-model job on macOS.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: packages/jdf-stt
+
+jobs:
+  unit:
+    name: Lint + unit tests (fakes)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Install ffmpeg (for the lavfi microphone stand-in)
+      run: sudo apt-get update && sudo apt-get install -y ffmpeg
+    - uses: astral-sh/setup-uv@v7
+    - run: uv sync --locked --package jdf-stt --extra mcp
+    - run: uv run --package jdf-stt --extra mcp ruff check
+    - run: uv run --package jdf-stt --extra mcp ruff format --check
+    # The workspace (uv.lock) needs Python >=3.14 because of another member, so the locked run
+    # uses 3.14; jdf-stt itself supports 3.12, which the next step checks outside the workspace.
+    - run: uv run --package jdf-stt --extra mcp pytest -m "not real" -v
+    - name: Unit tests on Python 3.12 (oldest supported)
+      run: uv run --isolated --no-project --python 3.12 --with 'pytest>=9' --with-editable '.[mcp]' pytest -m "not real" -p no:cacheprovider
+
+  macos-real:
+    name: Real runs (macOS, whisper-cli + tiny model)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Install whisper.cpp and ffmpeg
+      run: brew install whisper-cpp ffmpeg
+    - uses: astral-sh/setup-uv@v7
+    - name: Cache models
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/jdf-stt/models
+        key: jdf-stt-models-tiny-silero-v6.2.0
+    - name: Fetch the tiny and VAD models (sha256-checked)
+      working-directory: .
+      run: |
+        mkdir -p ~/.cache/jdf-stt/models
+        cd ~/.cache/jdf-stt/models
+        fetch() { [ -f "$2" ] || curl -fsSL --retry 3 -o "$2" "https://huggingface.co/$1/resolve/main/$2"; }
+        fetch ggerganov/whisper.cpp ggml-tiny.bin
+        fetch ggml-org/whisper-vad ggml-silero-v6.2.0.bin
+        shasum -a 256 -c <<'EOF'
+        be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21  ggml-tiny.bin
+        2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987  ggml-silero-v6.2.0.bin
+        EOF
+    - name: Real runs
+      run: |
+        JDF_STT_REAL=1 JDF_STT_REAL_MODEL="$HOME/.cache/jdf-stt/models/ggml-tiny.bin" \
+          uv run --package jdf-stt --extra mcp pytest -m real -v

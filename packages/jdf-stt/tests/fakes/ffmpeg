@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""Fake ffmpeg: writes a canned silent wav to its last argument. Behaviour: see _common.py."""
+
+from __future__ import annotations
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+
+from _common import fail_if_asked, log_call, write_wav  # noqa: E402
+
+
+def plain_inputs(argv):
+    """`-i` values not preceded by a `-f FORMAT` (those are devices or lavfi graphs)."""
+    found, fmt = [], None
+    for i, arg in enumerate(argv[:-1]):
+        if arg == "-f":
+            fmt = argv[i + 1]
+        elif arg == "-i":
+            if fmt is None:
+                found.append(argv[i + 1])
+            fmt = None
+    return found
+
+
+def main() -> int:
+    argv = sys.argv[1:]
+    log_call("ffmpeg")
+    if "-version" in argv or "--version" in argv:
+        print("ffmpeg version 0.0-fake Copyright (c) the jdf-stt tests")
+        return 0
+    for path in plain_inputs(argv):
+        if not os.path.exists(path):
+            sys.stderr.write("%s: No such file or directory\n" % path)
+            return 1
+    fail_if_asked("FAKE_FFMPEG", "fake ffmpeg failure")
+    if not argv or argv[-1].startswith("-"):
+        sys.stderr.write("At least one output file must be specified\n")
+        return 1
+    write_wav(argv[-1], float(os.environ.get("FAKE_FFMPEG_SECONDS", "1.0")))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

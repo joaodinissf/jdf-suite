@@ -3,7 +3,7 @@
 # members (Chrome extensions, userscripts, AppleScript, etc.). Every new
 # non-Python package must be added here. See jdf-suite#12.
 members = ["packages/*"]
-exclude = ["packages/jdf-tab-huddle"]
+exclude = ["packages/jdf-tab-huddle", "packages/jdf-stt-app"]
 
 # Hooks run from the git root and ty reads its config from the cwd, so the
 # per-package exclude must be repeated here. See packages/jdf-hooks/pyproject.toml.

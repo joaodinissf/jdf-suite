@@ -1,11 +1,12 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.14"
 
 [manifest]
 members = [
     "jdf-hooks",
     "jdf-mcp-raindrop-extensions",
+    "jdf-stt",
 ]
 
 [[package]]
@@ -501,6 +502,32 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [{ name = "ruff", specifier = ">=0.15.10" }]
+
+[[package]]
+name = "jdf-stt"
+version = "0.1.0"
+source = { editable = "packages/jdf-stt" }
+
+[package.optional-dependencies]
+mcp = [
+    { name = "mcp" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.29" }]
+provides-extras = ["mcp"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9" },
+    { name = "ruff", specifier = ">=0.15" },
+]
 
 [[package]]
 name = "jeepney"

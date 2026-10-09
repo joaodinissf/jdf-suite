@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""Fake whisper-cli (whisper.cpp 1.9.4 shape). Behaviour: see _common.py."""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+
+from _common import fail_if_asked, flag_value, log_call  # noqa: E402
+
+USAGE = """
+usage: whisper-cli [options] file0 file1 ...
+supported audio formats: flac, mp3, ogg, wav
+
+options:
+  -h,        --help              [default] show this help message and exit
+  -t N,      --threads N         [4      ] number of threads to use during computation
+  -l LANG,   --language LANG     [en     ] spoken language ('auto' for auto-detect)
+  -m FNAME,  --model FNAME       [models/ggml-base.en.bin] model path
+  -f FNAME,  --file FNAME        [       ] input audio file path
+  (fake: abridged)
+"""
+
+
+def stamp(ms: int, sep: str) -> str:
+    h, rest = divmod(ms, 3_600_000)
+    m, rest = divmod(rest, 60_000)
+    s, ms = divmod(rest, 1000)
+    return "%02d:%02d:%02d%s%03d" % (h, m, s, sep, ms)
+
+
+def segments():
+    raw = os.environ.get("FAKE_WHISPER_SEGMENTS")
+    if raw is not None:
+        return [(int(a), int(b), str(text)) for a, b, text in json.loads(raw)]
+    return [(0, 2000, " " + os.environ.get("FAKE_WHISPER_TEXT", "Hello from the fake whisper."))]
+
+
+def main() -> int:
+    argv = sys.argv[1:]
+    log_call("whisper-cli")
+    if "-h" in argv or "--help" in argv:
+        sys.stderr.write(USAGE)
+        return 0
+
+    model = flag_value(argv, "-m", "--model", default="models/ggml-base.en.bin")
+    if not os.path.isfile(model):
+        sys.stderr.write("whisper_init_from_file_with_params_no_state: failed to open '%s'\n" % model)
+        sys.stderr.write("error: failed to initialize whisper context\n")
+        return 3
+    audio = flag_value(argv, "-f", "--file")
+    if audio is None:
+        sys.stderr.write("error: no input files specified\n" + USAGE)
+        return 2
+    if not os.path.isfile(audio):
+        sys.stderr.write("error: input file not found '%s'\n" % audio)
+        return 2
+    if "--vad" in argv or "-vad" in argv:
+        vad_model = flag_value(argv, "-vm", "--vad-model")
+        if not vad_model or not os.path.isfile(vad_model):
+            sys.stderr.write("error: failed to load VAD model '%s'\n" % vad_model)
+            return 3
+    fail_if_asked("FAKE_WHISPER", "fake whisper-cli failure")
+
+    lang = flag_value(argv, "-l", "--language", default="en")
+    detected = os.environ.get("FAKE_WHISPER_LANG", "en") if lang == "auto" else lang
+    segs = segments()
+    base = flag_value(argv, "-of", "--output-file", default=audio)
+
+    for a, b, text in segs:
+        if "-nt" in argv or "--no-timestamps" in argv:
+            print(text)
+        else:
+            print("[%s --> %s]  %s" % (stamp(a, "."), stamp(b, "."), text))
+
+    if {"-oj", "--output-json", "-ojf", "--output-json-full"} & set(argv):
+        doc = {
+            "systeminfo": "FAKE",
+            "model": {"type": "fake", "multilingual": True},
+            "params": {"model": model, "language": lang, "translate": False},
+            "result": {"language": detected},
+            "transcription": [
+                {
+                    "timestamps": {"from": stamp(a, ","), "to": stamp(b, ",")},
+                    "offsets": {"from": a, "to": b},
+                    "text": text,
+                }
+                for a, b, text in segs
+            ],
+        }
+        with open(base + ".json", "w", encoding="utf-8") as f:
+            json.dump(doc, f, indent="\t", ensure_ascii=False)
+        sys.stderr.write("output_json: saving output to '%s.json'\n" % base)
+    if "-otxt" in argv or "--output-txt" in argv:
+        with open(base + ".txt", "w", encoding="utf-8") as f:
+            f.write("".join(text + "\n" for _, _, text in segs))
+    for flag, ext in (("-osrt", "srt"), ("-ovtt", "vtt")):
+        if flag in argv:
+            with open("%s.%s" % (base, ext), "w", encoding="utf-8") as f:
+                f.write("fake %s\n" % ext)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
