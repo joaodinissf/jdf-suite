@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>eu.joaof.jdf-stt</string>
+	<key>CFBundleName</key>
+	<string>jdf-stt</string>
+	<key>CFBundleDisplayName</key>
+	<string>jdf-stt</string>
+	<key>CFBundleExecutable</key>
+	<string>STTApp</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.3.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>15.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>jdf-stt records your voice to turn it into text on this Mac. The audio never leaves your computer.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+</dict>
+</plist>
