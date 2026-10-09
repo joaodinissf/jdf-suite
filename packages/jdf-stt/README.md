@@ -6,7 +6,7 @@ no telemetry. The only network use is downloading models, each checked against a
 sha256: Whisper models only when you start it, and the 0.8 MB voice-activity model automatically
 (see [Models](#models)).
 
-Status: in development ([jdf-suite#30](https://github.com/joaodinissf/jdf-suite/issues/30)). Not on PyPI yet.
+Status: v0.1.0, the first release ([jdf-suite#30](https://github.com/joaodinissf/jdf-suite/issues/30)). macOS on Apple silicon first; transcribing files also works on Linux.
 
 ## Install
 
@@ -17,11 +17,16 @@ jdf-stt is a Python command-line tool with no Python dependencies. It runs `whis
 brew install whisper-cpp ffmpeg
 ```
 
-Until the first release, run it from a checkout of this repository:
+Then run it with [uv](https://docs.astral.sh/uv/), without installing anything else:
 
 ```sh
-uv run --package jdf-stt jdf-stt --help
+uvx jdf-stt talk.m4a          # transcribe a file and print the text
+uvx jdf-stt --mic             # dictate: Enter stops and transcribes, Esc or Ctrl+C cancels
+uvx jdf-stt --help            # every command and option
 ```
+
+To keep it on your PATH, `uv tool install jdf-stt` (the MCP server needs `uv tool install 'jdf-stt[mcp]'`).
+The first transcription asks before downloading the default model (`small`, about 490 MB); see Models.
 
 ## Quick start
 
@@ -176,7 +181,37 @@ the microphone.
 
 ## Privacy
 
-<!-- 06 -->
+Nothing leaves your Mac. In detail:
+
+- **Your audio and text stay on your machine.** whisper.cpp and ffmpeg run as local programs.
+  There is no account, no telemetry, no crash reporting and no cloud fallback: if a local tool or
+  model is missing, jdf-stt stops and tells you, it never sends your audio anywhere instead.
+- **The only network use is a model download that you start.** jdf-stt asks first (or you run
+  `jdf-stt models download NAME`), fetches the file from Hugging Face over HTTPS, and checks its
+  size and sha256 against the values built into jdf-stt before using it. A file that does not
+  match is deleted. Models live in `~/.cache/jdf-stt/models`; `--model PATH` uses your own file and
+  downloads nothing.
+- **Local LLM modes talk to localhost only.** The rewrite modes reach llama.cpp's `llama-server`
+  or Ollama on `127.0.0.1`; jdf-stt refuses any other address.
+- **Recordings are temporary.** Microphone audio and the converted 16 kHz copy of a file are
+  deleted when the transcription ends, unless you ask to keep them (`--keep-audio PATH`).
+  Outputs are written only where you ask (stdout, `-o DIR`, or next to the audio in a watch folder).
+
+How this is checked, on every pull request (`tests/test_offline.py`):
+
+- a source scan: only `models.py` (the download) and `llm.py` (the localhost client) import
+  network modules, and no code runs a network tool such as `curl`;
+- the file, watch-folder, bench, model-listing and Parakeet commands run with fake tools, the
+  network blocked and every connection or name lookup recorded, so even a failed attempt fails
+  the test; the model download may reach only the server it was given. Three things are not
+  run this way: `--mic` (the tests never open a microphone), the LLM modes (they talk to a
+  server on localhost on purpose) and the MCP server (it speaks over stdin and stdout). Their
+  tests, like every other test, run under a guard that refuses any connection that is not to
+  localhost.
+
+And on a Mac (`tests/real/test_real_offline.py`, run by hand): a real transcription with
+`whisper-cli`, `ffmpeg` and jdf-stt under `sandbox-exec` with a profile that denies all network
+access still gives the right words.
 
 ## Local LLM modes
 

@@ -1,0 +1,140 @@
+name: jdf-stt Release
+on:
+  push:
+    tags: ['jdf-stt-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build a release for, e.g. jdf-stt-v0.1.0
+        required: true
+      dry_run:
+        description: Build and test only; publish nothing
+        type: boolean
+        default: false
+
+# Everything released (code, version, README) comes from the tag. The version
+# check, the tests and the build all run on that checkout.
+defaults:
+  run:
+    working-directory: packages/jdf-stt
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  # Runs the tag's dev dependencies, so it gets a read-only token and keeps
+  # no credentials in git config.
+  build:
+    name: Test and package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      latest: ${{ steps.latest.outputs.latest }}
+    steps:
+    - name: Check out the tag being released
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ env.TAG }}
+        # Full history and tags: the notes list commits since the previous tag.
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Install ffmpeg (for the lavfi microphone stand-in)
+      run: sudo apt-get update && sudo apt-get install -y ffmpeg
+    - uses: astral-sh/setup-uv@v7
+    - name: Check the tag matches pyproject.toml
+      id: version
+      run: |
+        version="$(python3 scripts/check_release.py "$TAG")"
+        echo "VERSION=$version" >> "$GITHUB_ENV"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+    - run: uv sync --locked --package jdf-stt --extra mcp
+    - name: Lint
+      run: uv run --package jdf-stt --extra mcp ruff check && uv run --package jdf-stt --extra mcp ruff format --check
+    - name: Unit tests (fakes; includes the offline guarantee)
+      run: uv run --package jdf-stt --extra mcp pytest -m "not real"
+    - name: Build the wheel and sdist
+      # uv writes to the workspace-root dist/ in a workspace.
+      run: |
+        uv build --package jdf-stt --out-dir dist
+        ls dist
+        test -f "dist/jdf_stt-${VERSION}-py3-none-any.whl"
+        test -f "dist/jdf_stt-${VERSION}.tar.gz"
+    - name: Check the package metadata
+      run: uvx twine check --strict dist/*
+    - name: Write release notes
+      run: |
+        previous="$(git tag --list 'jdf-stt-v*' --sort=-v:refname | grep -vxF "$TAG" | head -1 || true)"
+        {
+          echo "Install: \`uvx jdf-stt==${VERSION}\` (needs \`brew install whisper-cpp ffmpeg\`)."
+          echo
+          echo "## Changes"
+          if [ -n "$previous" ]; then
+            git log --pretty=format:'- %s' --no-merges "${previous}..${TAG}" -- .
+          else
+            git log --pretty=format:'- %s' --no-merges "${TAG}" -- .
+          fi
+          echo
+        } > dist/release-notes.md
+        cat dist/release-notes.md
+    - name: Mark as latest only for the highest jdf-stt version
+      id: latest
+      run: |
+        highest="$(git tag --list 'jdf-stt-v*' --sort=-v:refname | head -1)"
+        if [ "$highest" = "$TAG" ]; then echo "latest=true"; else echo "latest=false"; fi >> "$GITHUB_OUTPUT"
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: release
+        path: packages/jdf-stt/dist/
+        if-no-files-found: error
+
+  # PyPI trusted publishing: no stored token; PyPI trusts this workflow file.
+  # Checks out nothing and runs no repo code.
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        name: release
+        path: release
+    - name: Keep only the wheel and sdist
+      run: mkdir dist && mv release/*.whl release/*.tar.gz dist/
+    - uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        packages-dir: dist/
+
+  # Holds the write token, so it checks out nothing and runs no repo code.
+  github-release:
+    name: Publish GitHub Release
+    needs: [build, publish-pypi]
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        name: release
+    - name: Create or update the GitHub Release
+      uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+      with:
+        tag_name: ${{ env.TAG }}
+        name: ${{ env.TAG }}
+        body_path: release-notes.md
+        files: |
+          jdf_stt-${{ needs.build.outputs.version }}-py3-none-any.whl
+          jdf_stt-${{ needs.build.outputs.version }}.tar.gz
+        make_latest: ${{ needs.build.outputs.latest }}
