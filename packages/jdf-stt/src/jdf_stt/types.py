@@ -42,9 +42,14 @@ class TranscribeOptions:
     llm_model: str | None = None
 
     def effective_prompt(self) -> str:
-        """The text passed as whisper's --prompt: the free prompt, then the vocabulary terms."""
+        """The text passed as whisper's --prompt: the free prompt, then `Names in this recording: a, b.`
+
+        Whisper ignores a bare list of terms as the prompt but follows the same terms inside a
+        sentence (seen with large-v3-turbo on two `say` clips), so the vocabulary is wrapped.
+        """
         terms = ", ".join(term.strip() for term in self.vocabulary if term.strip())
-        return " ".join(part for part in (self.prompt.strip(), terms) if part)
+        glossary = f"Names in this recording: {terms}." if terms else ""
+        return " ".join(part for part in (self.prompt.strip(), glossary) if part)
 
 
 @dataclass(frozen=True)

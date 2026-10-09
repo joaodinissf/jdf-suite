@@ -96,7 +96,63 @@ formats = ["txt"]
 
 ## Silence, vocabulary and fixes
 
-<!-- 04 -->
+**Silence never becomes made-up text.** Whisper models tend to "hear" words in silence (a classic is
+"Thank you." on a quiet recording). jdf-stt stops that in three places:
+
+- Before the model, voice-activity detection (Silero VAD, through whisper.cpp) skips the parts with no
+  speech. It is on by default. Its model, `ggml-silero-v6.2.0.bin` (under 1 MB, sha256-checked), is
+  downloaded once into `~/.cache/jdf-stt/models` the first time it is needed.
+- Inside the model, whisper's no-speech threshold (`-nth`) and non-speech-token suppression apply.
+- After the model, segments that are only markers such as `[BLANK_AUDIO]`, `(music)` or `♪` are dropped.
+  If nothing is left, jdf-stt prints nothing, says `no speech` on stderr and exits 0.
+
+```sh
+jdf-stt quiet.wav                       # prints nothing when nobody speaks
+jdf-stt talk.m4a --vad-threshold 0.6    # stricter about what counts as speech (0-1, default 0.5)
+jdf-stt talk.m4a --no-vad               # turn VAD off; also --vad-model PATH, --no-speech-threshold N,
+                                        # --no-suppress-nst
+```
+
+**Vocabulary.** Names and jargon go to whisper as its prompt, which nudges its spelling:
+
+```sh
+jdf-stt talk.m4a --prompt "I use the Huddle Tab Sorter and Ollama."
+jdf-stt talk.m4a --vocab words.txt      # one term per line; blank lines and # comments ignored
+```
+
+`--vocab` terms are sent as one sentence, `Names in this recording: a, b.`, because whisper ignores a bare
+list. A sentence of your own that uses the terms (`--prompt`) works as well; both together are joined.
+
+**Find and replace.** For words the model still gets wrong, a list of `from => to` lines fixes them after
+transcription. Matching is whole-word and case-insensitive, and the longest match wins:
+
+```text
+# fixes.txt
+huddle tab sorter => Huddle Tab Sorter
+jay dee eff => JDF
+```
+
+```sh
+jdf-stt talk.m4a --replace fixes.txt
+```
+
+The same pairs can live in `~/.config/jdf-stt/config.toml`; `--replace` adds to them and wins on a clash:
+
+```toml
+[replace]
+"huddle tab sorter" = "Huddle Tab Sorter"
+```
+
+**Filler words.** `um`, `uh`, `erm`, `er`, `ah` and `hmm` are removed from English, with the commas
+around them tidied ("So, um, I think" becomes "So, I think"). Words in capitals such as "ER" or "AH-64" are
+acronyms and stay. Use `--keep-fillers` to keep them. Lists
+apply per detected language and can be set in the config:
+
+```toml
+[fillers]
+en = ["um", "uh", "like"]   # replaces the English list
+pt = ["hã", "tipo"]         # adds Portuguese
+```
 
 ## Microphone
 
