@@ -136,7 +136,7 @@ def clean_registry(monkeypatch: pytest.MonkeyPatch) -> None:
     """Registrations made during the test are forgotten afterwards."""
     for name in ("_engines", "_commands"):
         monkeypatch.setattr(registry, name, dict(getattr(registry, name)))
-    for name in ("_option_groups", "_postprocessors"):
+    for name in ("_option_groups", "_postprocessors", "_option_checks"):
         monkeypatch.setattr(registry, name, list(getattr(registry, name)))
 
 

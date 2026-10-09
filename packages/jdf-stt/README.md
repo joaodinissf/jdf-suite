@@ -215,7 +215,45 @@ access still gives the right words.
 
 ## Local LLM modes
 
-<!-- 07 -->
+`--mode` rewrites the transcript with a language model running on your Mac, never a cloud
+service. jdf-stt talks to [llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server` or
+to [Ollama](https://ollama.com) over localhost, and refuses any URL that is not on 127.0.0.1,
+::1 or localhost. Proxy settings are ignored and redirects are not followed, so the text stays on
+the machine. jdf-stt does not download or start a model for you.
+
+```sh
+llama-server -m some-model.gguf                  # listens on http://127.0.0.1:8080
+jdf-stt --mode email talk.m4a
+
+ollama serve                                     # listens on http://127.0.0.1:11434
+jdf-stt --mode notes --llm-backend ollama --llm-model llama3.2 talk.m4a
+```
+
+Built-in modes (`jdf-stt modes` lists them, with any you add):
+
+| Mode | What you get |
+|---|---|
+| `clean` | punctuation and capitals fixed, no rewording |
+| `email` | a clear, polite email body |
+| `notes` | short bullet points |
+| `message` | a short, casual chat message |
+
+Add your own, or replace a built-in one, in `~/.config/jdf-stt/config.toml`:
+
+```toml
+[modes.tweet]
+prompt = "Rewrite this as a tweet."
+
+[transcribe]          # optional defaults, so a plain `jdf-stt --mode tweet` works
+llm_backend = "ollama"
+llm_model = "llama3.2"
+```
+
+Options: `--llm-backend llama.cpp|ollama` (default `llama.cpp`), `--llm-url URL` (default
+`http://127.0.0.1:8080`, or `http://127.0.0.1:11434` for Ollama), `--llm-model NAME` (needed for
+Ollama; llama-server uses the model it loaded). The reply replaces the text; srt, vtt and json
+segments keep the words as transcribed. If no server answers, or it takes more than 120 seconds,
+jdf-stt stops with an error that names the backend and URL. It never tries anywhere else.
 
 ## Watch folders
 
@@ -256,10 +294,11 @@ How the code is laid out:
 
 - `src/jdf_stt/types.py` holds the shared options (`TranscribeOptions`) and the result
   (`Transcript`); `Transcript.to_dict()` is the JSON shape every consumer reads.
-- `src/jdf_stt/registry.py` is where engines, commands, option groups and postprocessors plug in.
+- `src/jdf_stt/registry.py` is where engines, commands, option groups, option checks and
+  postprocessors plug in.
   Files in `engines/` and `features/` are found automatically: a new feature is a new file.
-- `src/jdf_stt/pipeline.py` runs one file through audio preparation, the engine and the
-  postprocessors.
+- `src/jdf_stt/pipeline.py` runs one file through the option checks, audio preparation, the
+  engine and the postprocessors.
 - Tests never touch the network: a guard in `tests/conftest.py` blocks every connection except
   to 127.0.0.1 in tests marked `localhost`. The fakes in `tests/fakes/` stand in for `whisper-cli`
   and `ffmpeg`; their switches are listed in `tests/fakes/_common.py`.

@@ -33,11 +33,13 @@ EngineFactory = Callable[[], Engine]
 CommandSetup = Callable[[argparse.ArgumentParser], Callable[[argparse.Namespace], int]]
 OptionGroup = Callable[[argparse._ArgumentGroup], None]
 Postprocessor = Callable[[Transcript, TranscribeOptions], Transcript]
+OptionCheck = Callable[[TranscribeOptions], None]
 
 _engines: dict[str, EngineFactory] = {}
 _commands: dict[str, tuple[str, CommandSetup]] = {}
 _option_groups: list[OptionGroup] = []
 _postprocessors: list[tuple[int, Postprocessor]] = []
+_option_checks: list[OptionCheck] = []
 
 
 def _discover(package_name: str) -> None:
@@ -130,6 +132,24 @@ def postprocessor(order: int) -> Callable[[Postprocessor], Postprocessor]:
 
 def postprocessors() -> list[Postprocessor]:
     return [fn for _, fn in sorted(_postprocessors, key=lambda item: item[0])]
+
+
+# Option checks ------------------------------------------------------------------
+
+
+def option_check(fn: OptionCheck) -> OptionCheck:
+    """Register `def fn(options)`, which raises `SttError` for options that cannot work.
+
+    The pipeline runs every check before any audio work, so a typo fails at once
+    instead of after a full transcription.
+    """
+    _option_checks.append(fn)
+    return fn
+
+
+def check_options(options: TranscribeOptions) -> None:
+    for fn in _option_checks:
+        fn(options)
 
 
 # Options from the command line --------------------------------------------------
