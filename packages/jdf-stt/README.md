@@ -332,7 +332,10 @@ Accessibility and Input Monitoring the first time. Settings are in `defaults` fo
 `defaults write eu.joaof.jdf-stt model large-v3-turbo` (also `cliPath`, `mode`, `llmURL`,
 `hotkeyKeyCode`).
 
-<!-- 11 -->
+The app also offers two Shortcuts actions: **Dictate** (records until you pause and returns the
+text) and **Transcribe Audio File** (an audio or video file in, text out). Both run the same CLI
+on this Mac. They are untested in Shortcuts so far: a SwiftPM build does not produce the App
+Intents metadata that Shortcuts reads, so the actions may not show up yet.
 
 ## Engines, live preview and latency
 
