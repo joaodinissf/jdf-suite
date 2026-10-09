@@ -10,7 +10,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from jdf_stt import models, procs, registry
+from jdf_stt import language, models, procs, registry
 from jdf_stt.types import Segment, SttError, TranscribeOptions, Transcript
 
 
@@ -26,7 +26,7 @@ class WhisperCppEngine:
         o = options
         whisper = procs.require_tool("whisper-cli")  # before any download
         model = models.ensure(o.model, download=models.ask_to_download(o.model))
-        cmd = [whisper, "-m", str(model), "-f", str(wav), "-l", o.language]
+        cmd = [whisper, "-m", str(model), "-f", str(wav), "-l", language.normalise(o.language)]
         cmd += ["-oj", "-of", str(out_base), "-np", "-nth", _num(o.no_speech_threshold)]
         if o.suppress_nst:
             cmd.append("-sns")
