@@ -339,7 +339,45 @@ Intents metadata that Shortcuts reads, so the actions may not show up yet.
 
 ## Engines, live preview and latency
 
-<!-- 12 -->
+Engines are pluggable: `--engine NAME` picks one, and each lives in its own file under
+`src/jdf_stt/engines/`.
+
+- `whisper-cpp` (default): whisper.cpp's `whisper-cli`.
+- `parakeet`: NVIDIA Parakeet through whisper.cpp's `parakeet-cli` (installed with
+  `brew install whisper-cpp`). Give it a ggml Parakeet model by path; jdf-stt does not download
+  Parakeet models, and Parakeet does not report a language. Experimental: so far it has been
+  tested only against a stand-in for `parakeet-cli`, not with a real model.
+
+  ```sh
+  jdf-stt --engine parakeet --model ~/models/ggml-parakeet-tdt-0.6b-v3.bin talk.wav
+  ```
+
+**Live preview.** `jdf-stt live` runs whisper.cpp's `whisper-stream`, which listens to the
+microphone and prints text as you speak. Ctrl+C stops it. Nothing is saved: it is for watching,
+use `jdf-stt --mic` to keep a transcript. `--step` (ms of new audio per update, default 3000) and
+`--length` (ms per window, default 10000) trade speed for accuracy; `--vad` updates after each
+pause instead. Without `-l` it passes `-l auto`. Experimental: the command it builds is tested,
+but the live display, microphone capture (macOS will likely ask to let your terminal app use the
+microphone the first time) and language detection with `-l auto` have not been tried yet.
+
+```sh
+jdf-stt live -m large-v3-turbo -l en
+```
+
+**Latency.** `jdf-stt bench FILE` transcribes one file and prints how long it took next to the
+audio's length (the real-time factor: below 1 is faster than real time). The time includes
+loading the model, as it does when you dictate. `jdf-stt bench --raw -m MODEL` prints
+whisper.cpp's own `whisper-bench` figures (load, encode, decode, total).
+
+```console
+$ jdf-stt bench talk.wav -m ~/.cache/huggingface/whisper-cpp/ggml-large-v3-turbo.bin
+file              talk.wav
+engine            whisper-cpp
+model             ggml-large-v3-turbo.bin
+audio             7.18 s
+wall clock        3.20 s
+real-time factor  0.45 (2.2x faster than real time)
+```
 
 ## Development
 
