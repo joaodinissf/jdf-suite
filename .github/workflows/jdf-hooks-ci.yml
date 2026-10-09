@@ -5,11 +5,15 @@ on:
     paths:
     - packages/jdf-hooks/**
     - .github/workflows/jdf-hooks-ci.yml
+    - uv.lock
+    - pyproject.toml
   pull_request:
     branches: [main]
     paths:
     - packages/jdf-hooks/**
     - .github/workflows/jdf-hooks-ci.yml
+    - uv.lock
+    - pyproject.toml
 
 defaults:
   run:
