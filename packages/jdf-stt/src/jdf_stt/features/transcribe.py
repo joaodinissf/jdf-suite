@@ -7,7 +7,6 @@ into `-o`, or next to the input. With `--mic` (PR 05) it records first with `mic
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 from pathlib import Path
 
@@ -39,11 +38,7 @@ def _transcribe_mic(options: TranscribeOptions, quiet: bool = False) -> int:
     try:
         t = pipeline.transcribe_file(wav, options)
     finally:
-        keep = Path(options.keep_audio).expanduser() if options.keep_audio else None
-        if keep is None:
-            wav.unlink(missing_ok=True)
-        elif wav.exists() and wav.resolve() != keep.resolve():
-            shutil.move(wav, keep)
+        mic.discard(wav, options)  # kept only with --keep-audio, where record() already put it
     _note(language.describe(t), quiet)
     if options.output_dir:
         _write(t, Path(options.output_dir) / wav.stem, options, quiet)
