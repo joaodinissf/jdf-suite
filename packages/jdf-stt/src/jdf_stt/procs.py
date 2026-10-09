@@ -47,7 +47,14 @@ def run(
     name = Path(args[0]).name
     try:
         proc = subprocess.run(
-            args, input=input, capture_output=True, text=True, errors="replace", timeout=timeout, check=False
+            args,
+            input=input,
+            stdin=None if input is not None else subprocess.DEVNULL,  # never the caller's stdin (the MCP pipe)
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=timeout,
+            check=False,
         )
     except FileNotFoundError as e:
         raise _missing(name) from e
