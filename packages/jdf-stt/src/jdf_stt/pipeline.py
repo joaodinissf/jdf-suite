@@ -20,6 +20,7 @@ def postprocess(t: Transcript, options: TranscribeOptions) -> Transcript:
 def transcribe_file(path: Path | str, options: TranscribeOptions) -> Transcript:
     """Transcribe one audio file. The temporary 16 kHz wav is deleted before returning."""
     engine = registry.get_engine(options.engine)
+    registry.check_options(options)
     with tempfile.TemporaryDirectory(prefix="jdf-stt-") as tmp:
         wav = audio.prepare(Path(path), Path(tmp))
         t = engine.transcribe(wav, options)
