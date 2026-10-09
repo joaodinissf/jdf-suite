@@ -114,7 +114,7 @@ def test_default_command(fake_bin, wav, opts, fake_model, vad_model):
         ("vad_threshold", 0.35, ["-vt", "0.35"]),
         ("no_speech_threshold", 0.8, ["-nth", "0.8"]),
         ("prompt", "Huddle, jdf-stt.", ["--prompt", "Huddle, jdf-stt."]),
-        ("vocabulary", ("Huddle", "OpenRouter"), ["--prompt", "Huddle, OpenRouter"]),
+        ("vocabulary", ("Huddle", "OpenRouter"), ["--prompt", "Names in this recording: Huddle, OpenRouter."]),
     ],
 )
 def test_each_engine_field_reaches_its_flag(fake_bin, wav, opts, field, value, expected):
@@ -126,7 +126,7 @@ def test_each_engine_field_reaches_its_flag(fake_bin, wav, opts, field, value, e
 def test_prompt_and_vocabulary_are_joined(fake_bin, wav, opts):
     o = dataclasses.replace(opts, prompt="A talk about tabs.", vocabulary=("Huddle",))
     _, argv = run(fake_bin, wav, o)
-    assert flag(argv, "--prompt") == "A talk about tabs. Huddle"
+    assert flag(argv, "--prompt") == "A talk about tabs. Names in this recording: Huddle."
     assert argv.count("--prompt") == 1
 
 
