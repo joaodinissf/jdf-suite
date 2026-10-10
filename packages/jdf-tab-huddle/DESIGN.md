@@ -10,7 +10,7 @@ Huddle gathers tabs, so its interface borrows the one visual language every Chro
 
 Sleeping tabs keep their own voice, **nap**: Chrome's yellow group (amber), the moon, and the nap room.
 
-The mark is three tabs huddled into one group, on Chrome blue, over a group line in nap amber ([`src/icons/huddle-mark.svg`](src/icons/huddle-mark.svg)). The toolbar PNGs are rasterised from it. `src/icons/icon.afphoto` is the retired folder icon's source and no longer matches anything. The `package` script's exclusion of it lands with the release-workflow PR (#58); until then it still ships in a locally built zip. At 16px the tabs stay distinct, because they're 6 units wide with 2-unit gaps.
+The mark is three tabs huddled into one group, on Chrome blue, over a group line in nap amber ([`src/icons/huddle-mark.svg`](src/icons/huddle-mark.svg)). The toolbar PNGs are rasterised from it. `src/icons/icon.afphoto` is the retired folder icon's source and no longer matches anything; the `package` script and the release workflow leave it out of the zip. The manifest's `icons` and the toolbar's `action.default_icon` both use `icon16.png`, `icon48.png` and `icon128.png`, at those pixel sizes (checked by `tests/store-listing.test.js`). At 16px the tabs stay distinct, because they're 6 units wide with 2-unit gaps.
 
 ## Colour
 
