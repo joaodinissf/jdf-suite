@@ -523,3 +523,56 @@ test.describe('Organize with AI', () => {
     expect(organizePages).toEqual([page]);
   });
 });
+
+// Huddle asks for no host permission: OpenRouter answers CORS for any origin,
+// so the key check (Settings), the catalog and the chat call (the worker)
+// are ordinary cross-origin fetches. The fake answers CORS like the real API.
+test.describe('OpenRouter with no host permission', () => {
+  test('Save key, the model catalog and Organize all work with no site access granted', async ({ context, sw, extensionId }) => {
+    const fake = await installFakeOpenRouter(context);
+    await seed(sw, context, { key: null });
+    const granted = await sw.evaluate(() => chrome.permissions.getAll());
+    expect(granted.origins).toEqual([]);
+
+    const settings = await context.newPage();
+    await settings.goto(`chrome-extension://${extensionId}/options.html`);
+    await expect(settings.locator('#aiKeyStatus')).toHaveText('Not set');
+    await settings.fill('#settingsKeyInput', GOOD_KEY);
+    await settings.click('#aiSaveKey');
+    await expect(settings.locator('#ai-status')).toHaveText('Key saved');
+    await expect(settings.locator('#aiKeyError')).toBeHidden();
+    await settings.click('#settingsFilter');
+    await expect(settings.locator('#settingsSelect option')).not.toHaveCount(0);
+    await expect(settings.locator('#aiModelPicker .models-status')).toHaveText(/models · updated just now/);
+    await settings.close();
+
+    const page = await openOrganize(context, extensionId);
+    await page.click('#startOrganize');
+    await expect(groupNames(page)).toHaveCount(3);
+    expect(fake.requests.map((r) => `${r.method} ${r.path} ${r.key}`)).toEqual([
+      'GET /api/v1/key good',
+      'GET /api/v1/models none',
+      'POST /api/v1/chat/completions good',
+    ]);
+  });
+
+  test('an answer that fails the CORS check reads as a connection problem, in Settings and on the organize page', async ({ context, sw, extensionId }) => {
+    await installFakeOpenRouter(context, { cors: false });
+    await seed(sw, context, { key: null });
+
+    const settings = await context.newPage();
+    await settings.goto(`chrome-extension://${extensionId}/options.html`);
+    await settings.fill('#settingsKeyInput', GOOD_KEY);
+    await settings.click('#aiSaveKey');
+    await expect(settings.locator('#aiKeyError')).toHaveText('Couldn\'t reach OpenRouter to check this key. Check your connection and try again.');
+    await expect(settings.locator('#aiKeyStatus')).toHaveText('Not set');
+    await settings.close();
+
+    await seed(sw, context);
+    const page = await openOrganize(context, extensionId);
+    await expect(page.locator('.models-status')).toHaveText('Recommended only · couldn\'t reach OpenRouter');
+    await page.click('#startOrganize');
+    await expect(page.locator('#content .error-msg')).toHaveText('Couldn\'t reach OpenRouter. Check your connection, then Retry.');
+    await expect(page.locator('#content button', { hasText: 'Retry' })).toBeFocused();
+  });
+});

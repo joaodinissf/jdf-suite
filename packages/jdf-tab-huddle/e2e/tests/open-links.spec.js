@@ -113,7 +113,7 @@ test('a page Chrome keeps from extensions is refused with the reason', async ({ 
 
 test('the shipped manifest loads without errors and grants no site access', async ({ sw }) => {
   const granted = await sw.evaluate(() => chrome.permissions.getAll());
-  expect(granted.origins).toEqual(['https://openrouter.ai/*']);
+  expect(granted.origins).toEqual([]);
   expect(granted.permissions).toContain('activeTab');
   expect(granted.permissions).not.toContain('windows');
   // chrome.windows works without the permission.
