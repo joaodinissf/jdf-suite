@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Fake parakeet-cli (whisper.cpp 1.9.4 shape, as far as it is known without a model).
+
+The real binary's format strings (read with `strings`, no model on disk) are
+    Segments (%d):
+    Segment %d: [%lld -> %lld] "%s"
+and are printed with `-ps`. The units of t0/t1 are assumed to be centiseconds, like
+whisper.cpp's segment times; that assumption is unchecked until a real run (BLIND).
+
+Behaviour, set with environment variables:
+    FAKE_PARAKEET_SEGMENTS  JSON list of [t0_cs, t1_cs, text] (default one segment, 0 -> 200,
+                            "Hello from the fake parakeet.")
+    FAKE_PARAKEET_EXIT      exit with this code after printing FAKE_PARAKEET_STDERR
+    FAKE_PARAKEET_STDERR    stderr text for FAKE_PARAKEET_EXIT (default "fake parakeet-cli failure")
+    Real-like checks: `-m` must name an existing file (else exit 1), `-f` must exist (else exit 1).
+    `--help` prints usage, exit 0.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+
+from _common import fail_if_asked, flag_value, log_call  # noqa: E402
+
+USAGE = """
+usage: parakeet-cli [options] file0 file1 ...
+supported audio formats: flac, mp3, ogg, wav
+
+options:
+  -h,     --help              [default] show this help message and exit
+  -t N,   --threads N         [4      ] number of threads to use during computation
+  -m,     --model FILE        [models/ggml-parakeet-tdt-0.6b-v3.bin] model path
+  -f,     --file FILE         [       ] input audio file
+  -ng,    --no-gpu            [false  ] disable GPU
+  -dev N, --device N          [0      ] GPU device to use
+  -ps,    --print-segments    [false  ] print segment information
+  -otxt,  --output-txt        [false  ] output result in a text file
+  -of,    --output-file FILE  [       ] output file path (without file extension)
+  -np,    --no-prints         [false  ] do not print anything other than the results
+"""
+
+
+def main() -> int:
+    argv = sys.argv[1:]
+    log_call("parakeet-cli")
+    if "-h" in argv or "--help" in argv:
+        sys.stderr.write(USAGE)
+        return 0
+    model = flag_value(argv, "-m", "--model", default="models/ggml-parakeet-tdt-0.6b-v3.bin")
+    if not os.path.isfile(model):
+        sys.stderr.write("error: failed to load Parakeet model from '%s'\n" % model)
+        return 1
+    audio = flag_value(argv, "-f", "--file")
+    if audio is None:
+        sys.stderr.write("error: no input files specified\n")
+        return 1
+    if not os.path.isfile(audio):
+        sys.stderr.write("error: failed to read audio file '%s'\n" % audio)
+        return 1
+    fail_if_asked("FAKE_PARAKEET", "fake parakeet-cli failure")
+
+    raw = os.environ.get("FAKE_PARAKEET_SEGMENTS")
+    segs = json.loads(raw) if raw is not None else [[0, 200, "Hello from the fake parakeet."]]
+    print(" ".join(text for _, _, text in segs))
+    if "-ps" in argv or "--print-segments" in argv:
+        print("Segments (%d):" % len(segs))
+        for i, (t0, t1, text) in enumerate(segs):
+            print('Segment %d: [%d -> %d] "%s"' % (i, t0, t1, text))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

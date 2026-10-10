@@ -133,7 +133,13 @@ def add_module(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Call
 
 @pytest.fixture
 def clean_registry(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Registrations made during the test are forgotten afterwards."""
+    """Registrations made during the test are forgotten afterwards.
+
+    The package's own engines and features are imported first: an import is done only once, so
+    registrations made by a first import inside this fixture would be lost for later tests.
+    """
+    registry.load_engines()
+    registry.load_features()
     for name in ("_engines", "_commands"):
         monkeypatch.setattr(registry, name, dict(getattr(registry, name)))
     for name in ("_option_groups", "_postprocessors", "_option_checks"):

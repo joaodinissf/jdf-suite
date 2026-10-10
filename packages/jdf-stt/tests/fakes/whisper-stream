@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""Fake whisper-stream (whisper.cpp 1.9.4). Never touches a microphone.
+
+`--help` prints the real 1.9.4 usage on stderr and exits 0, like the real one. Otherwise it
+prints FAKE_STREAM_TEXT (default "Hello from the fake stream.") on stdout and exits with
+FAKE_STREAM_EXIT (default 0), as if the user had stopped it.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+
+from _common import flag_value, log_call  # noqa: E402
+
+USAGE = """
+usage: whisper-stream [options]
+
+options:
+  -h,       --help          [default] show this help message and exit
+  -t N,     --threads N     [4      ] number of threads to use during computation
+            --step N        [3000   ] audio step size in milliseconds
+            --length N      [10000  ] audio length in milliseconds
+            --keep N        [200    ] audio to keep from previous step in ms
+  -c ID,    --capture ID    [-1     ] capture device ID
+  -mt N,    --max-tokens N  [32     ] maximum number of tokens per audio chunk
+  -ac N,    --audio-ctx N   [0      ] audio context size (0 - all)
+  -bs N,    --beam-size N   [-1     ] beam size for beam search
+  -vth N,   --vad-thold N   [0.60   ] voice activity detection threshold
+  -fth N,   --freq-thold N  [100.00 ] high-pass frequency cutoff
+  -tr,      --translate     [false  ] translate from source language to english
+  -nf,      --no-fallback   [false  ] do not use temperature fallback while decoding
+  -ps,      --print-special [false  ] print special tokens
+  -kc,      --keep-context  [false  ] keep context between audio chunks
+  -l LANG,  --language LANG [en     ] spoken language
+  -m FNAME, --model FNAME   [models/ggml-base.en.bin] model path
+  -f FNAME, --file FNAME    [       ] text output file name
+"""
+
+
+def main() -> int:
+    argv = sys.argv[1:]
+    log_call("whisper-stream")
+    if "-h" in argv or "--help" in argv:
+        sys.stderr.write(USAGE)
+        return 0
+    model = flag_value(argv, "-m", "--model", default="models/ggml-base.en.bin")
+    if not os.path.isfile(model):
+        sys.stderr.write("error: failed to initialize whisper context\n")
+        return 1
+    print(os.environ.get("FAKE_STREAM_TEXT", "Hello from the fake stream."))
+    return int(os.environ.get("FAKE_STREAM_EXIT", "0") or 0)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
