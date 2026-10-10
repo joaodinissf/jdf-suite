@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Unit Tests**: 1058 tests across 22 Vitest files (mocked Chrome APIs)
+- **Unit Tests**: 1062 tests across 22 Vitest files (mocked Chrome APIs)
 - **E2E Tests**: 139 tests across 20 Playwright spec files (real Chromium browser)
-- **Total**: 1197 tests
+- **Total**: 1201 tests
 
 ## Unit Tests (Vitest)
 
@@ -32,7 +32,7 @@
 | openrouter-requests.test.js | 51 | What is asked of OpenRouter, model by model (Claude Haiku 5.5, the default, gets the strict schema, the cap and no temperature) (the output cap as `max_tokens` or `max_completion_tokens`, and its size, and `data_collection: deny` unless Settings turned it off), and its refusals (one for the data policy names the setting and the account's OpenRouter privacy settings); a key save keeps a confirmed unlisted default, and a default saved as Haiku 4.5 is kept through a run, a key save and a model save |
 | ai-runtime.test.js | 34 | The OpenRouter client: error statuses (mid-stream ones keep their kind), streaming and its edge cases, the idle timer (keep-alives count), JSON fallback |
 | ai-handlers.test.js | 44 | Worker AI handlers: runs, Apply, window scoping, pinned tabs; a content script's port is closed |
-| store-listing.test.js | 2 | The manifest's description says Huddle organizes your browser tabs, names its parts (Open links as tabs among them) and fits Chrome's 132 characters; the 16, 48 and 128 px icons exist at those sizes and the manifest and toolbar use them |
+| store-listing.test.js | 6 | The manifest's description says Huddle organizes your browser tabs, names its parts (Open links as tabs among them) and fits Chrome's 132 characters; the 16, 48 and 128 px icons exist at those sizes and the manifest and toolbar use them; `store/`, pasted into the store's dashboard, keeps in step with the manifest: the summary is its description, every permission (and no other) has a justification and there are no host permissions, one privacy policy URL, and the screenshots (1 to 5, 1280 × 800) and small promo tile (440 × 280) are PNGs without alpha that `store/listing.md` names |
 | ai-proposal.test.js | 76 | The organize page; the line under Organize saying what it sends; tab icons from Chrome's favicon cache |
 
 ```bash

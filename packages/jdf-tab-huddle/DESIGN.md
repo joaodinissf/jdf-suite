@@ -78,6 +78,13 @@ Starting Open links as tabs shows a hint in the page itself: "Huddle: hold `Z` a
 - **The picker's rows** read "name · provider · $in · $out per M" in one style; the filter applies to every row, and an empty result says so. Until the catalog has loaded, the chosen id gets no warning.
 - The key form and the model picker are one shared component (`src/ai-config.js`, `src/ai-config.css`), so both pages look and check the same way.
 
+## Store images
+
+The Chrome Web Store screenshots and promo tile (`store/screenshots/`, made by `make-screenshots.mjs`) show Huddle's real pages, light theme, with invented tabs.
+- **The popup can't be shown in its toolbar**, so it appears at its real size beside a short caption: the mark and name, a 34px/700 headline and 17px `--tx-dim` text in Atkinson Hyperlegible Next on `--bg`, the popup on `--panel` with a `--bd-hi` edge, a 10px radius and `--shadow-float`.
+- **Full pages** (the nap room, the organize page, a web page with Open links as tabs) fill the frame as they are; the organize page at 90 % zoom, so its proposal fits.
+- **The small promo tile** is the mark's three tabs and amber line with the name, in white on Chrome blue (`--ac` light), and the tagline "Organize your browser tabs".
+
 ## Motion
 
 Minimal and functional: 120ms colour transitions on hover, and the page hint's 160ms fade. `prefers-reduced-motion` removes them.
