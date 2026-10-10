@@ -56,9 +56,13 @@ afterEach(() => {
 describe('the shipped manifest', () => {
   test('asks for activeTab and scripting, and no access to every site', () => {
     expect(manifest.permissions).toEqual(['tabs', 'tabGroups', 'storage', 'alarms', 'notifications', 'scripting', 'activeTab', 'favicon']);
-    expect(manifest.host_permissions).toEqual(['https://openrouter.ai/*']);
     expect(manifest).not.toHaveProperty('content_scripts');
+  });
+
+  test('asks for no site access at all, OpenRouter included: it answers CORS for any origin', () => {
+    expect(manifest).not.toHaveProperty('host_permissions');
     expect(manifest).not.toHaveProperty('optional_host_permissions');
+    expect(read('manifest.json')).not.toMatch(/openrouter|https?:\/\/|<all_urls>/i);
   });
 
   test('no longer asks for windows: chrome.windows needs no permission', () => {
