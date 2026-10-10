@@ -1,14 +1,14 @@
-# Tab Organizer Test Suite
+# Huddle Test Suite
 
 ## Overview
 
-- **Unit Tests**: 1056 tests across 21 Vitest files (mocked Chrome APIs)
+- **Unit Tests**: 1058 tests across 22 Vitest files (mocked Chrome APIs)
 - **E2E Tests**: 139 tests across 20 Playwright spec files (real Chromium browser)
-- **Total**: 1195 tests
+- **Total**: 1197 tests
 
 ## Unit Tests (Vitest)
 
-`tests/setup.js` mocks the Chrome APIs, loads the worker and the pages' scripts, and exposes their functions. Its `dispatch(message, sender)` sends a message through the worker's real `chrome.runtime.onMessage` listener and resolves with the reply; `tests/senders.js` holds the sender Chrome gives each caller (the popup, the popup open in a tab, the nap room, Settings, the split dialog, the organize page, the link clumper's content script, and the worker as a page sees it).
+`tests/setup.js` mocks the Chrome APIs, loads the worker and the pages' scripts, and exposes their functions. Its `dispatch(message, sender)` sends a message through the worker's real `chrome.runtime.onMessage` listener and resolves with the reply; `tests/senders.js` holds the sender Chrome gives each caller (the popup, the popup open in a tab, the nap room, Settings, the split dialog, the organize page, the Open links as tabs content script (`content-clumper.js`), and the worker as a page sees it).
 
 | Suite | Tests | Coverage |
 |---|---|---|
@@ -22,7 +22,7 @@
 | keyboard.test.js | 29 | Popup hotkeys, including K for Open links as tabs and I for Settings |
 | split-view.test.js | 46 | Split view compact, expand and repair; sort order (a loading tab by its pendingUrl) |
 | confirmation-dialog.test.js | 28 | Split domains dialog |
-| content-clumper.test.js | 58 | The link clumper (Open links as tabs): only trusted events, the confirm and the 25 cap, letting go on blur and hidden tabs, Cmd+Z, an orphaned copy after an update; the worker's top-frame, http(s) and 25-link checks |
+| content-clumper.test.js | 58 | The Open links as tabs content script: only trusted events, the confirm and the 25 cap, letting go on blur and hidden tabs, Cmd+Z, an orphaned copy after an update; the worker's top-frame, http(s) and 25-link checks |
 | open-links.test.js | 38 | Open links as tabs: the shipped manifest (activeTab and scripting, no content script, no host permission at all, OpenRouter's included, no `windows`, the open-links command and its ChromeOS key); the shortcut starts it in its own tab, and on a page Chrome won't script (each of Chrome's refusals) or a PDF the toolbar badge gives the reason, then clears, each tab on its own timer; starting it twice shows the hint again and loads one copy; the popup's footer action (K) sends its tab and closes, is `aria-disabled` with the reason over restricted pages, and shows the bound shortcuts; the page hint (shadow root, polite status, no clicks or focus, the configured key, 3 s, Escape, no motion under reduced motion) |
 | options.test.js | 35 | Settings page: the key and modifier; Open links as tabs comes last, has no on/off setting, and its help line names the bound shortcut and the key |
 | options-ai.test.js | 30 | Settings: the AI section; the model catalog loads only with a key on file or once the list is used (the recommended models show until then); the "Don't use providers that train on my prompts" checkbox; Enter in the model picker saves; while the key is checked, Save keeps focus and says so; errors describe their fields |
@@ -32,6 +32,7 @@
 | openrouter-requests.test.js | 51 | What is asked of OpenRouter, model by model (Claude Haiku 5.5, the default, gets the strict schema, the cap and no temperature) (the output cap as `max_tokens` or `max_completion_tokens`, and its size, and `data_collection: deny` unless Settings turned it off), and its refusals (one for the data policy names the setting and the account's OpenRouter privacy settings); a key save keeps a confirmed unlisted default, and a default saved as Haiku 4.5 is kept through a run, a key save and a model save |
 | ai-runtime.test.js | 34 | The OpenRouter client: error statuses (mid-stream ones keep their kind), streaming and its edge cases, the idle timer (keep-alives count), JSON fallback |
 | ai-handlers.test.js | 44 | Worker AI handlers: runs, Apply, window scoping, pinned tabs; a content script's port is closed |
+| store-listing.test.js | 2 | The manifest's description says Huddle organizes your browser tabs, names its parts (Open links as tabs among them) and fits Chrome's 132 characters; the 16, 48 and 128 px icons exist at those sizes and the manifest and toolbar use them |
 | ai-proposal.test.js | 76 | The organize page; the line under Organize saying what it sends; tab icons from Chrome's favicon cache |
 
 ```bash
