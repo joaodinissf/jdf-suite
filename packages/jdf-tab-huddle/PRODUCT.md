@@ -21,6 +21,7 @@ Huddle gathers scattered tabs back into order on the real tab strip. From the to
 - copy the tab URLs of this window or of all windows;
 - organize tabs into groups with AI;
 - snooze tabs, windows or groups until a chosen time, with the nap room as the full list of sleeping tabs;
+- open a set of links on a page as tabs (Open links as tabs: hold a key and drag over them);
 - compact neighbouring tabs into Split Views, and expand them again (Chrome 155+).
 
 ## Positioning
@@ -34,7 +35,7 @@ Huddle gathers scattered tabs back into order on the real tab strip. From the to
 
 - A Chrome extension (Manifest V3). The popup opens from the toolbar button or the Option+Shift+U / Alt+Shift+U command. The other surfaces are the options page, AI setup, the AI proposal review, the nap room and the Split domains confirmation, each opened as a tab.
 - Actions run in the background service worker. The popup sends a message and the work happens on the user's live tab strip, often across several windows.
-- Link clumping is a content script on every http and https page, on by default, and never on `file:`, `ftp:` or other pages. Its access to every website is accepted as the price of clumping working out of the box (audit L9, decided 2026-09-29).
+- Open links as tabs (the link clumper) runs only in a page the user starts it on, with its shortcut (⌥⇧L / Alt+Shift+L) or the popup's Open links as tabs. That gesture gives Huddle the one tab through `activeTab`, so Huddle asks for no access to websites in general, and it stays on until the page reloads. This reverses audit L9 and decision D1 (2026-09-29), which had accepted access to every website so clumping worked out of the box; decided 2026-10-10 for the Chrome Web Store. There is no always-on option, and no setting to turn it off: starting it on a page is the opt-in.
 - Split View support is feature-detected: it reads `splitViewId` on Chrome 140+, and creates and removes splits on Chrome 155+.
 
 ## Capabilities and Constraints

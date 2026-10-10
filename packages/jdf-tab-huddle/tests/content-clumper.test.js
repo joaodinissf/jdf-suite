@@ -1,11 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { readFileSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
-import process from 'process';
 import { contentSender, popupSender } from './senders.js';
-
-const manifest = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../src/manifest.json'), 'utf8'));
 
 describe('clumperIsOpenableUrl', () => {
   it('accepts absolute http and https URLs', () => {
@@ -572,62 +566,5 @@ describe('the worker opens clumped links only for a page\'s top frame', () => {
     expect(reply).toEqual({ success: true, opened: 25 });
     const opened = chrome.tabs.create.mock.calls.map(([p]) => p.url);
     expect(opened).toEqual(['HTTP://site.example/up', ...web.slice(0, 24)]);
-  });
-});
-
-describe('where the clumper runs', () => {
-  const executeScript = chrome.scripting.executeScript;
-  afterEach(() => {
-    chrome.storage.local.get.mockReset();
-    chrome.tabs.query.mockReset();
-    chrome.scripting.executeScript = executeScript;
-  });
-
-  it('only on http and https pages (no file:, ftp: or other schemes)', () => {
-    expect(manifest.content_scripts).toEqual([
-      { matches: ['http://*/*', 'https://*/*'], js: ['content-clumper.js'], run_at: 'document_end' },
-    ]);
-  });
-
-  // Chrome's own match: a `scheme://*/*` pattern takes every URL of that scheme.
-  const matchesQuery = (url, patterns) => !patterns
-    || [patterns].flat().some((p) => url.startsWith(p.replace(/\*\/\*$/, '')));
-  const openTabs = [
-    { id: 1, url: 'https://a.example/' },
-    { id: 2, url: 'http://b.example/x' },
-    { id: 3, url: 'file:///Users/me/notes.html' },
-    { id: 4, url: 'chrome://settings/' },
-    { id: 5, url: 'https://chromewebstore.google.com/' },
-    { id: 6, url: 'ftp://c.example/' },
-    { id: 7, url: 'https://d.example/' },
-  ];
-
-  it('after an install, update or reload, every open http(s) page gets it, and a tab that refuses is skipped quietly', async () => {
-    const unhandled = [];
-    const onUnhandled = (reason) => unhandled.push(reason);
-    process.on('unhandledRejection', onUnhandled);
-    chrome.storage.local.get.mockResolvedValue({});
-    chrome.tabs.query.mockImplementation(async (q = {}) => openTabs.filter((t) => matchesQuery(t.url, q.url)));
-    // A plain function, not vi.fn: a mock marks the promises it returns as
-    // handled, which would hide a refusal nobody catches.
-    const injected = [];
-    chrome.scripting.executeScript = (details) => {
-      injected.push(details);
-      return details.target.tabId === 5
-        ? Promise.reject(new Error('Cannot access contents of url "https://chromewebstore.google.com/"'))
-        : Promise.resolve([]);
-    };
-
-    await Promise.all(chrome.runtime.onInstalled.callListeners({ reason: 'update', previousVersion: '0.7.0' }));
-    await new Promise((r) => setTimeout(r, 0));
-    process.off('unhandledRejection', onUnhandled);
-
-    expect(unhandled).toEqual([]);
-    expect(injected.map((d) => d.target.tabId)).toEqual([1, 2, 5, 7]);
-    for (const details of injected) expect(details.files).toEqual(manifest.content_scripts[0].js);
-    // chrome.scripting needs host access of its own: the content script's
-    // match patterns don't grant it.
-    expect(manifest.permissions).toContain('scripting');
-    expect(manifest.host_permissions).toEqual(['https://openrouter.ai/*', 'http://*/*', 'https://*/*']);
   });
 });

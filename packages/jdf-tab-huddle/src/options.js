@@ -1,10 +1,10 @@
 /* global HuddleAi */
 // Huddle Settings — options page controller.
-// Reads and writes clumping preferences via chrome.storage.sync, and holds
-// the lasting AI setup (key, expiry, default model) through the background.
+// Holds the lasting AI setup (key, expiry, default model) through the
+// background, and reads and writes the key that Open links as tabs uses
+// (stored as `clumping` in chrome.storage.sync).
 
 const CLUMPING_DEFAULTS = {
-  enabled: true,
   key: 'z',
   modifier: null,
 };
@@ -22,7 +22,6 @@ function getAllowedKeys() {
 function applyDefaults(raw) {
   const c = raw && typeof raw === 'object' ? raw : {};
   return {
-    enabled: typeof c.enabled === 'boolean' ? c.enabled : CLUMPING_DEFAULTS.enabled,
     key: typeof c.key === 'string' && c.key.length === 1 ? c.key.toLowerCase() : CLUMPING_DEFAULTS.key,
     modifier: c.modifier === 'shift' || c.modifier === 'ctrl' || c.modifier === 'alt' ? c.modifier : CLUMPING_DEFAULTS.modifier,
   };
@@ -70,11 +69,9 @@ function populateKeyDropdown(selectEl, selected) {
 }
 
 function readFormState() {
-  const enabledEl = document.getElementById('clumping-enabled');
   const keyEl = document.getElementById('clumping-key');
   const modifierEl = document.getElementById('clumping-modifier');
   return applyDefaults({
-    enabled: enabledEl ? enabledEl.checked : CLUMPING_DEFAULTS.enabled,
     key: keyEl ? keyEl.value : CLUMPING_DEFAULTS.key,
     modifier: modifierEl && modifierEl.value ? modifierEl.value : null,
   });
@@ -82,12 +79,42 @@ function readFormState() {
 
 function writeFormState(settings) {
   const applied = applyDefaults(settings);
-  const enabledEl = document.getElementById('clumping-enabled');
   const keyEl = document.getElementById('clumping-key');
   const modifierEl = document.getElementById('clumping-modifier');
-  if (enabledEl) enabledEl.checked = applied.enabled;
   if (keyEl) populateKeyDropdown(keyEl, applied.key);
   if (modifierEl) modifierEl.value = applied.modifier || '';
+  showOpenLinksKey(applied);
+}
+
+// "Z", or "Shift+Z" with a modifier, as the page's hint shows it.
+function clumpingKeyLabel(settings) {
+  const modifier = { shift: 'Shift', ctrl: 'Ctrl', alt: 'Alt' }[settings.modifier];
+  const key = settings.key.toUpperCase();
+  return modifier ? `${modifier}+${key}` : key;
+}
+
+// The help line names the key to hold, as chosen below it.
+function showOpenLinksKey(settings) {
+  const el = document.getElementById('openLinksKey');
+  if (el) el.textContent = clumpingKeyLabel(applyDefaults(settings));
+}
+
+// The help line names the shortcut that starts it, as bound at
+// chrome://extensions/shortcuts (Chrome leaves it unbound when another
+// extension already uses the suggested keys).
+function showOpenLinksShortcut() {
+  const el = document.getElementById('openLinksShortcut');
+  if (!el || !chrome.commands || !chrome.commands.getAll) return;
+  chrome.commands.getAll((commands) => {
+    const command = (commands || []).find((c) => c.name === 'open-links');
+    if (command && command.shortcut) {
+      const key = document.createElement('kbd');
+      key.textContent = command.shortcut;
+      el.replaceChildren(key);
+    } else {
+      el.textContent = 'a shortcut you set at chrome://extensions/shortcuts';
+    }
+  });
 }
 
 const statusHideTimers = {};
@@ -126,7 +153,8 @@ function clearStatus(target) {
 async function handleFormChange() {
   try {
     const saved = await saveClumpingSettings(readFormState());
-    showStatus(`Saved · key "${saved.key.toUpperCase()}"${saved.modifier ? ' + ' + saved.modifier : ''}, ${saved.enabled ? 'enabled' : 'disabled'}`);
+    showOpenLinksKey(saved);
+    showStatus(`Saved · hold ${clumpingKeyLabel(saved)} and drag`);
   } catch (err) {
     showStatus(`Error: ${err.message}`, { error: true });
   }
@@ -380,12 +408,11 @@ async function initAiSection() {
 
 async function init() {
   initAiSection();
+  showOpenLinksShortcut();
   const settings = await loadClumpingSettings();
   writeFormState(settings);
-  const enabledEl = document.getElementById('clumping-enabled');
   const keyEl = document.getElementById('clumping-key');
   const modifierEl = document.getElementById('clumping-modifier');
-  if (enabledEl) enabledEl.addEventListener('change', handleFormChange);
   if (keyEl) keyEl.addEventListener('change', handleFormChange);
   if (modifierEl) modifierEl.addEventListener('change', handleFormChange);
 }

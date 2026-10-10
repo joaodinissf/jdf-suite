@@ -233,6 +233,15 @@ export default [
         handleHotkeyKeydown: 'readonly',
         isTextInputTarget: 'readonly',
         isHotkeyVisible: 'readonly',
+        showOpenShortcut: 'readonly',
+
+        // Open links as tabs (loaded by setup.js)
+        armClumper: 'readonly',
+        openLinksPageCheck: 'readonly',
+        OPEN_LINKS_BADGE_MS: 'readonly',
+        initOpenLinks: 'readonly',
+        openLinksAsTabs: 'readonly',
+        openLinksBlockedReason: 'readonly',
 
         // Nap room functions (loaded by setup.js)
         napFormatClock: 'readonly',

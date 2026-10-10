@@ -93,6 +93,13 @@ function buildPopupDom({ respectGroups = true, singleWindow = false, groupDisabl
         <div class="sleep-wrap"><ul id="snoozedList"></ul></div>
       </div>
     </div>
+
+    <div class="foot">
+      <div class="foot-actions">
+        <button type="button" id="openLinks" class="gear" data-action="openLinksAsTabs">Open links as tabs</button>
+        <button type="button" id="openOptions" class="gear" data-action="openOptions">Settings</button>
+      </div>
+    </div>
   `;
 }
 
@@ -151,6 +158,9 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
       expect(map.get('l')?.id).toBe('snoozeSelected');
       expect(map.get('w')?.id).toBe('snoozeWindow');
       expect(map.get('r')?.id).toBe('snoozeGroup');
+      // Footer
+      expect(map.get('k')?.id).toBe('openLinks');
+      expect(map.get('i')?.id).toBe('openOptions');
     });
 
     test('keys are single letters or row digits, and none is bound twice', () => {
@@ -210,10 +220,10 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
       assertNoDuplicateKeys(map);
     });
 
-    test('Organize with AI binds to O, and K is free (no AI settings cog)', () => {
+    test('Organize with AI binds to O, K opens links as tabs, and there is no AI settings cog', () => {
       const map = buildHotkeyMap();
       expect(map.get('o')?.id).toBe('aiOrganize');
-      expect(map.has('k')).toBe(false);
+      expect(map.get('k')?.id).toBe('openLinks');
       expect([...map.values()].some((el) => el.dataset.action === 'openAiSettings')).toBe(false);
     });
 
