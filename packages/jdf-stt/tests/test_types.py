@@ -28,8 +28,8 @@ def test_options_are_frozen_and_fillers_are_not_shared():
     [
         ("", (), ""),
         ("  A talk about tabs. ", (), "A talk about tabs."),
-        ("", ("Huddle", " jdf-stt "), "Huddle, jdf-stt"),
-        ("Tabs.", ("Huddle", "", "OpenRouter"), "Tabs. Huddle, OpenRouter"),
+        ("", ("Huddle", " jdf-stt "), "Names in this recording: Huddle, jdf-stt."),
+        ("Tabs.", ("Huddle", "", "OpenRouter"), "Tabs. Names in this recording: Huddle, OpenRouter."),
     ],
 )
 def test_effective_prompt(prompt, vocabulary, expected):
