@@ -257,7 +257,23 @@ jdf-stt stops with an error that names the backend and URL. It never tries anywh
 
 ## Watch folders
 
-<!-- 08 -->
+Drop audio into a folder and the transcript appears next to it:
+
+```sh
+jdf-stt watch ~/Recordings                    # runs until Ctrl+C, looking every 2 s
+jdf-stt watch ~/Recordings -f txt -f srt      # talk.m4a -> talk.txt and talk.srt
+jdf-stt watch ~/Inbox ~/Voice --recursive     # several folders, subfolders too
+jdf-stt watch ~/Recordings --once             # one pass, then exit (for cron or Shortcuts)
+```
+
+- Files ending in wav, mp3, m4a, flac, ogg, aiff, mp4 or mov count; hidden files and folders do not.
+- A file is picked up once its size has stopped changing between two looks, so a recording or
+  copy still in progress waits. `--interval SECONDS` sets the gap (default 2).
+- A file is skipped when every output you asked for already exists, so running it again only
+  does new work. Delete `talk.txt` to have `talk.m4a` transcribed again.
+- A file that fails is reported and the others carry on; it is tried again once it changes.
+  With `--once`, the exit code is 1 if any file failed.
+- Every transcription option works here too (`-m`, `--language`, `--vocab`, `--mode`, ...).
 
 ## MCP server
 
