@@ -69,7 +69,30 @@ That one 0.8 MB file from Hugging Face is the only download jdf-stt ever starts 
 
 ## Output formats and languages
 
-<!-- 03 -->
+`-f/--format` picks the output: `txt` (default), `srt`, `vtt` or `json`. Repeat it for several;
+with more than one, or with `-o DIR`, each goes to its own file (`talk.srt`, `talk.json`, ...).
+
+```sh
+jdf-stt talk.m4a -f srt -f json -o subs/
+```
+
+- `srt` and `vtt` have one cue per segment (`HH:MM:SS,mmm` and `HH:MM:SS.mmm`).
+- `json` is the same object the menu-bar app and the MCP server read: `text`, `language`,
+  `engine`, `model`, `duration` and `segments` (`start`, `end` in seconds, `text`).
+- With no speech, txt and srt are empty, vtt is just its `WEBVTT` header and json still has every key.
+
+The language is detected by default (`-l auto`) and shown on stderr as `language: pt`
+(and in the json); `-q` / `--quiet` hides that line and the `wrote …` lines. `-l pt` skips detection. Codes like `pt-BR` or `pt_PT` are read as `pt`.
+
+Detection can go wrong on very short clips. `--expected-language en,pt` (or the option repeated) lists
+the languages you speak: when the detected one is not in the list, the clip is transcribed again
+in the first one. Put it in `~/.config/jdf-stt/config.toml` to keep it:
+
+```toml
+[transcribe]
+expected_languages = ["pt", "en"]
+formats = ["txt"]
+```
 
 ## Silence, vocabulary and fixes
 
