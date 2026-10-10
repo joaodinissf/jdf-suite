@@ -4,7 +4,7 @@
 
 import { organizeSender, optionsSender, contentSender } from './senders.js';
 
-const HAIKU = 'anthropic/claude-haiku-4.5';
+const HAIKU = 'anthropic/claude-haiku-5.5';
 // The organize page's window (1) and its tabs, and a tab in another window
 // that a run from window 1 must never see.
 const TABS = [
@@ -130,7 +130,7 @@ describe('runs over the organize page\'s port', () => {
     expect(port.types().indexOf('ai-proposal')).toBeGreaterThan(port.types().indexOf('ai-debug'));
     const proposal = port.last('ai-proposal');
     expect(proposal.groups).toEqual([{ name: 'G', color: 'blue', tabIds: [20, 21] }]);
-    expect(proposal).toMatchObject({ windowId: 1, model: HAIKU, modelName: 'Claude Haiku 4.5' });
+    expect(proposal).toMatchObject({ windowId: 1, model: HAIKU, modelName: 'Claude Haiku 5.5' });
     const body = JSON.parse(global.fetch.mock.calls[0][1].body);
     expect(body.messages[1].content).toContain('by site');
     expect(body.max_tokens).toBe(2200);
@@ -340,7 +340,7 @@ describe('runs over the organize page\'s port', () => {
     const a = makePort();
     start(a);
     await settled(a);
-    expect(a.last('ai-error').error).toBe('Claude Haiku 4.5 returned an empty answer (stopped: length). Try again or pick another model.');
+    expect(a.last('ai-error').error).toBe('Claude Haiku 5.5 returned an empty answer (stopped: length). Try again or pick another model.');
 
     global.fetch = vi.fn().mockResolvedValue(jsonAnswer(JSON.stringify({ groups: [{ name: 'G', color: 'blue', tabIds: [999] }] })));
     const b = makePort({ id: 11, windowId: 1 });

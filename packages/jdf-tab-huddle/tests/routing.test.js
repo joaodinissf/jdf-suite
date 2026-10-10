@@ -23,7 +23,7 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const read = (file) => readFileSync(resolve(__dirname, '../src', file), 'utf8');
 
-const HAIKU = 'anthropic/claude-haiku-4.5';
+const HAIKU = 'anthropic/claude-haiku-5.5';
 
 // ---- a small fake browser ---------------------------------------------------
 // Window 1 (focused): a.test, b.test (grouped, group 7), a duplicate of
@@ -105,8 +105,8 @@ function installFakeBrowser() {
     json: async () => ({
       data: [{
         id: HAIKU,
-        name: 'Anthropic: Claude Haiku 4.5',
-        pricing: { prompt: '0.000001', completion: '0.000005' },
+        name: 'Anthropic: Claude Haiku 5.5',
+        pricing: { prompt: '0.0000001', completion: '0.0000005' },
         architecture: { output_modalities: ['text'] },
         supported_parameters: ['max_tokens', 'response_format', 'structured_outputs'],
       }],
