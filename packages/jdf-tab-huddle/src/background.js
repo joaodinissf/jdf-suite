@@ -42,10 +42,12 @@ const OPENROUTER_API = 'https://openrouter.ai/api/v1';
 // when the catalog cannot be loaded. Prices are OpenRouter's, per token, and
 // only used offline; the catalog's own prices win. Each is served by
 // providers that don't train on prompts (DeepSeek V4.1 Flash left the list:
-// its only provider does).
+// its only provider does). Claude Haiku 5.5 replaced 4.5 as the default; a
+// default saved as 4.5 is kept (resolveDefaultModel checks the catalog, not
+// this list).
 const AI_MODELS = [
-  { id: 'anthropic/claude-haiku-4.5', name: 'Claude Haiku 4.5', provider: 'Anthropic',
-    pricing: { prompt: '0.000001', completion: '0.000005' } },
+  { id: 'anthropic/claude-haiku-5.5', name: 'Claude Haiku 5.5', provider: 'Anthropic',
+    pricing: { prompt: '0.0000001', completion: '0.0000005' } },
   { id: 'google/gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', provider: 'Google',
     pricing: { prompt: '0.00000025', completion: '0.0000015' } },
   { id: 'openai/gpt-6-luna', name: 'GPT-6 Luna', provider: 'OpenAI',

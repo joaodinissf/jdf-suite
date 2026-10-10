@@ -11,7 +11,7 @@ test('at 320 px the delete question keeps Delete and Keep side by side (L57)', a
   await installFakeOpenRouter(context);
   await sw.evaluate(async (key) => {
     await chrome.storage.local.set({
-      aiConfig: { key: btoa(key), model: 'anthropic/claude-haiku-4.5', expiresAt: null, expiryDuration: null, setupComplete: true },
+      aiConfig: { key: btoa(key), model: 'anthropic/claude-haiku-5.5', expiresAt: null, expiryDuration: null, setupComplete: true },
     });
   }, GOOD_KEY);
   const page = await context.newPage();
