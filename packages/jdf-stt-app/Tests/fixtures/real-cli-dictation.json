@@ -1,0 +1,14 @@
+{
+  "text": "Hoje está um dia muito bonito, vamos ao parque.",
+  "language": "pt",
+  "engine": "whisper-cpp",
+  "model": "large-v3-turbo",
+  "duration": 3.0650625,
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 3.04,
+      "text": "Hoje está um dia muito bonito, vamos ao parque."
+    }
+  ]
+}

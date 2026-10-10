@@ -1,0 +1,8 @@
+{
+  "text": "",
+  "language": "en",
+  "engine": "whisper-cpp",
+  "model": "large-v3-turbo",
+  "duration": 3.0,
+  "segments": []
+}

@@ -1,0 +1,49 @@
+#!/bin/bash
+# A stand-in for the jdf-stt CLI, used by CLIClientTests. It follows the stop protocol the
+# real CLI uses on a pipe: a newline on stdin stops and prints the transcript, EOF or SIGINT
+# cancels with exit 130. With --until-silence a newline still stops it, and after
+# FAKE_JDF_STT_SILENCE_AFTER seconds (default 1) it stops by itself, as on a pause. Each stop is
+# logged as "stop: newline" or "stop: silence". It never records anything.
+#
+# Switches (environment):
+#   FAKE_JDF_STT_LOG    file; each call appends its arguments as one line
+#   FAKE_JDF_STT_TEXT   transcript text (default "hello from the fake")
+#   FAKE_JDF_STT_EXIT   non-zero: print "fake failure" on stderr and exit with it
+#   FAKE_JDF_STT_EMPTY  1: exit 0 and print nothing (the CLI's "no speech")
+#   FAKE_JDF_STT_SILENCE_AFTER  whole seconds before --until-silence stops by itself
+
+trap 'exit 130' INT TERM
+[ -n "$FAKE_JDF_STT_LOG" ] && printf '%s\n' "$*" >> "$FAKE_JDF_STT_LOG"
+
+if [ -n "$FAKE_JDF_STT_EXIT" ] && [ "$FAKE_JDF_STT_EXIT" != 0 ]; then
+    echo "fake failure" >&2
+    exit "$FAKE_JDF_STT_EXIT"
+fi
+
+mic=0; until_silence=0
+for arg in "$@"; do
+    case "$arg" in
+        --mic) mic=1 ;;
+        --until-silence) until_silence=1 ;;
+    esac
+done
+
+log() { [ -n "$FAKE_JDF_STT_LOG" ] && printf '%s\n' "$1" >> "$FAKE_JDF_STT_LOG"; }
+
+if [ "$mic" = 1 ]; then
+    echo "recording (fake)" >&2
+    if [ "$until_silence" = 0 ]; then
+        read -r _line || exit 130
+        log "stop: newline"
+    else
+        # macOS bash 3.2 reports a timeout like EOF, so both count as the pause.
+        if read -r -t "${FAKE_JDF_STT_SILENCE_AFTER:-1}" _line; then log "stop: newline"
+        else log "stop: silence"
+        fi
+    fi
+fi
+
+[ "$FAKE_JDF_STT_EMPTY" = 1 ] && { echo "no speech" >&2; exit 0; }
+
+text="${FAKE_JDF_STT_TEXT:-hello from the fake}"
+printf '{"text": "%s", "language": "en", "engine": "whisper-cpp", "model": "small", "duration": 1.5, "segments": [{"start": 0.0, "end": 1.5, "text": "%s"}]}\n' "$text" "$text"

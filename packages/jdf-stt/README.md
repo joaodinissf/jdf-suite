@@ -307,7 +307,30 @@ silero-v6.2.0` once before the first transcription through the server.
 
 ## Menu-bar app
 
-<!-- 10 -->
+A native menu-bar app for macOS 15+ lives in [`packages/jdf-stt-app`](../jdf-stt-app). It drives
+this CLI (`jdf-stt --mic --format json`), so whatever the CLI can do, the app can do, and nothing
+leaves the Mac either way.
+
+One key (Right Option by default) does three things:
+
+- **Hold** it and talk; release to insert the text.
+- **Tap** it for hands-free; tap again to stop.
+- **Double-tap** to lock: it records until the next press.
+- **Esc** cancels and throws the recording away.
+
+*Stop on Silence* (in the menu) makes a pause end any recording, a hold or a lock included, and
+insert the text. If that already happened, your next press starts a new recording.
+
+The text goes in at the cursor through Accessibility, without touching the clipboard. Only when
+an app refuses that does it paste and put your clipboard back. Every result is kept in
+`~/Library/Application Support/jdf-stt/history.json` and the last ten are in the menu (click to
+copy). The icon shows whether a dictation is fully offline: jdf-stt found, the model and the
+silence model downloaded, and any LLM mode on 127.0.0.1.
+
+Build it with `scripts/make-app.sh` (SwiftPM, ad-hoc signed); it asks for the microphone,
+Accessibility and Input Monitoring the first time. Settings are in `defaults` for now, e.g.
+`defaults write eu.joaof.jdf-stt model large-v3-turbo` (also `cliPath`, `mode`, `llmURL`,
+`hotkeyKeyCode`).
 
 <!-- 11 -->
 
