@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Unit Tests**: 1055 tests across 21 Vitest files (mocked Chrome APIs)
-- **E2E Tests**: 137 tests across 20 Playwright spec files (real Chromium browser)
-- **Total**: 1192 tests
+- **Unit Tests**: 1056 tests across 21 Vitest files (mocked Chrome APIs)
+- **E2E Tests**: 139 tests across 20 Playwright spec files (real Chromium browser)
+- **Total**: 1195 tests
 
 ## Unit Tests (Vitest)
 
@@ -23,7 +23,7 @@
 | split-view.test.js | 46 | Split view compact, expand and repair; sort order (a loading tab by its pendingUrl) |
 | confirmation-dialog.test.js | 28 | Split domains dialog |
 | content-clumper.test.js | 58 | The link clumper (Open links as tabs): only trusted events, the confirm and the 25 cap, letting go on blur and hidden tabs, Cmd+Z, an orphaned copy after an update; the worker's top-frame, http(s) and 25-link checks |
-| open-links.test.js | 37 | Open links as tabs: the shipped manifest (activeTab and scripting, no content script, no site access, no `windows`, the open-links command and its ChromeOS key); the shortcut starts it in its own tab, and on a page Chrome won't script (each of Chrome's refusals) or a PDF the toolbar badge gives the reason, then clears, each tab on its own timer; starting it twice shows the hint again and loads one copy; the popup's footer action (K) sends its tab and closes, is `aria-disabled` with the reason over restricted pages, and shows the bound shortcuts; the page hint (shadow root, polite status, no clicks or focus, the configured key, 3 s, Escape, no motion under reduced motion) |
+| open-links.test.js | 38 | Open links as tabs: the shipped manifest (activeTab and scripting, no content script, no host permission at all, OpenRouter's included, no `windows`, the open-links command and its ChromeOS key); the shortcut starts it in its own tab, and on a page Chrome won't script (each of Chrome's refusals) or a PDF the toolbar badge gives the reason, then clears, each tab on its own timer; starting it twice shows the hint again and loads one copy; the popup's footer action (K) sends its tab and closes, is `aria-disabled` with the reason over restricted pages, and shows the bound shortcuts; the page hint (shadow root, polite status, no clicks or focus, the configured key, 3 s, Escape, no motion under reduced motion) |
 | options.test.js | 35 | Settings page: the key and modifier; Open links as tabs comes last, has no on/off setting, and its help line names the bound shortcut and the key |
 | options-ai.test.js | 30 | Settings: the AI section; the model catalog loads only with a key on file or once the list is used (the recommended models show until then); the "Don't use providers that train on my prompts" checkbox; Enter in the model picker saves; while the key is checked, Save keeps focus and says so; errors describe their fields |
 | ai-config.test.js | 46 | Key checks, key form and model picker shared by Settings and the organize page; a key check that never answers gives up after 15 s; a confirmed unlisted default is kept |
@@ -63,7 +63,7 @@ Real browser tests that load the extension into Chromium and verify end-to-end b
 | open-links.spec.js | 7 | On the shipped manifest, started through Huddle's toolbar button (DevTools `Extensions.triggerAction`, with `--enable-unsafe-extension-debugging`): nothing opens until it is started; the hint; a real drag opens 5 at once, and over 25 links asks (answered through `page.on('dialog')`) and opens the first 25; starting again only shows the hint; a reload ends it; a page's own events open nothing; `chrome://` is refused; no site access and no `windows` permission |
 | confirmation-dialog.spec.js | 5 | Window count display, confirm/cancel flow |
 | snooze.spec.js | 13 | Snooze and wake; the Group button follows the active tab |
-| ai-flow.spec.js | 24 | Organize with AI against a fake OpenRouter (the line under Organize, `data_collection: deny` sent); Claude Haiku 5.5 as the default, and a default saved as Haiku 4.5 kept in the organize page and Settings; Settings with no key contacts OpenRouter only once the model list is used; two-window cases for what is sent and what Apply moves; a tab pinned before Apply stays pinned; Escape and Cmd/Ctrl+Enter in the proposal's fields |
+| ai-flow.spec.js | 26 | Organize with AI against a fake OpenRouter that answers CORS like the real one; with no host permission granted, Save key in Settings, the model catalog and a run all work, and an answer that fails the CORS check shows the connection message in Settings and on the organize page (the line under Organize, `data_collection: deny` sent); Claude Haiku 5.5 as the default, and a default saved as Haiku 4.5 kept in the organize page and Settings; Settings with no key contacts OpenRouter only once the model list is used; two-window cases for what is sent and what Apply moves; a tab pinned before Apply stays pinned; Escape and Cmd/Ctrl+Enter in the proposal's fields |
 | trust-boundary.spec.js | 2 | The content script in a page where Open links as tabs was started: no `storage.local` (the key), `storage.sync` still read, only `clumpOpenUrls` accepted, no organize port |
 | settings.spec.js | 1 | At 320 px the delete question keeps Delete and Keep side by side |
 
@@ -76,6 +76,7 @@ pnpm test:e2e            # Run E2E tests (requires Chromium)
 - **Fixture** (`e2e/fixtures/extension.js`): Launches Chromium with extension loaded via `--load-extension`
 - **Helpers**: Tab/window management, popup interaction, polling assertions
 - **Constants**: IANA-reserved domains (example.com/org/net) to avoid URL redirects
+- **Fake OpenRouter** (`e2e/helpers/fake-openrouter.js`): `context.route` answers openrouter.ai. Huddle has no host permission for it, so Chrome applies CORS to the fake's answers as to the real API's; the fake allows any origin, as OpenRouter does. Playwright answers the preflights itself and adds an allow-origin header to a fulfilled answer that has none, so `cors: false` sends one naming another origin, which Chrome refuses like an answer with none
 - **Open links as tabs** needs a real user gesture for `activeTab`. `e2e/helpers/open-links.js` makes one with the DevTools protocol: `Extensions.triggerAction` clicks Huddle's toolbar button over a tab (Chrome started with `--enable-unsafe-extension-debugging`), and the worker's `armClumper` then starts it there, as the shortcut and the popup do. So these specs run on the shipped manifest, with no test build. The shortcut itself and the popup opened over a web page can't be pressed from Playwright; the unit tests cover their wiring
 
 ## CI Integration

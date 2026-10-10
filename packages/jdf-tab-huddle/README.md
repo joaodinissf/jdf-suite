@@ -124,7 +124,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ## Testing
 
 ### Unit Tests (Vitest + jest-chrome shim)
-1055 tests across 21 files covering core logic with mocked Chrome APIs:
+1056 tests across 21 files covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report
@@ -133,7 +133,7 @@ pnpm run test:coverage   # With coverage report
 `tests/routing.test.js` sends every action the service worker handles through its real `onMessage` listener, from the page that sends it (with the sender Chrome gives that page), and checks the reply and the Chrome call the handler makes. The dispatcher is an if/else chain on `message.action`, except the popup's logging message, which is keyed on `message.type`, and its first branch, the sender check: only Huddle's own pages (a sender `url` under `chrome-extension://<id>/`) may send anything but `clumpOpenUrls`, the one action the link clumper's content script sends (the worker injects it into a page when Open links as tabs is started there). The test reads every branch of that chain from the source, fails on a branch it does not understand, and checks its table against the actions (and the logging message) found there and against what each page's scripts send; it also sends every row's message from the content script and expects `forbidden`. So a new worker action needs a row there. The test's `dispatch(message, sender)` (in `tests/setup.js`) resolves with the worker's reply, and fails when an action that replies later does not keep the channel open by returning `true`.
 
 ### E2E Tests (Playwright + real Chromium)
-137 tests across 20 spec files that load the extension into a real browser:
+139 tests across 20 spec files that load the extension into a real browser:
 
 | Spec File | Tests | Coverage |
 |---|---|---|
@@ -154,7 +154,7 @@ pnpm run test:coverage   # With coverage report
 | keyboard | 4 | Popup hotkey dispatch |
 | open-links | 7 | On the shipped manifest, started through the toolbar button (DevTools `Extensions.triggerAction`): nothing opens until it is started; its hint; a real drag opens 5 at once, and over 25 links asks and opens the first 25; starting again only shows the hint; a reload ends it; a page's own events open nothing; `chrome://` is refused; no site access and no `windows` permission |
 | snooze | 13 | Tab/window/group snooze, wake, alarms, edge cases; the Group button follows the active tab |
-| ai-flow | 24 | Organize with AI against a fake OpenRouter: runs, Apply, errors, the line under Organize and `data_collection: deny`; Claude Haiku 5.5 as the default, and a default saved as Haiku 4.5 kept; Settings with no key contacts OpenRouter only once the model list is used; only the organize page's window is sent, Apply never takes a tab from another window or unpins a tab, and Escape and Cmd/Ctrl+Enter in the proposal's fields |
+| ai-flow | 26 | Organize with AI against a fake OpenRouter that answers CORS like the real one: Save key, the catalog and a run with no host permission, and an answer that fails the CORS check reads as a connection problem; runs, Apply, errors, the line under Organize and `data_collection: deny`; Claude Haiku 5.5 as the default, and a default saved as Haiku 4.5 kept; Settings with no key contacts OpenRouter only once the model list is used; only the organize page's window is sent, Apply never takes a tab from another window or unpins a tab, and Escape and Cmd/Ctrl+Enter in the proposal's fields |
 | trust-boundary | 2 | From the content script in a page where Open links as tabs was started: `storage.local` (the key) is refused and `storage.sync` still read; every action but `clumpOpenUrls` is forbidden and an organize port is closed |
 | settings | 1 | At 320 px the delete question keeps Delete and Keep side by side |
 
@@ -172,11 +172,18 @@ CI lives at the monorepo root: [`.github/workflows/jdf-tab-huddle-ci.yml`](../..
 
 ## Permissions
 
-- **`tabs`**: Read and manipulate browser tabs (managing windows needs no permission of its own)
-- **`tabGroups`**: Preserve and manage tab groups
-- **`storage`**: Save user preferences (Tab Groups vs Individual mode)
-- **`favicon`**: show each tab's icon on the organize page from Chrome's own favicon cache, so reviewing a proposal never fetches a site's icon (with its cookies); no install warning
-- **`activeTab`** and **`scripting`**: start Open links as tabs in the page you are on, when you press its shortcut or the popup's button. Huddle gets that one tab until it navigates, and asks for no access to websites in general
+Huddle asks for no access to websites, OpenRouter included: OpenRouter's API allows requests from any origin (CORS), so the key check, the model list and Organize with AI reach it as ordinary requests. Chrome shows four warnings when you install it:
+
+- **`tabs`**, "Read your browsing history": read and arrange your tabs (their titles and addresses); managing windows needs no permission of its own
+- **`tabGroups`**, "View and manage your tab groups": keep and rebuild tab groups
+- **`notifications`**, "Display notifications": say when snoozed tabs wake, and what Split domains did
+- **`favicon`**, "Read the icons of the websites you visit": show each tab's icon on the organize page from Chrome's own favicon cache, so reviewing a proposal never fetches a site's icon (with its cookies)
+
+And these, with no warning:
+
+- **`storage`**: your settings, the OpenRouter key and the snoozed tabs
+- **`alarms`**: wake snoozed tabs on time
+- **`activeTab`** and **`scripting`**: start Open links as tabs in the page you are on, when you press its shortcut or the popup's button. Huddle gets that one tab until it navigates
 
 ## Browser Compatibility
 

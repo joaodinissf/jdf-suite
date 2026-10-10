@@ -45,7 +45,7 @@ Huddle gathers scattered tabs back into order on the real tab strip. From the to
 - **WCAG AA.** Contrast, focus and screen-reader support must meet WCAG AA.
 - **Fits Chrome's popup.** 380 px wide, with no scrolling in normal use: under Chrome's 600 px popup height cap.
 
-**Undecided:** whether "nothing leaves the machine" is a binding privacy commitment. Today the only network use is the AI feature calling OpenRouter with the user's own key, and OpenRouter's public model list, which Settings loads when it opens with a key on file, or when you browse or save models.
+**Undecided:** whether "nothing leaves the machine" is a binding privacy commitment. Today the only network use is the AI feature calling OpenRouter with the user's own key, and OpenRouter's public model list, which Settings loads when it opens with a key on file, or when you browse or save models. None of it needs access to a website: OpenRouter's API accepts requests from any origin, so Huddle asks for no host permission, OpenRouter's included.
 
 ## Brand Commitments
 
