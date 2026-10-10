@@ -14,6 +14,9 @@ const TEXT = { output_modalities: ['text'] };
 const JSON_PARAMS = ['max_tokens', 'temperature', 'response_format'];
 const LUNA_PARAMS = ['include_reasoning', 'max_completion_tokens', 'max_tokens', 'reasoning',
   'reasoning_effort', 'response_format', 'seed', 'structured_outputs', 'tool_choice', 'tools'];
+// Claude Haiku 5.5's, as OpenRouter's live catalog lists them (Oct 2026): no temperature.
+const HAIKU_PARAMS = ['include_reasoning', 'max_completion_tokens', 'max_tokens', 'reasoning',
+  'reasoning_effort', 'response_format', 'stop', 'structured_outputs', 'tool_choice', 'tools', 'verbosity'];
 const model = (id, name, prompt, completion, extra = {}) => ({
   id,
   name,
@@ -24,6 +27,9 @@ const model = (id, name, prompt, completion, extra = {}) => ({
 });
 
 export const CATALOG = [
+  model('anthropic/claude-haiku-5.5', 'Anthropic: Claude Haiku 5.5', '0.0000001', '0.0000005',
+    { supported_parameters: HAIKU_PARAMS, context_length: 1000000 }),
+  // The default before Haiku 5.5: no longer recommended, still listed.
   model('anthropic/claude-haiku-4.5', 'Anthropic: Claude Haiku 4.5', '0.000001', '0.000005',
     { supported_parameters: [...JSON_PARAMS, 'structured_outputs'] }),
   // Like the live catalog: GPT-6 Luna takes structured outputs but no

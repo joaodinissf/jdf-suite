@@ -43,7 +43,7 @@ test.beforeEach(async ({ sw, context }) => {
 test('the content script cannot read storage.local, where the key is, and still reads its settings from storage.sync', async ({ sw, context }) => {
   await installFakeOpenRouter(context);
   await sw.evaluate(async (key) => {
-    await chrome.storage.local.set({ aiConfig: { key: btoa(key), model: 'anthropic/claude-haiku-4.5', expiresAt: null, expiryDuration: null } });
+    await chrome.storage.local.set({ aiConfig: { key: btoa(key), model: 'anthropic/claude-haiku-5.5', expiresAt: null, expiryDuration: null } });
     await chrome.storage.sync.set({ clumping: { key: 'x' } });
   }, GOOD_KEY);
   const page = await startedPage(context, sw);
@@ -59,7 +59,7 @@ test('the content script cannot read storage.local, where the key is, and still 
 test('the content script may only open links: other actions are forbidden and an organize port is closed', async ({ sw, context }) => {
   const fake = await installFakeOpenRouter(context);
   await sw.evaluate(async (key) => {
-    await chrome.storage.local.set({ aiConfig: { key: btoa(key), model: 'anthropic/claude-haiku-4.5', expiresAt: null, expiryDuration: null } });
+    await chrome.storage.local.set({ aiConfig: { key: btoa(key), model: 'anthropic/claude-haiku-5.5', expiresAt: null, expiryDuration: null } });
   }, GOOD_KEY);
   const page = await startedPage(context, sw);
 

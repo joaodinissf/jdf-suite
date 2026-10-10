@@ -622,7 +622,7 @@ const HuddleAi = (() => {
   }
 
   // "Your default Qwen 3.5 Flash is no longer on OpenRouter; using Claude
-  // Haiku 4.5." or '' when nothing was replaced.
+  // Haiku 5.5." or '' when nothing was replaced.
   function defaultFallbackNote(resolved, picker) {
     if (!resolved || !resolved.missing) return '';
     const name = (id) => (picker ? picker.modelName(id) : '') || id;
