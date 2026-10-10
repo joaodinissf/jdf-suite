@@ -277,7 +277,33 @@ jdf-stt watch ~/Recordings --once             # one pass, then exit (for cron or
 
 ## MCP server
 
-<!-- 09 -->
+`jdf-stt mcp` runs a local [MCP](https://modelcontextprotocol.io) server on stdio, so an AI
+assistant on your Mac can transcribe files with your local model. It needs the optional `mcp`
+extra (the official MCP SDK; the rest of jdf-stt has no dependencies):
+
+```sh
+uvx --from 'jdf-stt[mcp]' jdf-stt mcp
+```
+
+To add it to Claude Code, for example:
+
+```sh
+claude mcp add jdf-stt -- uvx --from 'jdf-stt[mcp]' jdf-stt mcp
+```
+
+Two tools:
+
+- `transcribe_file(path, format="txt", language=None, model=None)`: the transcript as text,
+  or as srt, vtt or json (the same JSON as `--format json`). Your `config.toml` defaults apply:
+  leave `language` and `model` out to use them (`auto` detection and `small` unless you set
+  others), or pass `language="auto"` to detect the language anyway.
+- `list_models()`: every known model with its size and whether it is downloaded, the default
+  model, the models folder and the available engines.
+
+The server never downloads anything. If a model (or the small VAD model) is missing, the tool
+returns an error naming the command to run, such as `jdf-stt models download small`. With
+the whisper-cpp engine that includes the VAD model, so run `jdf-stt models download
+silero-v6.2.0` once before the first transcription through the server.
 
 ## Menu-bar app
 

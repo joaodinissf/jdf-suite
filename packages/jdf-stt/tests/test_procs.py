@@ -1,3 +1,4 @@
+import os
 import sys
 
 import pytest
@@ -14,6 +15,22 @@ def test_run_captures_stdout_and_stderr():
 def test_run_passes_input():
     proc = procs.run([sys.executable, "-c", "import sys; print(sys.stdin.read().upper())"], input="q\n")
     assert proc.stdout.strip() == "Q"
+
+
+def test_a_child_never_reads_our_stdin():
+    """Under `jdf-stt mcp` our stdin is the protocol pipe; children get /dev/null instead."""
+    read, write = os.pipe()
+    os.write(write, b"protocol bytes\n")
+    os.close(write)  # EOF after the bytes, so a child that does read stdin cannot hang
+    saved = os.dup(0)
+    os.dup2(read, 0)
+    try:
+        proc = procs.run([sys.executable, "-c", "import sys; print(repr(sys.stdin.read()))"])
+    finally:
+        os.dup2(saved, 0)
+        for fd in (saved, read):
+            os.close(fd)
+    assert proc.stdout.strip() == "''"
 
 
 def test_failure_carries_the_last_stderr_lines():
