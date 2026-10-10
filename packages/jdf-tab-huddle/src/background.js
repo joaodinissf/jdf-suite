@@ -2,8 +2,8 @@
 console.log('Huddle service worker starting...');
 
 // storage.local holds the OpenRouter key: only Huddle's own pages and this
-// worker may read it, not the link clumper's content script in every web
-// page (L10). Called on every worker start, so it never depends on an install
+// worker may read it, not the link clumper's content script in the pages
+// where Open links as tabs was started (L10). Called on every worker start, so it never depends on an install
 // event having run. storage.sync stays readable there: the clumper reads its
 // settings from it.
 if (chrome.storage.local.setAccessLevel) {
@@ -1527,7 +1527,8 @@ async function handleClumpOpenUrls(message, sender, sendResponse) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Huddle's own pages may send every action; the link clumper's content
-  // script, which runs in web pages, only clumpOpenUrls (L11).
+  // script, which runs in the web pages where Open links as tabs was started,
+  // only clumpOpenUrls (L11).
   if (!fromExtensionPage(sender) && message.action !== 'clumpOpenUrls') {
     sendResponse({ success: false, error: 'forbidden' });
   } else if (message.type === 'log') {
@@ -1535,6 +1536,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ success: true });
   } else if (message.action === 'clumpOpenUrls') {
     handleClumpOpenUrls(message, sender, sendResponse);
+    return true; // async response
+  } else if (message.action === 'openLinksAsTabs') {
+    handleOpenLinksAsTabs(message, sendResponse);
     return true; // async response
   } else if (message.action === 'sortAllWindows') {
     handleSortAllWindows(message.respectGroups, sendResponse);
@@ -3719,16 +3723,100 @@ async function rearmKeyExpiryAlarm() {
   }
 }
 
-// Chrome runs the link clumper only in pages loaded after Huddle was
-// installed, updated or reloaded, and the copy left in an older page can no
-// longer open tabs (it never arms). So each open http(s) page gets a fresh
-// copy; a tab Chrome won't script (the Web Store, for one) is skipped.
-async function injectClumperIntoOpenTabs() {
-  const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
-  for (const tab of tabs) {
-    chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content-clumper.js'] }).catch(() => {});
-  }
+// ============================================================
+// Open links as tabs
+// ============================================================
+// The link clumper runs only in a page the user started it on: the
+// open-links shortcut, or the popup's Open links as tabs. Either one is a user
+// gesture that gives Huddle access to that tab alone (activeTab), so Huddle
+// needs no access to every site. It stays on until the page reloads or the
+// tab moves to another page.
+
+const OPEN_LINKS_REFUSALS = {
+  restricted: 'Chrome doesn\'t let extensions run on this page',
+  noLinks: 'There are no links to open on this page',
+};
+
+// How long the toolbar button shows why the shortcut did nothing.
+const OPEN_LINKS_BADGE_MS = 5000;
+
+// Runs in the page, in Huddle's own isolated world, before anything is
+// injected. content-clumper.js sets huddleOpenLinksHint once it runs, so a
+// second start shows the hint again instead of loading a second copy. A PDF
+// (Chrome's viewer can be scripted) or a page with no links has nothing to
+// open.
+function openLinksPageCheck() {
+  const showHint = globalThis.huddleOpenLinksHint;
+  const already = typeof showHint === 'function';
+  if (already) showHint(true);
+  return { already, contentType: document.contentType, links: document.links.length };
 }
+
+// Starts the link clumper in a tab. Returns { success: true, already } or
+// { success: false, reason }, where reason is the sentence to show the user.
+// Chrome refuses a page it keeps from extensions (chrome://, another
+// extension, the Web Store, file: without access) by throwing.
+async function armClumper(tabId) {
+  let page;
+  try {
+    const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func: openLinksPageCheck });
+    page = injection && injection.result;
+  } catch (error) {
+    console.log('[Huddle] Open links as tabs refused:', error.message);
+    return { success: false, reason: OPEN_LINKS_REFUSALS.restricted };
+  }
+  if (!page) return { success: false, reason: OPEN_LINKS_REFUSALS.restricted };
+  if (page.already) return { success: true, already: true };
+  const html = page.contentType === 'text/html' || page.contentType === 'application/xhtml+xml';
+  if (!html || !(page.links > 0)) return { success: false, reason: OPEN_LINKS_REFUSALS.noLinks };
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['content-clumper.js'] });
+  } catch (error) {
+    console.log('[Huddle] Open links as tabs refused:', error.message);
+    return { success: false, reason: OPEN_LINKS_REFUSALS.restricted };
+  }
+  return { success: true, already: false };
+}
+
+// From the popup, which sends the tab it was opened over.
+async function handleOpenLinksAsTabs(message, sendResponse) {
+  if (!Number.isInteger(message.tabId)) {
+    sendResponse({ success: false, error: 'No tab to open links in' });
+    return;
+  }
+  sendResponse(await armClumper(message.tabId));
+}
+
+// One reset timer per tab: the badge is per tab, so a refusal in another tab
+// must not cancel this tab's reset.
+const openLinksBadgeTimers = new Map();
+
+// The shortcut has no popup to answer in, so the toolbar button says why it
+// did nothing: a "!" badge, with the reason as its tooltip, for a few seconds.
+async function showOpenLinksRefusal(tabId, reason) {
+  clearTimeout(openLinksBadgeTimers.get(tabId));
+  try {
+    await chrome.action.setBadgeBackgroundColor({ tabId, color: '#b3541e' });
+    await chrome.action.setBadgeText({ tabId, text: '!' });
+    await chrome.action.setTitle({ tabId, title: `Huddle: ${reason}` });
+  } catch (error) {
+    console.log('[Huddle] Could not show why Open links as tabs did nothing:', error.message);
+    return;
+  }
+  openLinksBadgeTimers.set(tabId, setTimeout(() => {
+    openLinksBadgeTimers.delete(tabId);
+    chrome.action.setBadgeText({ tabId, text: '' }).catch(() => {});
+    chrome.action.setTitle({ tabId, title: 'Huddle' }).catch(() => {});
+  }, OPEN_LINKS_BADGE_MS));
+}
+
+async function handleCommand(command, tab) {
+  if (command !== 'open-links' || !tab || !Number.isInteger(tab.id)) return;
+  const result = await armClumper(tab.id);
+  if (!result.success) await showOpenLinksRefusal(tab.id, result.reason);
+}
+
+chrome.commands.onCommand.addListener(handleCommand);
 
 // ============================================================
 // Tab Snoozing — Top-level listener registrations (MV3: sync at top level)
@@ -3737,6 +3825,5 @@ async function injectClumperIntoOpenTabs() {
 chrome.alarms.onAlarm.addListener(handleSnoozeAlarm);
 chrome.runtime.onStartup.addListener(reconcileSnoozeAlarms);
 chrome.runtime.onInstalled.addListener(reconcileSnoozeAlarms);
-chrome.runtime.onInstalled.addListener(injectClumperIntoOpenTabs);
 chrome.notifications.onClicked.addListener(handleWakeNotificationClicked);
 rearmKeyExpiryAlarm();

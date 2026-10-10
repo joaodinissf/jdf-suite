@@ -43,7 +43,7 @@ The mark is three tabs huddled into one group, on Chrome blue, over a group line
 - They were chosen for legibility at the popup's small sizes (10.5–12px), which is where Huddle lives, not for a subject association.
 - **Scale:**
   - popup body text 11–12px;
-  - a **compact 10.5px** step for the popup's small control labels (the Groups/Flat toggle, the mini and snooze buttons, Wake, Undo, Nap room, Settings) and for its mono counts and times (group counts, sleeping times, the footer's tab count and shortcut);
+  - a **compact 10.5px** step for the popup's small control labels (the Groups/Flat toggle, the mini and snooze buttons, Wake, Undo, Nap room, Open links as tabs, Settings) and for its mono counts and times (group counts, sleeping times, the footer's tab count and shortcuts);
   - section chips 10.5px/700;
   - brand 15px/700;
   - hotkey badges 8.5px mono, the only text below 10.5px.
@@ -55,9 +55,19 @@ The mark is three tabs huddled into one group, on Chrome blue, over a group line
 - **Buttons** are neutral surfaces (`--comp`) with a `--bd-control` edge. The Groups/Flat toggle's active side is a solid blue fill. "Organize with AI" is a button like any other. Under WCAG 1.4.12 text spacing, a label that no longer fits wraps onto a second line rather than pushing its hotkey badge out of the button.
 - **Hotkey badges** use `--kbd-bg`/`--kbd-tx` and show the bare key (`D`, or a row digit).
 - **Feedback** (the result line, Undo, "Copied!") floats as toasts over the bottom edge. The popup's Undo takes focus and has no time limit; the next press of another button dismisses it. The nap room's Undo notice behaves the same way, and has a close mark as well. While one shows, the page reserves its height at the bottom, so a toast never covers the footer or the picker's last row, and the same height is the page's scroll padding, so Tab to a control behind a toast (Settings, in the tallest states) scrolls it clear. Errors keep an opaque surface and wrap instead of truncating.
+- **The footer** is two rows, each laid out on its own: this window's count with **Open links as tabs** (hotkey K) and Settings, both quiet `.gear` text buttons with a drawn icon; then the all-windows count with the shortcuts as Chrome has bound them ("⌥⇧L for links · ⌥⇧U to open", or "Set a shortcut at chrome://extensions/shortcuts" when the open-links command is unbound). The shortcut line is one row tall: when a long all-windows count leaves room for one shortcut only, the other wraps out of sight, so the footer never grows past the popup's cap. Over a page Chrome keeps from extensions, Open links as tabs is `aria-disabled` (dimmed to 0.6, still focusable, the reason as its description and tooltip) and pressing it shows the reason as a toast. Otherwise it closes the popup, so the page's hint can be seen.
 - **The snooze picker is modal:** the rest of the popup steps aside while it's open, the header is `inert`, and opening it by hotkey puts focus on its unit chip.
 - **A running action** marks its button `aria-busy`, which dims it to 0.7 with a progress cursor until the reply.
 - **Icons** are drawn SVG at a 1.5px stroke in `currentColor`: settings sliders, "open" arrow, and a close mark for discarding a sleeping item and for dismissing the nap room's Undo notice (a dismissal in the nap voice, not a trash can). No emoji or Unicode glyphs stand in for icons. `⇧` and `⌘` appear only as key notation.
+
+## Open links as tabs: the page hint
+
+Starting Open links as tabs shows a hint in the page itself: "Huddle: hold `Z` and drag over links to open them as tabs. On until this page reloads.", or "Huddle is already on: …" when it was already on.
+- **Drawn like the popup's toasts:** fixed at the bottom centre, 24px up, a `--comp-hi` surface with a `--bd-hi` edge, 10px radius and `--shadow-float`, 13px text (a web page's scale, not the popup's), the key as a mono `--kbd-bg` badge. Light and dark follow the system. The token values are copied into the hint, since a web page can't load Huddle's stylesheet or fonts (no web_accessible_resources), so it uses the system UI and mono fonts.
+- **Out of the page's reach:** it lives in a shadow root, and its host's position is set inline with `!important`, so the page's CSS can't restyle or move it.
+- **Never in the way:** `pointer-events: none`, it never takes focus, and it is a polite `role="status"` (filled after it is inserted, so it is announced). It goes after 3 s, and Escape puts it away sooner without taking the key from the page. It fades and rises in 160ms only without `prefers-reduced-motion`.
+- The drag's own selection box and link highlights keep their orange: they mark what the drag will open, over any page's colours.
+- **Where it can't start,** the shortcut has no popup to answer in: Huddle's toolbar button shows a "!" badge in the warning orange (`--warn-edge`) for 5 s, with the reason as its tooltip.
 
 ## AI configuration
 
@@ -70,4 +80,4 @@ The mark is three tabs huddled into one group, on Chrome blue, over a group line
 
 ## Motion
 
-Minimal and functional: 120ms colour transitions on hover. `prefers-reduced-motion` removes them.
+Minimal and functional: 120ms colour transitions on hover, and the page hint's 160ms fade. `prefers-reduced-motion` removes them.

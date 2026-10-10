@@ -53,7 +53,8 @@
       color: var(--tx-dim);
     }
 
-    code {
+    code,
+    kbd {
       font-family: var(--mono);
       font-size: .92em;
       padding: 0 4px;
@@ -322,36 +323,7 @@
         <h1>Settings</h1>
       </div>
     </header>
-    <p class="subtitle">Link clumping follows your Chrome profile to every computer you sign in on. The AI key and model stay in this browser.</p>
-
-    <section>
-      <h2 class="section-head" data-group="cyan"><span class="group-chip">Link clumping</span><span class="group-line"></span></h2>
-      <p class="hint">Hold the activation key, then click-drag a rectangle over a page's links. On release, every link inside the rectangle opens as a new background tab next to the current one. A drag over more than 10 links asks first, and at most 25 open.</p>
-
-      <div class="card">
-        <div class="field">
-          <label for="clumping-enabled">Enable link clumping</label>
-          <input type="checkbox" id="clumping-enabled">
-        </div>
-
-        <div class="field">
-          <label for="clumping-key">Activation key</label>
-          <select id="clumping-key"></select>
-        </div>
-
-        <div class="field">
-          <label for="clumping-modifier">Modifier</label>
-          <select id="clumping-modifier">
-            <option value="">None</option>
-            <option value="shift">Shift</option>
-            <option value="ctrl">Ctrl</option>
-            <option value="alt">Alt</option>
-          </select>
-        </div>
-      </div>
-
-      <div id="clumping-status" class="status" role="status" aria-live="polite"></div>
-    </section>
+    <p class="subtitle">The AI key and model stay in this browser. Open links as tabs follows your Chrome profile to every computer you sign in on.</p>
 
     <section id="aiSection">
       <h2 class="section-head" data-group="grey"><span class="group-chip">Organize with AI</span><span class="group-line"></span></h2>
@@ -395,6 +367,30 @@
           <div id="ai-model-status" class="status" role="status" aria-live="polite"></div>
         </div>
       </form>
+    </section>
+
+    <section id="openLinksSection">
+      <h2 class="section-head" data-group="cyan"><span class="group-chip">Open links as tabs</span><span class="group-line"></span></h2>
+      <p class="hint" id="openLinksHelp">Start it on a page with <span id="openLinksShortcut">its shortcut</span> or the popup's Open links as tabs, then hold <kbd id="openLinksKey">Z</kbd> and drag. It stays on until the page reloads.</p>
+
+      <div class="card">
+        <div class="field">
+          <label for="clumping-key">Activation key</label>
+          <select id="clumping-key"></select>
+        </div>
+
+        <div class="field">
+          <label for="clumping-modifier">Modifier</label>
+          <select id="clumping-modifier">
+            <option value="">None</option>
+            <option value="shift">Shift</option>
+            <option value="ctrl">Ctrl</option>
+            <option value="alt">Alt</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="clumping-status" class="status" role="status" aria-live="polite"></div>
     </section>
   </main>
 

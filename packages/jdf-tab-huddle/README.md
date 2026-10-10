@@ -44,19 +44,19 @@ A powerful Chrome extension for organizing and managing tabs with advanced featu
 - Handles special URLs (chrome://, file://, data:, etc.)
 - Adaptive UI hides multi-window buttons when only one window exists
 
-### Link Clumping
-- Hold the activation key (default: **Z**) and click-drag a rectangle over any set of links
-- On release, every selected link opens in a new background tab, adjacent to the current one, in DOM order, with duplicates filtered out
+### Open links as tabs
+- **Start it on a page** with **⌥⇧L** (Alt+Shift+L elsewhere, Alt+Shift+K on ChromeOS; rebind at `chrome://extensions/shortcuts`) or the popup's **Open links as tabs** (hotkey **K**), which closes the popup. A hint at the bottom of the page says which key to hold. It stays on in that page until the page reloads or you leave it; starting it again only shows the hint again
+- Then hold the activation key (default: **Z**) and click-drag a rectangle over any set of links
+- On release, every selected link that is a web (http or https) address opens in a new background tab, adjacent to the current one, in DOM order, with duplicates filtered out
 - Up to 10 links open at once; for 11 to 25 the browser asks first, and above 25 it offers the first 25
 - Only your own key presses and drags count: a page's scripts can't make it open tabs
-- Runs on HTTP and HTTPS pages only, not on `file:`, `ftp:` or other pages. To be on by default it needs access to every website, which is accepted (audit L9)
-- Press Escape mid-drag to cancel without opening; switching tabs or windows, or clicking into a frame, also lets go of the key. Cmd+Z doesn't arm it
-- Keeps working in pages that were already open when Huddle is installed, updated or reloaded, without reloading them
-- Configure the key, optional modifier (Shift/Ctrl/Alt), or disable the feature via the **Settings** link in the popup — preferences sync across your Chrome signins
+- Huddle has no access to any website until you start it on one, and then only to that tab (Chrome's `activeTab`). On a page Chrome keeps from extensions (`chrome://` pages, other extensions, the Chrome Web Store, `file:` pages unless Huddle may read file URLs) the popup's button is dimmed and says so, and the shortcut shows a **!** on Huddle's toolbar button with the reason as its tooltip. On a PDF or a page with no links it says there are no links to open
+- Press Escape mid-drag to cancel without opening; switching tabs or windows, or clicking into a frame, also lets go of the key. Cmd+Z doesn't start a drag
+- Configure the key and an optional modifier (Shift/Ctrl/Alt) in **Settings → Open links as tabs**. They sync across your Chrome signins
 
 ## Acknowledgements
 
-The link-clumping feature is inspired by [linkclump](https://github.com/benblack86/linkclump) by Ben Black; reimplemented clean-room from a behavior spec, with no code from the upstream GPL project present in this MIT-licensed repository.
+Open links as tabs (the link clumper) is inspired by [linkclump](https://github.com/benblack86/linkclump) by Ben Black; reimplemented clean-room from a behavior spec, with no code from the upstream GPL project present in this MIT-licensed repository.
 
 ## Installation
 
@@ -71,8 +71,8 @@ The link-clumping feature is inspired by [linkclump](https://github.com/benblack
 ### For Developers
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (1009 tests)
-pnpm test:e2e          # Run E2E tests (130 tests, requires Chromium)
+pnpm test              # Run unit tests (1052 tests)
+pnpm test:e2e          # Run E2E tests (135 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
 pnpm run package       # Create extension zip
@@ -102,7 +102,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Split domains confirmation and result
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (1009 tests in 20 files)
+├── tests/                         # Vitest unit tests (1052 tests in 21 files)
 │   ├── setup.js                   # Chrome API mock, page scripts loaded, dispatch() to the worker
 │   ├── senders.js                 # The sender each caller (popup, pages, content script) arrives with
 │   ├── routing.test.js            # Every worker action, routed from its real caller; refused from a content script
@@ -110,7 +110,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.test.js              # Popup UI tests
 │   ├── snooze.test.js             # Snoozing and waking, through the worker's handlers
 │   └── confirmation-dialog.test.js
-├── e2e/                           # Playwright E2E tests (130 tests)
+├── e2e/                           # Playwright E2E tests (135 tests)
 │   ├── playwright.config.js       # Playwright configuration
 │   ├── fixtures/extension.js      # Custom fixture loading extension into Chromium
 │   ├── helpers/                   # Tab management, popup interaction, assertions
@@ -124,16 +124,16 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ## Testing
 
 ### Unit Tests (Vitest + jest-chrome shim)
-1009 tests across 20 files covering core logic with mocked Chrome APIs:
+1052 tests across 21 files covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report
 ```
 
-`tests/routing.test.js` sends every action the service worker handles through its real `onMessage` listener, from the page that sends it (with the sender Chrome gives that page), and checks the reply and the Chrome call the handler makes. The dispatcher is an if/else chain on `message.action`, except the popup's logging message, which is keyed on `message.type`, and its first branch, the sender check: only Huddle's own pages (a sender `url` under `chrome-extension://<id>/`) may send anything but `clumpOpenUrls`, the one action the link clumper's content script sends. The test reads every branch of that chain from the source, fails on a branch it does not understand, and checks its table against the actions (and the logging message) found there and against what each page's scripts send; it also sends every row's message from the content script and expects `forbidden`. So a new worker action needs a row there. The test's `dispatch(message, sender)` (in `tests/setup.js`) resolves with the worker's reply, and fails when an action that replies later does not keep the channel open by returning `true`.
+`tests/routing.test.js` sends every action the service worker handles through its real `onMessage` listener, from the page that sends it (with the sender Chrome gives that page), and checks the reply and the Chrome call the handler makes. The dispatcher is an if/else chain on `message.action`, except the popup's logging message, which is keyed on `message.type`, and its first branch, the sender check: only Huddle's own pages (a sender `url` under `chrome-extension://<id>/`) may send anything but `clumpOpenUrls`, the one action the link clumper's content script sends (the worker injects it into a page when Open links as tabs is started there). The test reads every branch of that chain from the source, fails on a branch it does not understand, and checks its table against the actions (and the logging message) found there and against what each page's scripts send; it also sends every row's message from the content script and expects `forbidden`. So a new worker action needs a row there. The test's `dispatch(message, sender)` (in `tests/setup.js`) resolves with the worker's reply, and fails when an action that replies later does not keep the channel open by returning `true`.
 
 ### E2E Tests (Playwright + real Chromium)
-130 tests across 20 spec files that load the extension into a real browser:
+135 tests across 20 spec files that load the extension into a real browser:
 
 | Spec File | Tests | Coverage |
 |---|---|---|
@@ -152,10 +152,10 @@ pnpm run test:coverage   # With coverage report
 | split-view-compact | 2 | Compact then Expand; pinned/group runs, existing splits, no tab moves (skips below Chrome 155) |
 | split-view-repair | 5 | Splits survive sort (both modes), merge and extract; a separated pair is not forced back together (skips below Chrome 155) |
 | keyboard | 4 | Popup hotkey dispatch |
-| link-clumping | 2 | A page's own events open nothing; a real drag opens 5 at once, and over 25 links asks and opens the first 25 |
+| open-links | 7 | On the shipped manifest, started through the toolbar button (DevTools `Extensions.triggerAction`): nothing opens until it is started; its hint; a real drag opens 5 at once, and over 25 links asks and opens the first 25; starting again only shows the hint; a reload ends it; a page's own events open nothing; `chrome://` is refused; no site access and no `windows` permission |
 | snooze | 13 | Tab/window/group snooze, wake, alarms, edge cases; the Group button follows the active tab |
 | ai-flow | 22 | Organize with AI against a fake OpenRouter: runs, Apply, errors, the line under Organize and `data_collection: deny`; Settings with no key contacts OpenRouter only once the model list is used; only the organize page's window is sent, Apply never takes a tab from another window or unpins a tab, and Escape and Cmd/Ctrl+Enter in the proposal's fields |
-| trust-boundary | 2 | From the content script in a web page: `storage.local` (the key) is refused and `storage.sync` still read; every action but `clumpOpenUrls` is forbidden and an organize port is closed |
+| trust-boundary | 2 | From the content script in a page where Open links as tabs was started: `storage.local` (the key) is refused and `storage.sync` still read; every action but `clumpOpenUrls` is forbidden and an organize port is closed |
 | settings | 1 | At 320 px the delete question keeps Delete and Keep side by side |
 
 ```bash
@@ -172,12 +172,11 @@ CI lives at the monorepo root: [`.github/workflows/jdf-tab-huddle-ci.yml`](../..
 
 ## Permissions
 
-- **`tabs`**: Read and manipulate browser tabs
-- **`windows`**: Manage browser windows
+- **`tabs`**: Read and manipulate browser tabs (managing windows needs no permission of its own)
 - **`tabGroups`**: Preserve and manage tab groups
 - **`storage`**: Save user preferences (Tab Groups vs Individual mode)
 - **`favicon`**: show each tab's icon on the organize page from Chrome's own favicon cache, so reviewing a proposal never fetches a site's icon (with its cookies); no install warning
-- **`scripting`** and site access to **`http://*/*`, `https://*/*`**: run link clumping in web pages, including pages already open when Huddle is installed, updated or reloaded (the content script alone already asks for every website, so this adds no install warning)
+- **`activeTab`** and **`scripting`**: start Open links as tabs in the page you are on, when you press its shortcut or the popup's button. Huddle gets that one tab until it navigates, and asks for no access to websites in general
 
 ## Browser Compatibility
 
