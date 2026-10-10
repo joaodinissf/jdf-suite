@@ -4,6 +4,13 @@
  * the pages' key check), so nothing reaches the real service; the spec also
  * maps openrouter.ai to nowhere as a safety net. Keys are test strings.
  *
+ * Huddle has no host permission for openrouter.ai, so Chrome applies CORS to
+ * these answers like any cross-origin fetch. The fake allows any origin, as
+ * the real API does. (Playwright answers the preflights itself, and adds an
+ * allow-origin header to a fulfilled answer that has none.) opts.cors false
+ * sends one naming another origin instead, which Chrome refuses as it refuses
+ * an answer with none (a proxy's or an outage page): every fetch then fails.
+ *
  * Also serves the http tabs the specs organize (https://<site>.huddle.test/).
  */
 
@@ -94,6 +101,10 @@ function jsonReply(status, obj) {
   return { status, headers: { 'content-type': 'application/json' }, body: JSON.stringify(obj) };
 }
 
+// OpenRouter's CORS answer, and one Chrome refuses an extension.
+const CORS = { 'access-control-allow-origin': '*' };
+const NO_CORS = { 'access-control-allow-origin': 'https://openrouter.ai' };
+
 // Groups the prompt's tabs by host, like a well-behaved model.
 function groupsFromPrompt(body) {
   const text = (body.messages || []).map((m) => m.content || '').join('\n');
@@ -122,8 +133,9 @@ function sse(content, modelId) {
  * Installs the fake on a context. Returns { requests, chats } where chats
  * are the chat bodies OpenRouter received (model, instructions), in order.
  * opts.slowMs: how long huddle-test/slow takes to answer.
+ * opts.cors: false sends every answer with CORS headers Chrome refuses.
  */
-export async function installFakeOpenRouter(context, { slowMs = 4000 } = {}) {
+export async function installFakeOpenRouter(context, { slowMs = 4000, cors = true } = {}) {
   const log = { requests: [], chats: [] };
 
   await context.route('https://*.huddle.test/**', (route) => {
@@ -170,6 +182,7 @@ export async function installFakeOpenRouter(context, { slowMs = 4000 } = {}) {
     } else {
       reply = jsonReply(404, { error: { code: 404, message: `no fake for ${path}` } });
     }
+    reply.headers = { ...reply.headers, ...(cors ? CORS : NO_CORS) };
     try {
       await route.fulfill(reply);
     } catch (_e) {
