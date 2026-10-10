@@ -3,7 +3,7 @@
   "name": "Huddle",
   "short_name": "Huddle",
   "version": "0.8.0",
-  "description": "Sort and organize tabs by URL and domain",
+  "description": "Organize your browser tabs: sort, group, de-duplicate, snooze, and open links as tabs. Optional AI suggestions for groups.",
   "minimum_chrome_version": "147",
   "permissions": [
     "tabs",
