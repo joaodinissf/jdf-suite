@@ -156,7 +156,23 @@ pt = ["hã", "tipo"]         # adds Portuguese
 
 ## Microphone
 
-<!-- 05 -->
+```sh
+jdf-stt --mic                    # Enter stops and transcribes; Esc or Ctrl+C cancels
+jdf-stt --mic --until-silence    # also stops by itself after a 1.5 s pause
+jdf-stt --mic --until-silence --silence-seconds 3 --keep-audio ~/note.wav
+```
+
+jdf-stt records the default input device with ffmpeg (`-f avfoundation -i :default`) into a
+temporary 16 kHz mono wav, then transcribes it like a file. The recording is deleted afterwards
+unless you pass `--keep-audio PATH`. The first time, macOS asks whether your terminal may use
+the microphone.
+
+- In a terminal: Enter stops, Esc or Ctrl+C cancels (exit code 130, nothing kept).
+- From another program (the menu-bar app, a script): with stdin a pipe, a newline stops; closing
+  stdin (EOF), SIGINT or SIGTERM cancels. A program that runs `jdf-stt --mic --until-silence`
+  must keep stdin open (or write the newline itself), since EOF counts as cancel.
+- `--until-silence` uses ffmpeg's `silencedetect` (below -35 dB for `--silence-seconds`); silence
+  before you start speaking does not count.
 
 ## Privacy
 

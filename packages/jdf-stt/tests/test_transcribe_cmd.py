@@ -1,8 +1,6 @@
-import dataclasses
-
 import pytest
 
-from jdf_stt import mic, registry
+from jdf_stt import mic
 
 
 @pytest.fixture
@@ -108,8 +106,7 @@ def test_mic_recording_is_transcribed_and_deleted(cli, setup, tmp_path, monkeypa
         return recording
 
     monkeypatch.setattr(mic, "record", record)
-    monkeypatch.setattr("jdf_stt.registry.options_from_args", _with_mic(monkeypatch))
-    result = cli("-m", model)
+    result = cli("--mic", "-m", model)
     assert result.out == "Hello from the fake whisper.\n"
     assert seen and seen[0].mic
     assert not recording.exists()
@@ -117,24 +114,16 @@ def test_mic_recording_is_transcribed_and_deleted(cli, setup, tmp_path, monkeypa
 
 def test_mic_recording_kept_when_asked(cli, setup, tmp_path, monkeypatch):
     _, model, _ = setup
-    recording = tmp_path / "mic.wav"
-    recording.write_bytes(b"wav")
     keep = tmp_path / "kept.wav"
-    monkeypatch.setattr(mic, "record", lambda options: recording)
-    monkeypatch.setattr("jdf_stt.registry.options_from_args", _with_mic(monkeypatch, keep_audio=str(keep)))
-    result = cli("-m", model)
+
+    def record(options):  # record() writes straight to --keep-audio
+        keep.write_bytes(b"wav")
+        return keep
+
+    monkeypatch.setattr(mic, "record", record)
+    result = cli("--mic", "--keep-audio", keep, "-m", model)
     assert result.code == 0
-    assert keep.read_bytes() == b"wav" and not recording.exists()
-
-
-def _with_mic(monkeypatch, **extra):
-    """Stand-in for PR 05's --mic option: options_from_args with mic=True."""
-    real = registry.options_from_args
-
-    def options_from_args(ns, cfg=None):
-        return dataclasses.replace(real(ns, cfg), mic=True, **extra)
-
-    return options_from_args
+    assert keep.read_bytes() == b"wav"
 
 
 def test_srt_and_json_into_a_folder_with_the_language_on_stderr(cli, setup, tmp_path, monkeypatch):
