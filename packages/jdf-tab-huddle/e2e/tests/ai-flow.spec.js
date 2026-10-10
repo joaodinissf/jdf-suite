@@ -14,7 +14,7 @@ test.use({ extraArgs: ['--host-resolver-rules=MAP openrouter.ai ~NOTFOUND'] });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function seed(sw, context, { key = GOOD_KEY, model = 'anthropic/claude-haiku-4.5' } = {}) {
+async function seed(sw, context, { key = GOOD_KEY, model = 'anthropic/claude-haiku-5.5' } = {}) {
   await resetBrowserState(sw, context);
   await createTabs(sw, siteUrls());
   await sw.evaluate(async ({ key, model }) => {
@@ -75,8 +75,8 @@ test.describe('Organize with AI', () => {
     await seed(sw, context);
     const page = await openOrganize(context, extensionId);
 
-    await expect(page.locator('#modelName')).toHaveText('Claude Haiku 4.5');
-    await expect(page.locator('#sendNote')).toHaveText('Organize sends this window\'s tab titles and addresses to OpenRouter, which passes them to a provider it picks for Claude Haiku 4.5.');
+    await expect(page.locator('#modelName')).toHaveText('Claude Haiku 5.5');
+    await expect(page.locator('#sendNote')).toHaveText('Organize sends this window\'s tab titles and addresses to OpenRouter, which passes them to a provider it picks for Claude Haiku 5.5.');
     await page.fill('#userInstructions', 'one group per site');
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter');
     await expect(groupNames(page)).toHaveCount(3);
@@ -154,14 +154,14 @@ test.describe('Organize with AI', () => {
     await page.keyboard.type('gpt-6');
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('Enter');
-    await expect(page.locator('#modelNote')).toHaveText('This proposal came from Claude Haiku 4.5. Run again to use GPT-6 Luna.');
+    await expect(page.locator('#modelNote')).toHaveText('This proposal came from Claude Haiku 5.5. Run again to use GPT-6 Luna.');
     await expect(page.locator('#runAgainButton')).toBeFocused();
     await expect(page.locator('#runAgainButton')).toBeInViewport();
     await expect(page.locator('#proposalKeys')).toContainText('run again');
 
     await page.keyboard.press(cmdEnter);
     await expect(page.locator('#content .proposal-head')).toContainText('GPT-6 Luna');
-    expect(fake.chats.map((c) => c.model)).toEqual(['anthropic/claude-haiku-4.5', 'openai/gpt-6-luna']);
+    expect(fake.chats.map((c) => c.model)).toEqual(['anthropic/claude-haiku-5.5', 'openai/gpt-6-luna']);
     expect(await sw.evaluate(async () => (await chrome.tabGroups.query({})).length)).toBe(0);
     // The proposal now matches the model, so Cmd+Enter applies again.
     await expect(page.locator('#proposalKeys')).toContainText('apply');
@@ -323,15 +323,15 @@ test.describe('Organize with AI', () => {
 
     // Run again with a fast model: its proposal, and only its output.
     await page.click('#changeModel');
-    await page.selectOption('#runSelect', 'anthropic/claude-haiku-4.5');
+    await page.selectOption('#runSelect', 'anthropic/claude-haiku-5.5');
     await page.keyboard.press('Enter');
     await expect(page.locator('#modelPanel')).toBeHidden();
     await page.click('#startOrganize');
     await expect(groupNames(page)).toHaveCount(3);
-    expect(fake.chats.at(-1)).toMatchObject({ model: 'anthropic/claude-haiku-4.5' });
+    expect(fake.chats.at(-1)).toMatchObject({ model: 'anthropic/claude-haiku-5.5' });
     expect(fake.chats.at(-1).prompt).toContain('one group per site');
     await sleep(3500); // past the old run's answer
-    await expect(page.locator('.proposal-head')).toContainText('Claude Haiku 4.5');
+    await expect(page.locator('.proposal-head')).toContainText('Claude Haiku 5.5');
     const raw = await page.locator('#rawResponsePre').textContent();
     expect(raw.match(/"groups"/g)).toHaveLength(1);
   });
@@ -348,7 +348,7 @@ test.describe('Organize with AI', () => {
     expect(ids.sort()).toEqual([...USABLE_LUNA_IDS].sort());
     await expect(page.locator('#runSelect')).not.toContainText('(batch)');
     // The current model (Haiku) is not in the list, and the bar still names it.
-    await expect(page.locator('#modelName')).toHaveText('Claude Haiku 4.5');
+    await expect(page.locator('#modelName')).toHaveText('Claude Haiku 5.5');
 
     await page.fill('#runFilter', 'zzzz');
     await expect(page.locator('.models-empty')).toHaveText('No models match "zzzz".');
@@ -453,11 +453,48 @@ test.describe('Organize with AI', () => {
     await seed(sw, context, { model: 'qwen/qwen3.5-flash-20260224' });
     const page = await openOrganize(context, extensionId);
 
+    await expect(page.locator('#modelName')).toHaveText('Claude Haiku 5.5');
+    await expect(page.locator('#modelNote')).toHaveText('Your default Qwen 3.5 Flash is no longer on OpenRouter; using Claude Haiku 5.5.');
+    await page.click('#startOrganize');
+    await expect(groupNames(page)).toHaveCount(3);
+    expect(fake.chats.map((c) => c.model)).toEqual(['anthropic/claude-haiku-5.5']);
+  });
+
+  test('with no saved default, Claude Haiku 5.5 organizes with the strict schema and nothing it does not take', async ({ context, sw, extensionId }) => {
+    const fake = await installFakeOpenRouter(context);
+    await seed(sw, context, { model: null });
+    const page = await openOrganize(context, extensionId);
+
+    await expect(page.locator('#modelName')).toHaveText('Claude Haiku 5.5');
+    await expect(page.locator('#modelNote')).toHaveText('');
+    await page.click('#startOrganize');
+    await expect(groupNames(page)).toHaveCount(3);
+    await expect(page.locator('.proposal-head')).toContainText('Claude Haiku 5.5');
+    expect(fake.chats).toHaveLength(1);
+    expect(fake.chats[0]).toMatchObject({
+      model: 'anthropic/claude-haiku-5.5', responseFormat: 'json_schema', requireParameters: true, dataCollection: 'deny',
+    });
+    expect(fake.chats[0].params).toContain('max_tokens');
+    expect(fake.chats[0].params).not.toContain('temperature');
+  });
+
+  test('a default saved as Claude Haiku 4.5 is kept: it organizes, and Settings still shows it', async ({ context, sw, extensionId }) => {
+    const fake = await installFakeOpenRouter(context);
+    await seed(sw, context, { model: 'anthropic/claude-haiku-4.5' });
+    const page = await openOrganize(context, extensionId);
+
     await expect(page.locator('#modelName')).toHaveText('Claude Haiku 4.5');
-    await expect(page.locator('#modelNote')).toHaveText('Your default Qwen 3.5 Flash is no longer on OpenRouter; using Claude Haiku 4.5.');
+    await expect(page.locator('#modelNote')).toHaveText('');
     await page.click('#startOrganize');
     await expect(groupNames(page)).toHaveCount(3);
     expect(fake.chats.map((c) => c.model)).toEqual(['anthropic/claude-haiku-4.5']);
+
+    const settings = await context.newPage();
+    await settings.goto(`chrome-extension://${extensionId}/options.html`);
+    await expect(settings.locator('#settingsSelect')).toHaveValue('anthropic/claude-haiku-4.5');
+    await expect(settings.locator('#aiDefaultNote')).toBeHidden();
+    const stored = await sw.evaluate(async () => (await chrome.storage.local.get('aiConfig')).aiConfig.model);
+    expect(stored).toBe('anthropic/claude-haiku-4.5');
   });
 
   test('Settings with no key contacts OpenRouter only once the model list is used', async ({ context, sw, extensionId }) => {

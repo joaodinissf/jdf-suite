@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Unit Tests**: 1052 tests across 21 Vitest files (mocked Chrome APIs)
-- **E2E Tests**: 135 tests across 20 Playwright spec files (real Chromium browser)
-- **Total**: 1187 tests
+- **Unit Tests**: 1055 tests across 21 Vitest files (mocked Chrome APIs)
+- **E2E Tests**: 137 tests across 20 Playwright spec files (real Chromium browser)
+- **Total**: 1192 tests
 
 ## Unit Tests (Vitest)
 
@@ -29,7 +29,7 @@
 | ai-config.test.js | 46 | Key checks, key form and model picker shared by Settings and the organize page; a key check that never answers gives up after 15 s; a confirmed unlisted default is kept |
 | ai-models.test.js | 49 | Key expiry, model catalog helpers (a catalog cut off by the timeout reads as no answer), JSON schema |
 | ai-service.test.js | 41 | Key encoding and expiry, query stripping (`data:` keeps its type, `blob:` its origin, `file:` its file name), the prompt (titles capped at 200, addresses at 300, a `data:`, `blob:` or `file:` tab's title sent as its cleaned address), reading the model's answer (null answers and groups) |
-| openrouter-requests.test.js | 48 | What is asked of OpenRouter, model by model (the output cap as `max_tokens` or `max_completion_tokens`, and its size, and `data_collection: deny` unless Settings turned it off), and its refusals (one for the data policy names the setting and the account's OpenRouter privacy settings); a key save keeps a confirmed unlisted default |
+| openrouter-requests.test.js | 51 | What is asked of OpenRouter, model by model (Claude Haiku 5.5, the default, gets the strict schema, the cap and no temperature) (the output cap as `max_tokens` or `max_completion_tokens`, and its size, and `data_collection: deny` unless Settings turned it off), and its refusals (one for the data policy names the setting and the account's OpenRouter privacy settings); a key save keeps a confirmed unlisted default, and a default saved as Haiku 4.5 is kept through a run, a key save and a model save |
 | ai-runtime.test.js | 34 | The OpenRouter client: error statuses (mid-stream ones keep their kind), streaming and its edge cases, the idle timer (keep-alives count), JSON fallback |
 | ai-handlers.test.js | 44 | Worker AI handlers: runs, Apply, window scoping, pinned tabs; a content script's port is closed |
 | ai-proposal.test.js | 76 | The organize page; the line under Organize saying what it sends; tab icons from Chrome's favicon cache |
@@ -63,7 +63,7 @@ Real browser tests that load the extension into Chromium and verify end-to-end b
 | open-links.spec.js | 7 | On the shipped manifest, started through Huddle's toolbar button (DevTools `Extensions.triggerAction`, with `--enable-unsafe-extension-debugging`): nothing opens until it is started; the hint; a real drag opens 5 at once, and over 25 links asks (answered through `page.on('dialog')`) and opens the first 25; starting again only shows the hint; a reload ends it; a page's own events open nothing; `chrome://` is refused; no site access and no `windows` permission |
 | confirmation-dialog.spec.js | 5 | Window count display, confirm/cancel flow |
 | snooze.spec.js | 13 | Snooze and wake; the Group button follows the active tab |
-| ai-flow.spec.js | 22 | Organize with AI against a fake OpenRouter (the line under Organize, `data_collection: deny` sent); Settings with no key contacts OpenRouter only once the model list is used; two-window cases for what is sent and what Apply moves; a tab pinned before Apply stays pinned; Escape and Cmd/Ctrl+Enter in the proposal's fields |
+| ai-flow.spec.js | 24 | Organize with AI against a fake OpenRouter (the line under Organize, `data_collection: deny` sent); Claude Haiku 5.5 as the default, and a default saved as Haiku 4.5 kept in the organize page and Settings; Settings with no key contacts OpenRouter only once the model list is used; two-window cases for what is sent and what Apply moves; a tab pinned before Apply stays pinned; Escape and Cmd/Ctrl+Enter in the proposal's fields |
 | trust-boundary.spec.js | 2 | The content script in a page where Open links as tabs was started: no `storage.local` (the key), `storage.sync` still read, only `clumpOpenUrls` accepted, no organize port |
 | settings.spec.js | 1 | At 320 px the delete question keeps Delete and Keep side by side |
 

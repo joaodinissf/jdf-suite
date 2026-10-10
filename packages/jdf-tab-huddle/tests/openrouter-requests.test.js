@@ -10,14 +10,19 @@ import { organizeSender } from './senders.js';
 // supported_parameters as OpenRouter's live catalog lists them (Sept 2026).
 const LUNA_PARAMS = ['include_reasoning', 'max_completion_tokens', 'max_tokens', 'reasoning',
   'reasoning_effort', 'response_format', 'seed', 'structured_outputs', 'tool_choice', 'tools'];
+// Claude Haiku 5.5 (Oct 2026): no temperature, like Luna.
 const HAIKU_PARAMS = ['include_reasoning', 'max_completion_tokens', 'max_tokens', 'reasoning',
+  'reasoning_effort', 'response_format', 'stop', 'structured_outputs', 'tool_choice', 'tools', 'verbosity'];
+const HAIKU_45_PARAMS = ['include_reasoning', 'max_completion_tokens', 'max_tokens', 'reasoning',
   'response_format', 'stop', 'structured_outputs', 'temperature', 'tool_choice', 'tools', 'top_k', 'top_p'];
 const JSON_ONLY_PARAMS = ['response_format', 'temperature'];
 // GPT-5.2 Codex and five other picker models cap output only this way.
 const CODEX_PARAMS = ['include_reasoning', 'max_completion_tokens', 'reasoning', 'reasoning_effort',
   'response_format', 'seed', 'structured_outputs', 'tool_choice', 'tools'];
 
-const HAIKU = 'anthropic/claude-haiku-4.5';
+const HAIKU = 'anthropic/claude-haiku-5.5';
+// The default before Haiku 5.5: no longer recommended, still on OpenRouter.
+const HAIKU_45 = 'anthropic/claude-haiku-4.5';
 const DEEPSEEK = 'deepseek/deepseek-v4.1-flash';
 const GEMINI = 'google/gemini-3.1-flash-lite';
 const LUNA = 'openai/gpt-6-luna';
@@ -46,7 +51,8 @@ const bodyOf = (i) => JSON.parse(global.fetch.mock.calls[i][1].body);
 describe('the request follows the model\'s catalog capabilities', () => {
   test.each([
     ['GPT-6 Luna (no temperature)', LUNA_PARAMS],
-    ['Claude Haiku 4.5', HAIKU_PARAMS],
+    ['Claude Haiku 5.5', HAIKU_PARAMS],
+    ['Claude Haiku 4.5 (lists temperature)', HAIKU_45_PARAMS],
     ['a JSON-only model', JSON_ONLY_PARAMS],
     ['a custom id the catalog does not know', null],
   ])('%s: never a temperature', (_label, params) => {
@@ -64,13 +70,14 @@ describe('the request follows the model\'s catalog capabilities', () => {
     expect(askedParameters(body).filter((p) => !LUNA_PARAMS.includes(p))).toEqual([]);
   });
 
-  test('Claude Haiku 4.5: the exact schema, require_parameters and max_tokens', () => {
+  test('Claude Haiku 5.5: the exact schema, require_parameters and max_tokens', () => {
     const body = buildOpenRouterRequestBody(HAIKU, [], { params: HAIKU_PARAMS, jsonSchema: schema, maxTokens: 2000 });
     expect(body).toMatchObject({
       response_format: { type: 'json_schema', json_schema: schema },
       provider: { require_parameters: true },
       max_tokens: 2000,
     });
+    expect(askedParameters(body).filter((p) => !HAIKU_PARAMS.includes(p))).toEqual([]);
   });
 
   test('a model with response_format but no structured outputs: json_object, any provider', () => {
@@ -312,9 +319,10 @@ describe('the error says what OpenRouter refused', () => {
 
 describe('recommended models', () => {
   // DeepSeek V4.1 Flash left the list: its only provider trains on prompts.
-  test('Claude Haiku 4.5 (the default), Gemini 3.1 Flash Lite, GPT-6 Luna', () => {
+  // Haiku 4.5 left it for Haiku 5.5, about 7x cheaper per run.
+  test('Claude Haiku 5.5 (the default), Gemini 3.1 Flash Lite, GPT-6 Luna', () => {
     expect(AI_MODELS.map((m) => [m.id, m.name])).toEqual([
-      [HAIKU, 'Claude Haiku 4.5'],
+      [HAIKU, 'Claude Haiku 5.5'],
       [GEMINI, 'Gemini 3.1 Flash Lite'],
       [LUNA, 'GPT-6 Luna'],
     ]);
@@ -323,7 +331,7 @@ describe('recommended models', () => {
 
   test('offline prices are the catalog\'s', () => {
     expect(AI_MODELS.map((m) => formatModelCost(m.pricing))).toEqual([
-      '$1.00 in · $5.00 out per M',
+      '$0.10 in · $0.50 out per M',
       '$0.25 in · $1.50 out per M',
       '$0.10 in · $0.50 out per M',
     ]);
@@ -332,7 +340,7 @@ describe('recommended models', () => {
   test('with a catalog, a recommended model it lacks is not offered', () => {
     const merged = mergeModelsForPicker([
       { id: LUNA, name: 'GPT-6 Luna', cost: 'x' },
-      { id: HAIKU, name: 'Claude Haiku 4.5', cost: 'x' },
+      { id: HAIKU, name: 'Claude Haiku 5.5', cost: 'x' },
       { id: 'other/m', name: 'Other', cost: 'x' },
     ]);
     expect(merged.filter((m) => m.curated).map((m) => m.id)).toEqual([HAIKU, LUNA]);
@@ -433,7 +441,7 @@ describe('a run builds its request from the cached catalog', () => {
 
   beforeEach(() => {
     aiConfig = { key: btoa('sk-or-test'), expiresAt: null, model: LUNA };
-    cacheModels = [entry(HAIKU, HAIKU_PARAMS), entry(DEEPSEEK, HAIKU_PARAMS), entry(LUNA, LUNA_PARAMS)];
+    cacheModels = [entry(HAIKU, HAIKU_PARAMS), entry(HAIKU_45, HAIKU_45_PARAMS), entry(DEEPSEEK, HAIKU_45_PARAMS), entry(LUNA, LUNA_PARAMS)];
     chrome.storage.local.get.mockImplementation(async (keys) => {
       const list = Array.isArray(keys) ? keys : [keys];
       const out = {};
@@ -464,6 +472,38 @@ describe('a run builds its request from the cached catalog', () => {
     const port = await run();
     expect(bodyOf(0).model).toBe(HAIKU);
     expect(port.posted().at(-1)).toMatchObject({ type: 'ai-proposal', model: HAIKU });
+  });
+
+  test('with no saved default, Claude Haiku 5.5 runs with the strict schema, capped, no temperature', async () => {
+    aiConfig = { key: btoa('sk-or-test'), expiresAt: null };
+    const port = await run();
+    expect(port.posted().at(-1)).toMatchObject({ type: 'ai-proposal', model: HAIKU, modelName: 'Claude Haiku 5.5' });
+    const body = bodyOf(0);
+    expect(body.model).toBe(HAIKU);
+    expect(body.max_tokens).toBe(maxTokensForTabs(TABS.length));
+    expect(body.response_format.type).toBe('json_schema');
+    expect(body.response_format.json_schema.strict).toBe(true);
+    expect(body.provider).toEqual({ require_parameters: true, data_collection: 'deny' });
+    expect(body).not.toHaveProperty('temperature');
+  });
+
+  // Haiku 4.5 is no longer recommended, but a default saved before stays the
+  // user's: it is not migrated, and reads, runs and saves as it is.
+  test('a saved Claude Haiku 4.5 default is kept through a run, a key save and a model save', async () => {
+    expect(AI_MODELS.map((m) => m.id)).not.toContain(HAIKU_45);
+    aiConfig = { ...aiConfig, model: HAIKU_45, unlistedModel: null };
+    chrome.storage.local.set.mockImplementation(async (items) => { if (items.aiConfig) aiConfig = items.aiConfig; });
+    expect(resolveDefaultModel(aiConfig, new Set(cacheModels.map((m) => m.id))))
+      .toEqual({ model: HAIKU_45, missing: null, mine: true });
+    const port = await run();
+    expect(bodyOf(0).model).toBe(HAIKU_45);
+    expect(port.posted().at(-1)).toMatchObject({ type: 'ai-proposal', model: HAIKU_45 });
+    // The organize page's key form sends no model.
+    await saveAiConfig({ key: 'sk-or-new', expiryDuration: null });
+    expect(aiConfig.model).toBe(HAIKU_45);
+    // Settings saves it again without the unlisted confirmation.
+    await expect(saveAiDefaultModel(HAIKU_45, { denyDataCollection: true })).resolves.toMatchObject({ model: HAIKU_45, unlistedModel: null });
+    expect(aiConfig.model).toBe(HAIKU_45);
   });
 
   test('a model picked for the run is used as it is', async () => {
