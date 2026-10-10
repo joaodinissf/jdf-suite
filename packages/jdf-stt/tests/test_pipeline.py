@@ -93,3 +93,13 @@ def test_unknown_engine_fails_before_any_work(events):
     with pytest.raises(SttError, match="unknown engine"):
         pipeline.transcribe_file("a.wav", TranscribeOptions(engine="nope"))
     assert events == []
+
+
+def test_option_checks_run_before_any_work(events, fake_engine):
+    @registry.option_check
+    def refuse(o):
+        raise SttError("bad options")
+
+    with pytest.raises(SttError, match="bad options"):
+        pipeline.transcribe_file("a.wav", options())
+    assert events == [] and fake_engine.calls == []

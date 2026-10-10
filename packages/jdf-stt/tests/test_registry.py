@@ -120,3 +120,12 @@ def test_config_fillers_extend_the_defaults():
     o = registry.options_from_args(ns(), {"fillers": {"pt": ["tipo", "pronto"]}})
     assert o.fillers["pt"] == ("tipo", "pronto")
     assert o.fillers["en"] == TranscribeOptions().fillers["en"]
+
+
+def test_option_checks_run_in_registration_order(clean_registry):
+    registry._option_checks.clear()
+    seen = []
+    for name in ("a", "b"):
+        assert callable(registry.option_check(lambda o, name=name: seen.append((name, o))))
+    registry.check_options("OPTS")
+    assert seen == [("a", "OPTS"), ("b", "OPTS")]
