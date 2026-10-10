@@ -55,9 +55,9 @@ Heavy-tab power users: people who keep dozens to hundreds of tabs across several
 ## Evidence on Hand
 
 - Feature documentation: `README.md` and the specs in `specs/` (tab snoozing, extract to tab groups, reconciler-based updates, Split View Compact).
-- 1058 unit tests and 139 Playwright e2e tests that describe behaviour ([docs/TESTS.MD](docs/TESTS.MD)).
+- 1062 unit tests and 139 Playwright e2e tests that describe behaviour ([docs/TESTS.MD](docs/TESTS.MD)).
 - The design review of 2026-09-27 (Impeccable audit and critique) is the baseline for the redesign.
-- There are no users outside the maintainer yet, and no testimonials, usage data or store listing. Future work must not invent any.
+- There are no users outside the maintainer yet, and no testimonials or usage data. The store listing for v1.0.0 is drafted in [`store/`](store/README.md), unpublished; its screenshots use invented tabs on `example.com` addresses. Future work must not invent users, testimonials or usage.
 
 ## Product Principles
 

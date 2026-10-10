@@ -36,7 +36,7 @@ The steps:
 4. Writes the notes with the tooling's `scripts/release-notes.sh`, run in the tagged tree: that version's README Version History entry, then the package's commits since the previous `jdf-tab-huddle-v*` tag.
 5. Creates or updates the GitHub Release with the zip attached. The Release is marked "Latest" only when its tag is the highest huddle version. After a backfill, the workflow sets "Latest" back on the highest version's Release, because GitHub can move "Latest" to a newly created Release even when it is asked not to.
 
-Publishing to the Chrome Web Store is not automated; it's deferred until v1.0.0 ([#7](https://github.com/joaodinissf/jdf-suite/issues/7)).
+Publishing to the Chrome Web Store is not automated ([#7](https://github.com/joaodinissf/jdf-suite/issues/7)). From v1.0.0 the release zip is uploaded by hand; [`store/README.md`](../store/README.md) has the listing, the Privacy tab's answers and the steps in the dashboard.
 
 ## Cutting a release
 
