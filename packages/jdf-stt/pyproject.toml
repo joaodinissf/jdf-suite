@@ -1,0 +1,91 @@
+[project]
+name = "jdf-stt"
+version = "0.1.0"
+description = "Private, local dictation and transcription for the Mac, built on whisper.cpp. Nothing leaves your machine."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [{ name = "João Dinis Ferreira", email = "hello@joaof.eu" }]
+keywords = ["speech-to-text", "transcription", "dictation", "whisper", "whisper.cpp", "offline", "privacy"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: End Users/Desktop",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+# Zero runtime dependencies: whisper-cli, ffmpeg and any local LLM run as
+# subprocesses or over localhost. Keep it that way.
+dependencies = []
+
+[project.optional-dependencies]
+# The official MCP SDK, only for `jdf-stt mcp`.
+mcp = ["mcp>=1.29"]
+
+[project.urls]
+Homepage = "https://github.com/joaodinissf/jdf-suite/tree/main/packages/jdf-stt"
+Repository = "https://github.com/joaodinissf/jdf-suite"
+Documentation = "https://github.com/joaodinissf/jdf-suite/tree/main/packages/jdf-stt#readme"
+
+[project.scripts]
+jdf-stt = "jdf_stt.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=9", "ruff>=0.15"]
+
+[build-system]
+requires = ["uv_build>=0.11.6,<0.13"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+# The fakes are extensionless Python executables; lint them too.
+extend-include = ["tests/fakes/*"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # Pyflakes
+  "W",   # pycodestyle warnings
+  "I",   # isort
+  "N",   # pep8-naming
+  "UP",  # pyupgrade
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+  "SIM", # flake8-simplify
+  "PLC", # Pylint Convention
+  "PLE", # Pylint Error
+  "PLR", # Pylint Refactor
+  "PLW", # Pylint Warning
+]
+ignore = [
+  "PLR0913", # Too many arguments - sometimes necessary
+  "PLR2004", # Magic value comparison - sometimes clearer
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The fakes run under whatever python3 is first on PATH (possibly 3.9), so they
+# keep pre-3.10 syntax, and their names have dashes.
+"tests/fakes/*" = ["N999", "UP"]
+
+[tool.ruff.lint.pylint]
+max-args = 8
+max-branches = 15
+max-returns = 6
+max-statements = 50
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers"]
+markers = [
+  "real: needs whisper-cli, ffmpeg and a real model; runs only with JDF_STT_REAL=1",
+  "ffmpeg: needs the real ffmpeg (lavfi test sources, never a microphone)",
+  "localhost: may open sockets to 127.0.0.1 / ::1 (fake servers); everything else stays blocked",
+]
