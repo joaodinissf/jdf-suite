@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Unit Tests**: 1009 tests across 20 Vitest files (mocked Chrome APIs)
-- **E2E Tests**: 130 tests across 20 Playwright spec files (real Chromium browser)
-- **Total**: 1139 tests
+- **Unit Tests**: 1052 tests across 21 Vitest files (mocked Chrome APIs)
+- **E2E Tests**: 135 tests across 20 Playwright spec files (real Chromium browser)
+- **Total**: 1187 tests
 
 ## Unit Tests (Vitest)
 
@@ -12,18 +12,19 @@
 
 | Suite | Tests | Coverage |
 |---|---|---|
-| routing.test.js | 128 | Every worker action routed from its real caller; the table checked against the dispatcher's if/else chain and each page's scripts; which tabs each Deduplicate closes |
+| routing.test.js | 132 | Every worker action routed from its real caller; the table checked against the dispatcher's if/else chain and each page's scripts; which tabs each Deduplicate closes |
 | background.test.js | 53 | Worker logic: sort (Groups mode's exact moves), dedupe (a loading tab by its pendingUrl), merge into the active tab's window, split domains, results |
 | snooze.test.js | 96 | Snoozing and waking: records, custom times, window groups, alarms, failed reads, a wake cut short and done again by a new worker, the window a wake opens in; clicking a wake notification focuses its window and tab, and any other notification is only cleared |
 | snooze-ui.test.js | 45 | Snooze controls in the popup and the nap room, including the waking state and failed reads; keyboard focus after Wake, Discard, Undo and a re-render (popup and nap room), Undo with no time limit, the picker's focus and inert header |
 | nap-room.test.js | 27 | The nap room page: overdue tabs counted and dated, group rows, Wake now's name, the main landmark |
 | popup.test.js | 74 | Popup UI and message passing |
 | popup-feedback.test.js | 24 | Popup result and error messages; a running action's button is `aria-busy`; keyboard focus scrolls clear of a toast |
-| keyboard.test.js | 29 | Popup hotkeys, including I for Settings in the real popup |
+| keyboard.test.js | 29 | Popup hotkeys, including K for Open links as tabs and I for Settings |
 | split-view.test.js | 46 | Split view compact, expand and repair; sort order (a loading tab by its pendingUrl) |
 | confirmation-dialog.test.js | 28 | Split domains dialog |
-| content-clumper.test.js | 60 | Link clumping content script: only trusted events, the confirm and the 25 cap, letting go on blur and hidden tabs, Cmd+Z, an orphaned copy after an update; the worker's top-frame, http(s) and 25-link checks; it runs on http(s) pages only, and an install, update or reload puts it into the http(s) tabs already open |
-| options.test.js | 31 | Settings page |
+| content-clumper.test.js | 58 | The link clumper (Open links as tabs): only trusted events, the confirm and the 25 cap, letting go on blur and hidden tabs, Cmd+Z, an orphaned copy after an update; the worker's top-frame, http(s) and 25-link checks |
+| open-links.test.js | 37 | Open links as tabs: the shipped manifest (activeTab and scripting, no content script, no site access, no `windows`, the open-links command and its ChromeOS key); the shortcut starts it in its own tab, and on a page Chrome won't script (each of Chrome's refusals) or a PDF the toolbar badge gives the reason, then clears, each tab on its own timer; starting it twice shows the hint again and loads one copy; the popup's footer action (K) sends its tab and closes, is `aria-disabled` with the reason over restricted pages, and shows the bound shortcuts; the page hint (shadow root, polite status, no clicks or focus, the configured key, 3 s, Escape, no motion under reduced motion) |
+| options.test.js | 35 | Settings page: the key and modifier; Open links as tabs comes last, has no on/off setting, and its help line names the bound shortcut and the key |
 | options-ai.test.js | 30 | Settings: the AI section; the model catalog loads only with a key on file or once the list is used (the recommended models show until then); the "Don't use providers that train on my prompts" checkbox; Enter in the model picker saves; while the key is checked, Save keeps focus and says so; errors describe their fields |
 | ai-config.test.js | 46 | Key checks, key form and model picker shared by Settings and the organize page; a key check that never answers gives up after 15 s; a confirmed unlisted default is kept |
 | ai-models.test.js | 49 | Key expiry, model catalog helpers (a catalog cut off by the timeout reads as no answer), JSON schema |
@@ -59,11 +60,11 @@ Real browser tests that load the extension into Chromium and verify end-to-end b
 | split-view-repair.spec.js | 5 | Splits survive sort, merge and extract (skips below Chrome 155) |
 | popup-ui.spec.js | 9 | Mode switching, preference persistence, button visibility, no text below the compact 10.5px step but the key badges |
 | keyboard.spec.js | 4 | Popup hotkeys |
-| link-clumping.spec.js | 2 | A page's own events open nothing; a real drag opens 5 at once, and over 25 links asks (answered through `page.on('dialog')`) and opens the first 25 |
+| open-links.spec.js | 7 | On the shipped manifest, started through Huddle's toolbar button (DevTools `Extensions.triggerAction`, with `--enable-unsafe-extension-debugging`): nothing opens until it is started; the hint; a real drag opens 5 at once, and over 25 links asks (answered through `page.on('dialog')`) and opens the first 25; starting again only shows the hint; a reload ends it; a page's own events open nothing; `chrome://` is refused; no site access and no `windows` permission |
 | confirmation-dialog.spec.js | 5 | Window count display, confirm/cancel flow |
 | snooze.spec.js | 13 | Snooze and wake; the Group button follows the active tab |
 | ai-flow.spec.js | 22 | Organize with AI against a fake OpenRouter (the line under Organize, `data_collection: deny` sent); Settings with no key contacts OpenRouter only once the model list is used; two-window cases for what is sent and what Apply moves; a tab pinned before Apply stays pinned; Escape and Cmd/Ctrl+Enter in the proposal's fields |
-| trust-boundary.spec.js | 2 | The content script in a web page: no `storage.local` (the key), `storage.sync` still read, only `clumpOpenUrls` accepted, no organize port |
+| trust-boundary.spec.js | 2 | The content script in a page where Open links as tabs was started: no `storage.local` (the key), `storage.sync` still read, only `clumpOpenUrls` accepted, no organize port |
 | settings.spec.js | 1 | At 320 px the delete question keeps Delete and Keep side by side |
 
 ```bash
@@ -75,6 +76,7 @@ pnpm test:e2e            # Run E2E tests (requires Chromium)
 - **Fixture** (`e2e/fixtures/extension.js`): Launches Chromium with extension loaded via `--load-extension`
 - **Helpers**: Tab/window management, popup interaction, polling assertions
 - **Constants**: IANA-reserved domains (example.com/org/net) to avoid URL redirects
+- **Open links as tabs** needs a real user gesture for `activeTab`. `e2e/helpers/open-links.js` makes one with the DevTools protocol: `Extensions.triggerAction` clicks Huddle's toolbar button over a tab (Chrome started with `--enable-unsafe-extension-debugging`), and the worker's `armClumper` then starts it there, as the shortcut and the popup do. So these specs run on the shipped manifest, with no test build. The shortcut itself and the popup opened over a web page can't be pressed from Playwright; the unit tests cover their wiring
 
 ## CI Integration
 

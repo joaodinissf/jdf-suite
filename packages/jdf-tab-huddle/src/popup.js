@@ -18,8 +18,12 @@ document.addEventListener('DOMContentLoaded', function () {
   // Wire up single-key keyboard shortcuts and render their hints
   initKeyboardShortcuts();
 
-  // Show the shortcut that opens Huddle (whatever the user bound it to)
+  // Show the shortcuts that open Huddle and start Open links as tabs
+  // (whatever the user bound them to)
   showOpenShortcut();
+
+  // Open links as tabs, for the tab the popup was opened over
+  initOpenLinks();
 
   // Wire up the Settings link to open the options page
   const settingsLink = document.getElementById('openOptions');
@@ -1103,6 +1107,7 @@ const HOTKEY_PREFERENCES = {
   // Sleeping preview
   expandSleeping: ['n'],              // Nap room
   // Footer
+  openLinks: ['k'],                   // linKs (l is seLected)
   openOptions: ['i'],                 // settIngs
   // Undo the last Discard (Discard itself never gets a hotkey)
   discardUndo: ['z'],
@@ -1294,16 +1299,120 @@ function handleHotkeyKeydown(event) {
   }
 }
 
-// Show the browser shortcut that opens this popup ("⌥⇧U to open"), read from
-// chrome.commands so it reflects any rebinding at chrome://extensions/shortcuts.
+// Show the browser shortcuts that start Open links as tabs and open this
+// popup ("⌥⇧L for links · ⌥⇧U to open"), read from chrome.commands so they
+// reflect any rebinding at chrome://extensions/shortcuts. Chrome leaves a
+// command unbound when another extension already has its keys, and then the
+// footer says where to set one.
 function showOpenShortcut() {
   const el = document.getElementById('openShortcut');
   if (!el || !chrome.commands || !chrome.commands.getAll) return;
   chrome.commands.getAll((commands) => {
-    const open = (commands || []).find((c) => c.name === '_execute_action');
-    if (!open || !open.shortcut) return;
-    el.textContent = `${open.shortcut} to open`;
+    const shortcut = (name) => ((commands || []).find((c) => c.name === name) || {}).shortcut || '';
+    openLinksShortcut = shortcut('open-links');
+    renderOpenLinksButton();
+    const links = document.getElementById('openLinksShortcut');
+    links.textContent = openLinksShortcut ? `${openLinksShortcut} for links` : OPEN_LINKS_NO_SHORTCUT;
+    links.title = links.textContent;
+    links.hidden = false;
+    const open = shortcut('_execute_action');
+    const popup = document.getElementById('openPopupShortcut');
+    popup.textContent = open ? `${open} to open` : '';
+    popup.hidden = !open;
     el.hidden = false;
+  });
+}
+
+// ============================================================
+// Open links as tabs
+// ============================================================
+// Starts the link clumper in the tab the popup was opened over, then closes
+// the popup so the page's "hold Z and drag" hint can be seen. Opening the
+// popup is the gesture that lets Huddle into that tab (activeTab). On a page
+// Chrome keeps from extensions the button says so instead, and stays
+// focusable so the reason can be read.
+
+const OPEN_LINKS_RESTRICTED = 'Chrome doesn\'t let extensions run on this page';
+const OPEN_LINKS_NO_SHORTCUT = 'Set a shortcut at chrome://extensions/shortcuts';
+
+// The tab the popup was opened over, and why links can't be opened there
+// ('' when they can).
+let openLinksTab = null;
+let openLinksBlocked = '';
+// The open-links shortcut as Chrome reports it ('' when unbound).
+let openLinksShortcut = '';
+
+// Why Chrome won't let Huddle into a page at `url`, or '' when it will. The
+// worker has the last word (a PDF, a page without links).
+function openLinksBlockedReason(url, fileAccess) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return OPEN_LINKS_RESTRICTED;
+  }
+  if (u.protocol === 'file:') return fileAccess ? '' : OPEN_LINKS_RESTRICTED;
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return OPEN_LINKS_RESTRICTED;
+  const webStore = u.hostname === 'chromewebstore.google.com'
+    || (u.hostname === 'chrome.google.com' && u.pathname.startsWith('/webstore'));
+  return webStore ? OPEN_LINKS_RESTRICTED : '';
+}
+
+function setOpenLinksBlocked(reason) {
+  openLinksBlocked = reason;
+  renderOpenLinksButton();
+}
+
+// The tooltip gives the reason on a page Huddle can't open links in, and the
+// shortcut (or where to set one) otherwise.
+function renderOpenLinksButton() {
+  const button = document.getElementById('openLinks');
+  if (!button) return;
+  if (openLinksBlocked) {
+    button.setAttribute('aria-disabled', 'true');
+    button.setAttribute('aria-description', openLinksBlocked);
+    button.title = openLinksBlocked;
+  } else {
+    button.removeAttribute('aria-disabled');
+    button.removeAttribute('aria-description');
+    button.title = openLinksShortcut ? `Open links on this page as tabs (${openLinksShortcut})` : OPEN_LINKS_NO_SHORTCUT;
+  }
+}
+
+async function initOpenLinks() {
+  const button = document.getElementById('openLinks');
+  if (!button) return;
+  button.addEventListener('click', openLinksAsTabs);
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const fileAccess = await chrome.extension.isAllowedFileSchemeAccess();
+    openLinksTab = tab || null;
+    setOpenLinksBlocked(tab ? openLinksBlockedReason(tab.url, fileAccess) : OPEN_LINKS_RESTRICTED);
+  } catch (error) {
+    log('Could not read the current tab for Open links as tabs:', error.message);
+    setOpenLinksBlocked(OPEN_LINKS_RESTRICTED);
+  }
+}
+
+function openLinksAsTabs() {
+  if (openLinksBlocked) {
+    showActionResult(openLinksBlocked);
+    return;
+  }
+  if (!openLinksTab || pendingActions.has('openLinksAsTabs')) return;
+  pendingActions.add('openLinksAsTabs');
+  const button = document.getElementById('openLinks');
+  if (button) button.setAttribute('aria-busy', 'true');
+  chrome.runtime.sendMessage({ action: 'openLinksAsTabs', tabId: openLinksTab.id }, (response) => {
+    pendingActions.delete('openLinksAsTabs');
+    if (button) button.removeAttribute('aria-busy');
+    if (chrome.runtime.lastError) {
+      showActionResult(`Couldn't open links as tabs: ${chrome.runtime.lastError.message}`, 'error');
+    } else if (response && response.success) {
+      window.close();
+    } else {
+      showActionResult((response && (response.reason || response.error)) || 'Couldn\'t open links as tabs');
+    }
   });
 }
 
