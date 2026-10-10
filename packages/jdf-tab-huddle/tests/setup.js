@@ -11,6 +11,7 @@ const tabDetachedListeners = [];
 const connectListeners = [];
 const alarmListeners = [];
 const installedListeners = [];
+const commandListeners = [];
 // chrome.storage.session keeps real values, so a test can drop the worker's
 // in-memory state and check what survives. Emptied before each test.
 const sessionStore = {};
@@ -56,6 +57,26 @@ global.chrome = {
   },
   scripting: {
     executeScript: vi.fn().mockResolvedValue([]),
+  },
+  commands: {
+    // The manifest's commands as Chrome reports them, with their bound keys.
+    getAll: vi.fn((callback) => callback([
+      { name: '_execute_action', shortcut: '⌥⇧U', description: '' },
+      { name: 'open-links', shortcut: '⌥⇧L', description: 'Open links on this page as tabs' },
+    ])),
+    onCommand: {
+      addListener: vi.fn((fn) => commandListeners.push(fn)),
+      // Returns each listener's result, so a test can await async ones.
+      callListeners: (...args) => commandListeners.map(fn => fn(...args)),
+    },
+  },
+  action: {
+    setBadgeText: vi.fn().mockResolvedValue(undefined),
+    setBadgeBackgroundColor: vi.fn().mockResolvedValue(undefined),
+    setTitle: vi.fn().mockResolvedValue(undefined),
+  },
+  extension: {
+    isAllowedFileSchemeAccess: vi.fn().mockResolvedValue(false),
   },
   tabs: {
     query: vi.fn(),
@@ -212,6 +233,9 @@ const backgroundWrapper = `
   if (typeof runAiOrganize !== 'undefined') global.runAiOrganize = runAiOrganize;
   if (typeof aiRuns !== 'undefined') global.aiRuns = aiRuns;
   if (typeof AI_KEY_ALARM !== 'undefined') global.AI_KEY_ALARM = AI_KEY_ALARM;
+  if (typeof armClumper !== 'undefined') global.armClumper = armClumper;
+  if (typeof openLinksPageCheck !== 'undefined') global.openLinksPageCheck = openLinksPageCheck;
+  if (typeof OPEN_LINKS_BADGE_MS !== 'undefined') global.OPEN_LINKS_BADGE_MS = OPEN_LINKS_BADGE_MS;
 
   // Tab Snoozing exposures
   if (typeof computePresetWakeTime !== 'undefined') global.computePresetWakeTime = computePresetWakeTime;
@@ -346,6 +370,12 @@ const popupWrapper = `
   if (typeof handleHotkeyKeydown !== 'undefined') global.handleHotkeyKeydown = handleHotkeyKeydown;
   if (typeof isTextInputTarget !== 'undefined') global.isTextInputTarget = isTextInputTarget;
   if (typeof isHotkeyVisible !== 'undefined') global.isHotkeyVisible = isHotkeyVisible;
+  if (typeof showOpenShortcut !== 'undefined') global.showOpenShortcut = showOpenShortcut;
+
+  // Open links as tabs
+  if (typeof initOpenLinks !== 'undefined') global.initOpenLinks = initOpenLinks;
+  if (typeof openLinksAsTabs !== 'undefined') global.openLinksAsTabs = openLinksAsTabs;
+  if (typeof openLinksBlockedReason !== 'undefined') global.openLinksBlockedReason = openLinksBlockedReason;
 })();
 `;
 eval(popupWrapper);
@@ -423,6 +453,9 @@ const clumperWrapper = `
   if (typeof clumperResetStateForTest !== 'undefined') global.clumperResetStateForTest = clumperResetStateForTest;
   if (typeof clumperGetStateForTest !== 'undefined') global.clumperGetStateForTest = clumperGetStateForTest;
   if (typeof clumperApplySettings !== 'undefined') global.clumperApplySettings = clumperApplySettings;
+  if (typeof clumperShowHint !== 'undefined') global.clumperShowHint = clumperShowHint;
+  if (typeof clumperHideHint !== 'undefined') global.clumperHideHint = clumperHideHint;
+  if (typeof clumperLoadSettings !== 'undefined') global.clumperLoadSettings = clumperLoadSettings;
   // jsdom's events are never trusted, so the tests trust every event unless a
   // test asks for the real check: clumperTrustAllEventsForTest(false).
   const clumperRealEventIsTrusted = clumperEventIsTrusted;
@@ -450,6 +483,7 @@ const optionsWrapper = `
   if (typeof writeFormState !== 'undefined') global.writeFormState = writeFormState;
   if (typeof showStatus !== 'undefined') global.showStatus = showStatus;
   if (typeof handleFormChange !== 'undefined') global.handleFormChange = handleFormChange;
+  if (typeof showOpenLinksShortcut !== 'undefined') global.showOpenLinksShortcut = showOpenLinksShortcut;
 })();
 `;
 eval(optionsWrapper);

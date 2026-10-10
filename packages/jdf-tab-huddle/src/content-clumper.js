@@ -1,7 +1,11 @@
-// Link clumper — content script.
+// Open links as tabs: the link clumper.
 // Hold a key (default: Z) and click-drag a rectangle to collect every link
 // inside it. On release, the selection is sent to the service worker which
 // opens each link as a background tab adjacent to the current one.
+//
+// The worker injects this script into one page when the user starts Open
+// links as tabs there (the shortcut or the popup), through activeTab. It
+// stays until the page reloads or the tab moves to another page.
 //
 // Clean-room implementation from a behavior spec; not derived from upstream
 // linkclump source. See packages/jdf-tab-huddle/README.md for attribution.
@@ -9,17 +13,18 @@
 // --- Configuration (read from chrome.storage.sync; defaults applied if unset) ---
 const CLUMPER_DEFAULT_KEY = 'z';
 const CLUMPER_DEFAULT_MODIFIER = null; // null | 'shift' | 'ctrl' | 'alt'
-const CLUMPER_DEFAULT_ENABLED = true;
 
 let clumperActivationKey = CLUMPER_DEFAULT_KEY;
 let clumperActivationModifier = CLUMPER_DEFAULT_MODIFIER;
-let clumperEnabled = CLUMPER_DEFAULT_ENABLED;
 
 // --- Visual constants ---
 const CLUMPER_COLOR = '#ff6600';
 const CLUMPER_FILL = 'rgba(255, 102, 0, 0.1)';
 const CLUMPER_LINK_HIGHLIGHT = 'rgba(255, 102, 0, 0.3)';
 const CLUMPER_Z_INDEX = 2147483647;
+
+// How long the "hold Z and drag" hint stays up.
+const CLUMPER_HINT_MS = 3000;
 
 // --- State ---
 let clumperKeyHeld = false;
@@ -280,7 +285,6 @@ function clumperHandleKeyDown(event) {
   // After the extension is updated or reloaded, this copy can no longer open
   // tabs, so it never arms.
   if (!chrome.runtime?.id) return;
-  if (!clumperEnabled) return;
   if (clumperKeyHeld) return;
   if (clumperIsTextInputTarget(event.target)) return;
   if (!clumperKeyMatches(event, clumperActivationKey)) return;
@@ -309,7 +313,6 @@ function clumperHandleEscape(event) {
 function clumperHandleMouseDown(event) {
   if (!clumperEventIsTrusted(event)) return;
   if (!chrome.runtime?.id) return;
-  if (!clumperEnabled) return;
   if (!clumperKeyHeld) return;
   if (event.button !== 0) return;
   clumperDragging = true;
@@ -367,7 +370,6 @@ function clumperGetStateForTest() {
 
 function clumperApplySettings(raw) {
   const c = raw && typeof raw === 'object' ? raw : {};
-  clumperEnabled = typeof c.enabled === 'boolean' ? c.enabled : CLUMPER_DEFAULT_ENABLED;
   clumperActivationKey = typeof c.key === 'string' && c.key.length === 1
     ? c.key.toLowerCase()
     : CLUMPER_DEFAULT_KEY;
@@ -376,11 +378,120 @@ function clumperApplySettings(raw) {
     : CLUMPER_DEFAULT_MODIFIER;
 }
 
-function clumperLoadSettings() {
+function clumperLoadSettings(then) {
   if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.sync) return;
   chrome.storage.sync.get(['clumping'], (result) => {
     clumperApplySettings(result && result.clumping);
+    if (then) then();
   });
+}
+
+// --- The hint: "hold Z and drag" ---
+// A small notice at the bottom centre of the page, drawn like the popup's
+// toasts, in a shadow root so the page's CSS can't restyle it. It never takes
+// focus or clicks, is announced politely, goes after CLUMPER_HINT_MS, and
+// Escape puts it away sooner. The extension's fonts can't load in a web page
+// (Huddle exposes no web_accessible_resources), so it uses the system's.
+
+let clumperHintHost = null;
+let clumperHintAgain = false;
+let clumperHintTimers = [];
+
+const CLUMPER_HINT_CSS = `
+  .hint {
+    --panel: #eef1f6; --bd: #c5cad3; --tx: #1b1d22; --kbd-bg: #e6e9ef; --kbd-tx: #3c4043;
+    --shadow: 0 8px 22px rgba(28, 36, 52, .22), 0 1px 3px rgba(28, 36, 52, .12);
+    box-sizing: border-box;
+    max-width: min(560px, calc(100vw - 32px));
+    padding: 9px 13px;
+    border: 1px solid var(--bd);
+    border-radius: 10px;
+    background: var(--panel);
+    color: var(--tx);
+    box-shadow: var(--shadow);
+    font: 400 13px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    text-align: center;
+    overflow-wrap: anywhere;
+    opacity: 0;
+  }
+  .hint.shown { opacity: 1; }
+  b { font-weight: 700; }
+  kbd {
+    display: inline-block;
+    padding: 0 5px;
+    border-radius: 4px;
+    background: var(--kbd-bg);
+    color: var(--kbd-tx);
+    font: 600 12px/1.5 ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    .hint {
+      --panel: #2d3036; --bd: #454952; --tx: #eceef2; --kbd-bg: rgba(255, 255, 255, .10); --kbd-tx: #dfe2e7;
+      --shadow: 0 10px 26px rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .07);
+    }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .hint { transform: translateY(6px); transition: opacity 160ms ease-out, transform 160ms ease-out; }
+    .hint.shown { transform: none; }
+  }
+`;
+
+// "Z", or "Shift+Z" with a modifier.
+function clumperKeyLabel() {
+  const modifier = { shift: 'Shift', ctrl: 'Ctrl', alt: 'Alt' }[clumperActivationModifier];
+  const key = clumperActivationKey.toUpperCase();
+  return modifier ? `${modifier}+${key}` : key;
+}
+
+function clumperHintText(again) {
+  return again
+    ? ['Huddle is already on: hold ', ' and drag over links to open them as tabs.']
+    : ['Huddle: hold ', ' and drag over links to open them as tabs. On until this page reloads.'];
+}
+
+function clumperHideHint() {
+  for (const t of clumperHintTimers) clearTimeout(t);
+  clumperHintTimers = [];
+  document.removeEventListener('keydown', clumperHintEscape, true);
+  if (clumperHintHost) clumperHintHost.remove();
+  clumperHintHost = null;
+}
+
+// Escape puts the hint away. The page still gets the key.
+function clumperHintEscape(event) {
+  if (event.key === 'Escape') clumperHideHint();
+}
+
+function clumperShowHint(again = false) {
+  clumperHideHint();
+  clumperHintAgain = again;
+  const host = document.createElement('div');
+  host.setAttribute('data-jdf-tab-huddle', 'open-links-hint');
+  // Inline !important beats any page rule, so the page can't move or hide it.
+  host.style.cssText = [
+    'all: initial', 'position: fixed', 'left: 0', 'right: 0', 'bottom: 24px', 'display: flex',
+    'justify-content: center', 'padding: 0 16px', 'pointer-events: none', `z-index: ${CLUMPER_Z_INDEX}`,
+  ].map((rule) => `${rule} !important`).join('; ');
+  const root = host.attachShadow({ mode: 'open' });
+  const style = document.createElement('style');
+  style.textContent = CLUMPER_HINT_CSS;
+  const box = document.createElement('div');
+  box.className = 'hint';
+  box.setAttribute('role', 'status');
+  root.append(style, box);
+  (document.body || document.documentElement).appendChild(host);
+  clumperHintHost = host;
+  document.addEventListener('keydown', clumperHintEscape, true);
+
+  // Filled once the live region is in the page, so a screen reader announces it.
+  const [before, after] = clumperHintText(again);
+  clumperHintTimers.push(setTimeout(() => {
+    const key = document.createElement('kbd');
+    key.textContent = clumperKeyLabel();
+    box.append(before, key, after);
+    clumperHintTimers.push(setTimeout(() => box.classList.add('shown'), 20));
+  }, 50));
+  clumperHintTimers.push(setTimeout(clumperHideHint, CLUMPER_HINT_MS));
 }
 
 // Register listeners. Capturing phase so we beat the page's own handlers.
@@ -399,15 +510,22 @@ if (typeof document !== 'undefined') {
   });
 }
 
-// Load settings once on startup, then keep them in sync with any subsequent
-// changes made through the options page (or from another Chrome signin).
-clumperLoadSettings();
+// Load the key from Settings, then say how to use it. A second start can
+// already have shown "already on" (with the default key) before the settings
+// arrive; that hint is then redrawn with the right key, not replaced. Keep the
+// key in sync with any later change made in Settings (or from another Chrome
+// signin).
+clumperLoadSettings(() => clumperShowHint(Boolean(clumperHintHost) && clumperHintAgain));
 if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'sync' || !changes.clumping) return;
     clumperApplySettings(changes.clumping.newValue);
-    // If the feature was just disabled or the key changed, abort any
-    // in-flight drag to avoid a "zombie" armed state.
+    // The old key's keyup would no longer match, so let go of a held key or
+    // a drag in flight rather than leave it stuck.
     if (clumperKeyHeld || clumperDragging) clumperDisarm();
   });
 }
+
+// The worker's check before injecting finds this, and shows the hint again
+// rather than loading a second copy (see armClumper in background.js).
+globalThis.huddleOpenLinksHint = clumperShowHint;

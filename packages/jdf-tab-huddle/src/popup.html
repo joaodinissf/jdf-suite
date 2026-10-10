@@ -599,11 +599,16 @@
     /* footer */
     .foot {
       display: flex;
+      flex-direction: column;
+      padding-top: 9px;
+      border-top: 1px solid var(--bd);
+    }
+
+    .foot-row {
+      display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      padding-top: 9px;
-      border-top: 1px solid var(--bd);
     }
 
     .stat {
@@ -611,6 +616,12 @@
       font-size: 10.5px;
       color: var(--tx-dim);
       line-height: 1.5;
+    }
+
+    /* The all-windows count keeps one line; the shortcuts beside it give way. */
+    .stat.multi-window-section {
+      flex: none;
+      white-space: nowrap;
     }
 
     .stat b {
@@ -631,21 +642,65 @@
       cursor: pointer;
     }
 
-    .foot-right {
+    /* Open links as tabs and Settings share the footer's first line, so the
+       new action adds no height. */
+    .foot-actions {
       display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 2px;
+      align-items: center;
+      gap: 12px;
     }
 
+    /* The shortcuts that start Open links as tabs and open the popup. The
+       line is one row tall: when the all-windows count leaves room for only
+       one, the second wraps out of sight (it stays in the accessibility
+       tree), so the footer never grows. */
     .open-shortcut {
+      flex: 1 1 0;
+      min-width: 0;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      column-gap: 5px;
+      height: 1.5em;
+      overflow: hidden;
       font-family: var(--mono);
       font-size: 10.5px;
+      line-height: 1.5;
       color: var(--tx-dim);
+    }
+
+    .open-shortcut[hidden] {
+      display: none;
+    }
+
+    .open-shortcut > span {
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .open-shortcut > span + span::before {
+      content: "· ";
+    }
+
+    .open-shortcut > span[hidden] {
+      display: none;
     }
 
     .gear:hover {
       color: var(--tx);
+    }
+
+    /* Open links as tabs on a page Chrome keeps from extensions: it stays
+       focusable and says why when pressed. */
+    .gear[aria-disabled="true"] {
+      opacity: .6;
+      cursor: default;
+    }
+
+    .gear[aria-disabled="true"]:hover {
+      color: var(--tx-dim);
     }
   </style>
 </head>
@@ -760,14 +815,19 @@
     </div>
 
 
+    <!-- Two rows, each sized on its own: a long all-windows count never pushes
+         the actions onto another line. -->
     <div class="foot">
-      <div class="stat">
-        <div><b id="statusThisWindow"></b></div>
-        <div class="multi-window-section"><span id="statusAllWindows"></span></div>
+      <div class="foot-row">
+        <span class="stat"><b id="statusThisWindow"></b></span>
+        <div class="foot-actions">
+          <button type="button" id="openLinks" class="gear" data-action="openLinksAsTabs"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="6" width="8.5" height="7.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 3.5h6.5a1.5 1.5 0 0 1 1.5 1.5v6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Open links as tabs</button>
+          <button type="button" id="openOptions" class="gear" data-action="openOptions"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 4h6.5M12.5 4H14M2 8h1.5M7.5 8H14M2 12h5.5M11.5 12H14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10.5" cy="4" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="5.5" cy="8" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="9.5" cy="12" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5"/></svg> Settings</button>
+        </div>
       </div>
-      <div class="foot-right">
-        <button type="button" id="openOptions" class="gear" data-action="openOptions"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 4h6.5M12.5 4H14M2 8h1.5M7.5 8H14M2 12h5.5M11.5 12H14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10.5" cy="4" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="5.5" cy="8" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="9.5" cy="12" r="1.75" fill="none" stroke="currentColor" stroke-width="1.5"/></svg> Settings</button>
-        <span id="openShortcut" class="open-shortcut" hidden></span>
+      <div class="foot-row">
+        <span class="stat multi-window-section"><span id="statusAllWindows"></span></span>
+        <div id="openShortcut" class="open-shortcut" hidden><span id="openLinksShortcut" hidden></span><span id="openPopupShortcut" hidden></span></div>
       </div>
     </div>
 

@@ -144,6 +144,17 @@ const ROUTES = [
     }),
   },
   {
+    action: 'openLinksAsTabs', page: 'popup.html', senders: POPUP,
+    setup: () => {
+      chrome.scripting.executeScript.mockImplementation(async (details) => (details.func
+        ? [{ result: { already: false, contentType: 'text/html', links: 3 } }]
+        : [{ result: null }]));
+    },
+    message: { action: 'openLinksAsTabs', tabId: 11 },
+    reply: { success: true, already: false },
+    effect: () => expect(chrome.scripting.executeScript).toHaveBeenCalledWith({ target: { tabId: 11 }, files: ['content-clumper.js'] }),
+  },
+  {
     action: 'sortAllWindows', page: 'popup.html', senders: POPUP,
     message: { action: 'sortAllWindows', respectGroups: false },
     reply: { success: true, tabs: 6, windows: 2 },
@@ -413,16 +424,14 @@ const dispatcherActions = () => dispatcherBranches().filter((b) => b.kind === 'a
 // The messages it tells apart by message.type (the logging message).
 const dispatcherTypes = () => dispatcherBranches().filter((b) => b.kind === 'type').flatMap((b) => b.names);
 
-// Each page's scripts, from its <script src> tags; the content script from
-// the manifest.
+// Each page's scripts, from its <script src> tags, and the link clumper's
+// content script, which the worker injects (armClumper).
 function pageScripts() {
   const pages = {};
   for (const page of ['popup.html', 'nap-room.html', 'options.html', 'ai-proposal.html', 'confirmation-dialog.html']) {
     pages[page] = [...read(page).matchAll(/<script src="([^"]+)"/g)].map((m) => m[1]);
   }
-  for (const cs of JSON.parse(read('manifest.json')).content_scripts) {
-    for (const js of cs.js) pages[js] = [js];
-  }
+  pages['content-clumper.js'] = ['content-clumper.js'];
   return pages;
 }
 
@@ -452,6 +461,7 @@ describe('every worker action, routed from its real caller', () => {
   afterEach(() => {
     delete chrome.tabs.createSplit;
     delete chrome.tabs.unsplit;
+    chrome.scripting.executeScript.mockReset().mockResolvedValue([]);
   });
 
   test.each(rows)('$name', async (row) => {
@@ -491,7 +501,8 @@ describe('the trust boundary', () => {
     const reply = await dispatch(structuredClone(row.message), structuredClone(contentSender));
     expect(reply).toEqual({ success: false, error: 'forbidden' });
     for (const call of [chrome.storage.local.get, chrome.storage.local.set, chrome.storage.session.get, chrome.tabs.query,
-      chrome.tabs.create, chrome.tabs.remove, chrome.windows.getAll, chrome.windows.create, chrome.alarms.create, global.fetch]) {
+      chrome.tabs.create, chrome.tabs.remove, chrome.windows.getAll, chrome.windows.create, chrome.alarms.create,
+      chrome.scripting.executeScript, global.fetch]) {
       expect(call).not.toHaveBeenCalled();
     }
   });
@@ -585,6 +596,12 @@ describe('the routing table is complete', () => {
     }
     for (const page of Object.keys(fromTable)) fromTable[page].sort();
     expect(fromTable).toEqual(fromSource);
+  });
+
+  test('the content script listed above is the one the worker injects, and the only one', () => {
+    const injected = [...read('background.js').matchAll(/files: \[([^\]]*)\]/g)].map((m) => m[1]);
+    expect(injected).toEqual(["'content-clumper.js'"]);
+    expect(JSON.parse(read('manifest.json'))).not.toHaveProperty('content_scripts');
   });
 
   test('each row is sent by senders of its page', () => {

@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { readFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
 describe('getAllowedKeys', () => {
   it('returns 26 letters + 10 digits = 36 entries', () => {
@@ -31,14 +34,14 @@ describe('getAllowedKeys', () => {
 
 describe('applyDefaults (options.js)', () => {
   it('empty input → all defaults', () => {
-    expect(global.optionsApplyDefaults({})).toEqual({ enabled: true, key: 'z', modifier: null });
-    expect(global.optionsApplyDefaults(null)).toEqual({ enabled: true, key: 'z', modifier: null });
-    expect(global.optionsApplyDefaults(undefined)).toEqual({ enabled: true, key: 'z', modifier: null });
+    expect(global.optionsApplyDefaults({})).toEqual({ key: 'z', modifier: null });
+    expect(global.optionsApplyDefaults(null)).toEqual({ key: 'z', modifier: null });
+    expect(global.optionsApplyDefaults(undefined)).toEqual({ key: 'z', modifier: null });
   });
 
   it('respects valid overrides', () => {
-    expect(global.optionsApplyDefaults({ enabled: false, key: 'x', modifier: 'shift' }))
-      .toEqual({ enabled: false, key: 'x', modifier: 'shift' });
+    expect(global.optionsApplyDefaults({ key: 'x', modifier: 'shift' }))
+      .toEqual({ key: 'x', modifier: 'shift' });
   });
 
   it('normalizes uppercase keys to lowercase', () => {
@@ -61,10 +64,8 @@ describe('applyDefaults (options.js)', () => {
     expect(global.optionsApplyDefaults({ modifier: '' }).modifier).toBe(null);
   });
 
-  it('coerces non-boolean enabled to default (true)', () => {
-    expect(global.optionsApplyDefaults({ enabled: 'yes' }).enabled).toBe(true);
-    expect(global.optionsApplyDefaults({ enabled: 1 }).enabled).toBe(true);
-    expect(global.optionsApplyDefaults({ enabled: 0 }).enabled).toBe(true);
+  it('drops the old enabled setting: starting it on a page is the opt-in now', () => {
+    expect(global.optionsApplyDefaults({ enabled: false, key: 'x' })).toEqual({ key: 'x', modifier: null });
   });
 });
 
@@ -77,7 +78,7 @@ describe('loadClumpingSettings / saveClumpingSettings', () => {
   it('loadClumpingSettings returns defaults when storage is empty', async () => {
     global.chrome.storage.sync.get.mockImplementation((_keys, cb) => cb({}));
     const settings = await global.loadClumpingSettings();
-    expect(settings).toEqual({ enabled: true, key: 'z', modifier: null });
+    expect(settings).toEqual({ key: 'z', modifier: null });
   });
 
   it('loadClumpingSettings returns stored values', async () => {
@@ -85,7 +86,7 @@ describe('loadClumpingSettings / saveClumpingSettings', () => {
       clumping: { enabled: false, key: 'x', modifier: 'shift' },
     }));
     const settings = await global.loadClumpingSettings();
-    expect(settings).toEqual({ enabled: false, key: 'x', modifier: 'shift' });
+    expect(settings).toEqual({ key: 'x', modifier: 'shift' });
   });
 
   it('loadClumpingSettings applies defaults for partial stored values', async () => {
@@ -93,15 +94,15 @@ describe('loadClumpingSettings / saveClumpingSettings', () => {
       clumping: { key: 'a' },
     }));
     const settings = await global.loadClumpingSettings();
-    expect(settings).toEqual({ enabled: true, key: 'a', modifier: null });
+    expect(settings).toEqual({ key: 'a', modifier: null });
   });
 
   it('saveClumpingSettings round-trips through apply-defaults', async () => {
     global.chrome.storage.sync.set.mockImplementation((_payload, cb) => cb && cb());
     const saved = await global.saveClumpingSettings({ enabled: false, key: 'Q', modifier: 'alt' });
-    expect(saved).toEqual({ enabled: false, key: 'q', modifier: 'alt' });
+    expect(saved).toEqual({ key: 'q', modifier: 'alt' });
     expect(global.chrome.storage.sync.set).toHaveBeenCalledWith(
-      { clumping: { enabled: false, key: 'q', modifier: 'alt' } },
+      { clumping: { key: 'q', modifier: 'alt' } },
       expect.any(Function),
     );
   });
@@ -140,12 +141,7 @@ describe('populateKeyDropdown', () => {
 
 describe('readFormState / writeFormState', () => {
   beforeEach(() => {
-    document.body.innerHTML = '';
-    const enabled = document.createElement('input');
-    enabled.type = 'checkbox';
-    enabled.id = 'clumping-enabled';
-    document.body.appendChild(enabled);
-
+    document.body.innerHTML = '<kbd id="openLinksKey">Z</kbd>';
     const key = document.createElement('select');
     key.id = 'clumping-key';
     document.body.appendChild(key);
@@ -160,23 +156,22 @@ describe('readFormState / writeFormState', () => {
     }
   });
 
-  it('writeFormState populates all three controls', () => {
-    global.writeFormState({ enabled: false, key: 'x', modifier: 'shift' });
-    expect(document.getElementById('clumping-enabled').checked).toBe(false);
+  it('writeFormState populates both controls, and the help line names the key', () => {
+    global.writeFormState({ key: 'x', modifier: 'shift' });
     expect(document.getElementById('clumping-key').value).toBe('x');
     expect(document.getElementById('clumping-modifier').value).toBe('shift');
+    expect(document.getElementById('openLinksKey').textContent).toBe('Shift+X');
   });
 
   it('readFormState reflects user-set values with defaults applied', () => {
-    global.writeFormState({ enabled: true, key: 'z', modifier: null });
-    document.getElementById('clumping-enabled').checked = true;
+    global.writeFormState({ key: 'z', modifier: null });
     document.getElementById('clumping-key').value = 'a';
     document.getElementById('clumping-modifier').value = 'alt';
-    expect(global.readFormState()).toEqual({ enabled: true, key: 'a', modifier: 'alt' });
+    expect(global.readFormState()).toEqual({ key: 'a', modifier: 'alt' });
   });
 
   it('readFormState treats empty modifier as null', () => {
-    global.writeFormState({ enabled: true, key: 'z', modifier: null });
+    global.writeFormState({ key: 'z', modifier: null });
     document.getElementById('clumping-modifier').value = '';
     expect(global.readFormState().modifier).toBe(null);
   });
@@ -251,7 +246,7 @@ describe('content-clumper integration: clumperApplySettings', () => {
   });
 
   it('sets activation key from stored settings', () => {
-    global.clumperApplySettings({ enabled: true, key: 'x', modifier: null });
+    global.clumperApplySettings({ key: 'x', modifier: null });
     // Test via behavior: keydown for 'x' should now arm, but 'z' should not
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', bubbles: true }));
     expect(global.clumperGetStateForTest().keyHeld).toBe(true);
@@ -260,36 +255,37 @@ describe('content-clumper integration: clumperApplySettings', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', bubbles: true }));
     expect(global.clumperGetStateForTest().keyHeld).toBe(false);
     // restore default for subsequent tests
-    global.clumperApplySettings({ enabled: true, key: 'z', modifier: null });
+    global.clumperApplySettings({ key: 'z', modifier: null });
   });
 
-  it('disabled=false prevents arming even on the activation key', () => {
+  it('an old enabled: false no longer turns it off: starting it on the page is the opt-in', () => {
     global.clumperApplySettings({ enabled: false, key: 'z', modifier: null });
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', bubbles: true }));
-    expect(global.clumperGetStateForTest().keyHeld).toBe(false);
-    global.clumperApplySettings({ enabled: true, key: 'z', modifier: null });
+    expect(global.clumperGetStateForTest().keyHeld).toBe(true);
+    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'z', bubbles: true }));
+    global.clumperApplySettings({ key: 'z', modifier: null });
   });
 
   it('arms on Shift+digit, whose event.key is the shifted symbol', () => {
-    global.clumperApplySettings({ enabled: true, key: '1', modifier: 'shift' });
+    global.clumperApplySettings({ key: '1', modifier: 'shift' });
     document.dispatchEvent(new KeyboardEvent('keydown', { key: '!', code: 'Digit1', shiftKey: true, bubbles: true }));
     expect(global.clumperGetStateForTest().keyHeld).toBe(true);
     document.dispatchEvent(new KeyboardEvent('keyup', { key: '1', code: 'Digit1', bubbles: true }));
     expect(global.clumperGetStateForTest().keyHeld).toBe(false);
-    global.clumperApplySettings({ enabled: true, key: 'z', modifier: null });
+    global.clumperApplySettings({ key: 'z', modifier: null });
   });
 
   it('arms on macOS Option+letter, whose event.key is a composed character', () => {
-    global.clumperApplySettings({ enabled: true, key: 'z', modifier: 'alt' });
+    global.clumperApplySettings({ key: 'z', modifier: 'alt' });
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Ω', code: 'KeyZ', altKey: true, bubbles: true }));
     expect(global.clumperGetStateForTest().keyHeld).toBe(true);
     document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Ω', code: 'KeyZ', altKey: true, bubbles: true }));
     expect(global.clumperGetStateForTest().keyHeld).toBe(false);
-    global.clumperApplySettings({ enabled: true, key: 'z', modifier: null });
+    global.clumperApplySettings({ key: 'z', modifier: null });
   });
 
   it('requires the configured modifier', () => {
-    global.clumperApplySettings({ enabled: true, key: 'z', modifier: 'shift' });
+    global.clumperApplySettings({ key: 'z', modifier: 'shift' });
     // Without shift: no arm
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', shiftKey: false, bubbles: true }));
     expect(global.clumperGetStateForTest().keyHeld).toBe(false);
@@ -297,6 +293,46 @@ describe('content-clumper integration: clumperApplySettings', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', shiftKey: true, bubbles: true }));
     expect(global.clumperGetStateForTest().keyHeld).toBe(true);
     document.dispatchEvent(new KeyboardEvent('keyup', { key: 'z', bubbles: true }));
-    global.clumperApplySettings({ enabled: true, key: 'z', modifier: null });
+    global.clumperApplySettings({ key: 'z', modifier: null });
+  });
+});
+
+describe('Settings: Open links as tabs', () => {
+  const html = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../src/options.html'), 'utf8');
+
+  beforeEach(() => {
+    document.body.innerHTML = html.match(/<body>([\s\S]*)<\/body>/)[1].replace(/<script[\s\S]*?<\/script>/g, '');
+  });
+
+  it('has no on/off setting, and comes after the tab-organization sections', () => {
+    expect(document.getElementById('clumping-enabled')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/link clumping/i);
+    const chips = [...document.querySelectorAll('section .group-chip')].map((c) => c.textContent);
+    expect(chips.at(-1)).toBe('Open links as tabs');
+    expect(document.getElementById('openLinksSection').contains(document.getElementById('clumping-key'))).toBe(true);
+  });
+
+  it('the help line names the shortcut Chrome has bound, and the key to hold', () => {
+    global.showOpenLinksShortcut();
+    global.writeFormState({ key: 'q', modifier: null });
+    expect(document.getElementById('openLinksHelp').textContent.replace(/\s+/g, ' ')).toBe(
+      "Start it on a page with ⌥⇧L or the popup's Open links as tabs, then hold Q and drag. It stays on until the page reloads.");
+    expect(document.querySelector('#openLinksShortcut kbd').textContent).toBe('⌥⇧L');
+  });
+
+  it('with no shortcut bound, the help line says where to set one', () => {
+    chrome.commands.getAll.mockImplementationOnce((callback) => callback([{ name: '_execute_action', shortcut: '⌥⇧U' }, { name: 'open-links', shortcut: '' }]));
+    global.showOpenLinksShortcut();
+    expect(document.getElementById('openLinksShortcut').textContent).toBe('a shortcut you set at chrome://extensions/shortcuts');
+  });
+
+  it('saving the key says what to hold, and the help line follows it', async () => {
+    chrome.storage.sync.set.mockImplementation((_payload, cb) => cb && cb());
+    global.writeFormState({ key: 'z', modifier: null });
+    document.getElementById('clumping-key').value = 'x';
+    document.getElementById('clumping-modifier').value = 'alt';
+    await global.handleFormChange();
+    expect(document.getElementById('clumping-status').textContent).toBe('Saved · hold Alt+X and drag');
+    expect(document.getElementById('openLinksKey').textContent).toBe('Alt+X');
   });
 });
