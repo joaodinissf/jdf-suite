@@ -14,6 +14,7 @@ its JSON. See the "Menu-bar app" section of the [jdf-stt README](../jdf-stt/READ
 - `Sources/STTApp`: the app. `HotkeyTap` (listen-only event tap, needs Input Monitoring),
   `TextInserter` (Accessibility, paste fallback), `Permissions`, `StatusItem` (menu),
   `AppDelegate` (wiring), `Settings` (UserDefaults).
+- `Sources/STTApp/Intents`: the Shortcuts actions (App Intents): Dictate, Transcribe Audio File.
 - `Resources/Info.plist`: LSUIElement, NSMicrophoneUsageDescription, bundle id `eu.joaof.jdf-stt`.
 - `scripts/make-app.sh`: release build, `build/jdf-stt.app`, ad-hoc signature.
 - `Tests/fixtures/fake-jdf-stt`: a shell stand-in for the CLI used by `CLIClientTests`.
