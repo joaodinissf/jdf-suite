@@ -9,6 +9,7 @@ A collection of developer tools by [João Dinis Ferreira](https://github.com/joa
 | [jdf-hooks](packages/jdf-hooks) | Git hooks framework with interactive CLI | [![PyPI](https://img.shields.io/pypi/v/jdf-hooks)](https://pypi.org/project/jdf-hooks/) | `uvx jdf-hooks setup` |
 | [jdf-tab-huddle](packages/jdf-tab-huddle) | Chrome extension — **Huddle** — organizes your browser tabs: sort, group, de-duplicate, snooze, open links as tabs, and optional AI suggestions | v0.8.0 (Chrome Web Store from v1.0.0) | [Releases](https://github.com/joaodinissf/jdf-suite/releases?q=jdf-tab-huddle), or load unpacked `packages/jdf-tab-huddle/src/` |
 | jdf-stt | Local offline speech-to-text using Whisper.cpp | [Planned](https://github.com/joaodinissf/jdf-suite/issues/30) | — |
+| [jdf-skill-library](packages/jdf-skill-library) | Fills a skill library agents do not discover on their own, for the `skill-browser` skill | unreleased | Run `packages/jdf-skill-library/jdf-skill-library` — see package README |
 
 ## License
 

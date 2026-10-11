@@ -1,0 +1,149 @@
+#!/bin/zsh
+# Fill a skill library that agents do not discover on their own.
+#
+#   jdf-skill-library sync    [library_root=~/Dropbox/skills/skill-browser]
+#   jdf-skill-library status  [library_root]
+#
+# The library root holds the skill-browser skill (the only skill linked into
+# agents), a manifest, and library/<skill>/ folders. Each library skill keeps
+# its files, but every SKILL.md in it is renamed SKILL.dormant.md, so no client
+# discovers it at any search depth.
+#
+# manifest.txt, one source per line ('#' starts a comment):
+#   browser  <source>                  where skill-browser itself comes from
+#   <source> <skill> [<skill>...]      skills to put in the library
+# A source is a local git repo path (~/Git/jdf-skills, optionally @ref,
+# default HEAD) or github:owner/repo[@ref] (default branch). Only committed
+# content is used.
+
+set -euo pipefail
+
+cmd=${1:-status}
+root=${2:-$HOME/Dropbox/skills/skill-browser}
+root=${root/#\~/$HOME}
+manifest=$root/manifest.txt
+library=$root/library
+cache=${XDG_CACHE_HOME:-$HOME/Library/Caches}/jdf-skill-library
+github=${JDF_SKILL_LIBRARY_GITHUB:-https://github.com}
+
+say() { echo "$*"; }
+die() { echo "error: $*" >&2; exit 1; }
+
+# Set repo (a git dir) and ref (what to export) for a source. A GitHub source
+# is fetched into the cache: the requested ref (branch, tag or commit id;
+# default branch if none) is fetched explicitly and its commit exported.
+resolve() {
+  local src=$1 want=HEAD
+  [[ $src == *@* ]] && want=${src##*@}
+  src=${src%@*}
+  case $src in
+    github:*)
+      local slug=${src#github:}
+      repo=$cache/${slug//\//__}
+      if [[ ! -d $repo/.git ]]; then
+        git init -q "$repo" >&2
+        git -C "$repo" remote add origin "$github/$slug.git"
+      fi
+      if git -C "$repo" fetch -q --depth 1 origin "$want" 2>/dev/null; then
+        ref=$(git -C "$repo" rev-parse "FETCH_HEAD^{commit}")
+      else
+        # Some servers refuse a commit id (or an abbreviated one): fetch it all.
+        git -C "$repo" fetch -q --tags --unshallow origin 2>/dev/null \
+          || git -C "$repo" fetch -q --tags origin >&2
+        ref=$(git -C "$repo" rev-parse --verify -q "$want^{commit}") \
+          || die "$want: no such ref in $src"
+      fi ;;
+    *)
+      repo=${src/#\~/$HOME}
+      git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || die "not a git repo: $src"
+      ref=$want ;;
+  esac
+}
+
+# A skill name is one plain folder name: it becomes a path under library/.
+valid_name() {
+  [[ $1 =~ '^[A-Za-z0-9_][A-Za-z0-9._-]*$' ]] || die "invalid skill name: '$1'"
+}
+
+# Print the in-repo path of a skill folder (the one whose SKILL.md is <name>/SKILL.md).
+skill_path() {  # repo ref name
+  local p
+  local -a hits
+  for p in ${(f)"$(git -C "$1" ls-tree -r --name-only "$2")"}; do
+    [[ $p == "$3/SKILL.md" || $p == */"$3/SKILL.md" ]] && hits+=$p
+  done
+  (( ${#hits} == 1 )) || die "$3: expected one $3/SKILL.md in $1@$2, found ${#hits}"
+  echo "${hits[1]%/SKILL.md}"
+}
+
+# Export a folder at a ref into a new directory.
+export_to() {  # repo ref path dest
+  mkdir -p "$4"
+  git -C "$1" archive "$2" "$3" | tar -x -C "$4" --strip-components=$(( ${#${(s:/:)3}} ))
+}
+
+sync() {
+  [[ -f $manifest ]] || die "no manifest at $manifest"
+  local -a lines wanted
+  local line src repo ref spath tmp name
+  # Read and check the whole manifest before changing anything.
+  while IFS= read -r line; do
+    line=${line%%\#*}
+    local -a f=(${=line})
+    (( ${#f} )) || continue
+    [[ ${f[1]} == browser ]] || for name in ${f[2,-1]}; do valid_name "$name"; done
+    lines+=$line
+  done < "$manifest"
+  mkdir -p "$library"
+  for line in $lines; do
+    local -a f=(${=line})
+    if [[ ${f[1]} == browser ]]; then
+      src=${f[2]}; resolve "$src"
+      spath=$(skill_path "$repo" "$ref" skill-browser)
+      tmp=$(mktemp -d)
+      export_to "$repo" "$ref" "$spath" "$tmp"
+      cp "$tmp/SKILL.md" "$root/SKILL.md"
+      [[ -f $tmp/README.md ]] && cp "$tmp/README.md" "$root/README.md"
+      rm -rf "$tmp"
+      say "browser   <- $src ($ref)"
+      continue
+    fi
+    src=${f[1]}; resolve "$src"
+    for name in ${f[2,-1]}; do
+      spath=$(skill_path "$repo" "$ref" "$name")
+      tmp=$library/.$name.new
+      rm -rf "$tmp"
+      export_to "$repo" "$ref" "$spath" "$tmp"
+      find "$tmp" -name SKILL.md -exec sh -c 'mv "$1" "$(dirname "$1")/SKILL.dormant.md"' _ {} \;
+      rm -rf "$library/$name"
+      mv "$tmp" "$library/$name"
+      wanted+=$name
+      say "library/$name <- $src ($ref)"
+    done
+  done
+
+  # Never delete what the manifest no longer lists; report it.
+  local d
+  for d in "$library"/*(N/); do
+    (( ${wanted[(Ie)${d:t}]} )) || say "not in manifest (left alone): library/${d:t}"
+  done
+}
+
+status() {
+  [[ -d $root ]] || die "no library root at $root"
+  say "root: $root"
+  [[ -f $root/SKILL.md ]] && say "browser: present" || say "browser: missing"
+  local d
+  for d in "$library"/*(N/); do
+    if [[ -f $d/SKILL.dormant.md ]]; then say "  ${d:t}"; else say "  ${d:t} (no SKILL.dormant.md)"; fi
+  done
+  local live
+  live=$(find "$library" -name SKILL.md 2>/dev/null | head -3)
+  [[ -z $live ]] || say "warning: live SKILL.md files in the library:"$'\n'"$live"
+}
+
+case $cmd in
+  sync) sync ;;
+  status) status ;;
+  *) die "usage: jdf-skill-library sync|status [library_root]" ;;
+esac
