@@ -1,0 +1,141 @@
+#!/bin/zsh
+# Keep 1Password's SSH agent usable while agents work unattended.
+#
+#   jdf-keepalive start [duration=4h] [interval=15m]   sign once, then nudge in the background
+#   jdf-keepalive run   [duration=4h] [interval=15m]   same, in the foreground
+#   jdf-keepalive status
+#   jdf-keepalive stop
+#
+# `start` signs a dummy message with git's signing key through 1Password. That
+# unlocks 1Password if needed and approves the SSH key for the calling app
+# (the SSH agent asks once per app per unlock). It then posts a zero-distance
+# synthetic mouse move every INTERVAL so 1Password's idle auto-lock never fires.
+# Nudges only prevent the lock; they can't undo one.
+#
+# Start it BEFORE walking away: once the screen or 1Password has locked, nobody
+# is there to approve the unlock, and `start` refuses to run.
+#
+# Only one nudge loop runs at a time: a second `start` signs (approving its own
+# app) and leaves the running loop alone. Durations accept s/m/h suffixes and
+# are capped at 8h.
+
+set -euo pipefail
+
+dir=${0:A:h}
+bin=$dir/nudge
+log=$dir/jdf-keepalive.log
+pidfile=$dir/jdf-keepalive.pid
+lockfile=$dir/jdf-keepalive.lock
+op_sign=/Applications/1Password.app/Contents/MacOS/op-ssh-sign
+max_s=28800
+
+say() { echo "$(date '+%F %T') $*" | tee -a "$log"; }
+idle() { ioreg -c IOHIDSystem | awk '/HIDIdleTime/ && !d {printf "%.1f", $NF/1e9; d=1}'; }
+# Capture first: `ioreg | grep -q` under pipefail fails with SIGPIPE (141).
+screen_locked() { [[ $(ioreg -n Root -d1 -a) == *CGSSessionScreenIsLocked* ]]; }
+last_display_event() {
+  pmset -g log | grep -E 'Display is turned (on|off)' | tail -1 |
+    sed -E 's/^([0-9-]+ [0-9:]+).*Display is turned (on|off).*/\2 since \1/'
+}
+
+seconds() {  # 90 | 90s | 15m | 4h -> seconds
+  case $1 in
+    <->|<->s) echo ${1%s} ;;
+    <->m) echo $(( ${1%m} * 60 )) ;;
+    <->h) echo $(( ${1%h} * 3600 )) ;;
+    *) echo "bad duration: $1" >&2; return 1 ;;
+  esac
+}
+
+running_pid() {  # prints the loop's PID if it is alive and really ours
+  [[ -f $pidfile ]] || return 1
+  local pid=$(<$pidfile)
+  ps -p "$pid" -o command= 2>/dev/null | grep -Eq 'jdf-keepalive (run|_loop)' || return 1
+  echo $pid
+}
+
+# Sign a dummy message via 1Password; prompts to unlock/approve if needed.
+unlock_1password() {
+  local key=$(mktemp) rc=0
+  git config --global user.signingkey > "$key"
+  echo jdf-keepalive | perl -e 'alarm 90; exec @ARGV' "$op_sign" -Y sign -n jdf-keepalive -f "$key" >/dev/null || rc=$?
+  rm -f "$key"
+  return $rc
+}
+
+nudge_loop() {  # $1 duration_s, $2 interval_s
+  local end=$(( $(date +%s) + $1 )) before remaining sleeper=
+  # Claim the loop atomically: the kernel holds this lock until this process
+  # exits, so two concurrent starts cannot both nudge, and a crash leaves no
+  # stale claim. Only the holder writes or removes the PID file.
+  zmodload zsh/system
+  : >> "$lockfile"
+  if ! zsystem flock -t 0 "$lockfile" 2>/dev/null; then
+    say "nudge loop already running (pid $(running_pid || echo '?')); leaving it alone"
+    exit 0
+  fi
+  echo $$ > "$pidfile"
+  trap '[[ -n $sleeper ]] && kill $sleeper 2>/dev/null; rm -f "$pidfile"; say "stopped"; exit 0' TERM INT
+  say "nudging every $2s until $(date -r $end '+%F %T')"
+  while (( $(date +%s) < end )); do
+    before=$(idle)
+    if ! "$bin" >/dev/null; then
+      rm -f "$pidfile"
+      say "error: nudge refused (Accessibility permission lost?); stopping"
+      exit 1
+    fi
+    sleep 0.5
+    say "nudge: idle ${before}s -> $(idle)s"
+    remaining=$(( end - $(date +%s) ))
+    if (( remaining > 0 )); then
+      # Background sleep + wait so `stop` takes effect immediately.
+      sleep $(( remaining < $2 ? remaining : $2 )) & sleeper=$!
+      wait $sleeper; sleeper=
+    fi
+  done
+  rm -f "$pidfile"
+  say "done"
+}
+
+cmd=${1:-status}
+duration=$(seconds "${2:-4h}")
+interval=$(seconds "${3:-15m}")
+(( duration <= max_s )) || { echo "duration capped at 8h" >&2; duration=$max_s; }
+
+case $cmd in
+  start|run)
+    # Compile once so each nudge is instant.
+    [[ $bin -nt $dir/nudge.swift ]] || swiftc -O -o "$bin" "$dir/nudge.swift"
+    "$bin" --check >/dev/null || { say "abort: no Accessibility permission for the program running this; grant it in System Settings > Privacy & Security"; exit 1; }
+    ! screen_locked || { say "abort: the screen is locked, so 1Password has locked too; unlock the Mac and start this before leaving"; exit 1; }
+    unlock_1password || { say "abort: 1Password did not sign within 90 s (locked, or awaiting approval with nobody there); start this while someone can approve"; exit 1; }
+    say "1Password unlocked; SSH key approved for this app"
+    if pid=$(running_pid); then
+      say "nudge loop already running (pid $pid); leaving it alone"
+      exit 0
+    fi
+    if [[ $cmd == run ]]; then
+      nudge_loop $duration $interval
+    else
+      nohup "$0" _loop "$duration" "$interval" >/dev/null 2>&1 &
+      for _ in {1..30}; do running_pid >/dev/null && break; sleep 0.1; done
+      if pid=$(running_pid); then say "nudge loop started in background (pid $pid)"
+      else say "abort: nudge loop failed to start"; exit 1; fi
+    fi
+    ;;
+  _loop)  # internal: the detached loop behind `start`
+    nudge_loop $duration $interval
+    ;;
+  status)
+    if pid=$(running_pid); then echo "running (pid $pid)"; else echo "not running"; fi
+    echo "idle: $(idle)s"
+    if screen_locked; then echo "screen: locked"; else echo "screen: unlocked"; fi
+    echo "display: $(last_display_event)"
+    "$bin" --check >/dev/null 2>&1 && echo "accessibility: granted" || echo "accessibility: NOT granted"
+    tail -3 "$log" 2>/dev/null || true
+    ;;
+  stop)
+    if pid=$(running_pid); then kill "$pid" && say "stop requested (pid $pid)"; else echo "not running"; fi
+    ;;
+  *) echo "usage: jdf-keepalive start|run|status|stop [duration] [interval]" >&2; exit 2 ;;
+esac

@@ -10,6 +10,7 @@ A collection of developer tools by [João Dinis Ferreira](https://github.com/joa
 | [jdf-tab-huddle](packages/jdf-tab-huddle) | Chrome extension — **Huddle** — organizes your browser tabs: sort, group, de-duplicate, snooze, open links as tabs, and optional AI suggestions | v0.8.0 (Chrome Web Store from v1.0.0) | [Releases](https://github.com/joaodinissf/jdf-suite/releases?q=jdf-tab-huddle), or load unpacked `packages/jdf-tab-huddle/src/` |
 | [jdf-stt](packages/jdf-stt) | Private, local dictation and transcription for the Mac, built on whisper.cpp; nothing leaves your machine | [![PyPI](https://img.shields.io/pypi/v/jdf-stt)](https://pypi.org/project/jdf-stt/) v0.1.0 | `uvx jdf-stt` |
 | [jdf-skill-library](packages/jdf-skill-library) | Fills a skill library agents do not discover on their own, for the `skill-browser` skill | unreleased | Run `packages/jdf-skill-library/jdf-skill-library` — see package README |
+| [jdf-keepalive](packages/jdf-keepalive) | Keeps 1Password's SSH agent signing commits while you are away (macOS) | unreleased | Run `packages/jdf-keepalive/jdf-keepalive start` — see package README |
 
 ## License
 
