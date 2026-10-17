@@ -353,7 +353,12 @@ Accessibility and Input Monitoring the first time. Settings are in `defaults` fo
 `defaults write eu.joaof.jdf-stt model large-v3-turbo` (also `cliPath`, `mode`, `llmURL`,
 `hotkeyKeyCode`). Each one set there overrides `config.toml`; unset, the CLI's own settings apply.
 
-<!-- 11 -->
+The app also offers two Shortcuts actions: **Dictate** (records until you pause and returns the
+text) and **Transcribe Audio File** (an audio or video file in, text out). Both run the same CLI
+on this Mac. They do not work yet: Shortcuts lists an app's actions from App Intents metadata
+(`Metadata.appintents`) that only an Xcode build extracts, and `scripts/make-app.sh` builds with
+SwiftPM, which does not, so the app it makes shows no actions in Shortcuts. The actions are
+BLIND (compiled, never run); making them discoverable is tracked as a follow-up.
 
 ## Engines, live preview and latency
 

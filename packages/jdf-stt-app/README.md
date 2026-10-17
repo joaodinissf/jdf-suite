@@ -16,8 +16,16 @@ its JSON. See the "Menu-bar app" section of the [jdf-stt README](../jdf-stt/READ
 - `Sources/STTApp`: the app. `HotkeyTap` (listen-only event tap, needs Input Monitoring),
   `TextInserter` (Accessibility, paste fallback), `Permissions`, `StatusItem` (menu),
   `AppDelegate` (wiring), `Settings` (UserDefaults).
+- `Sources/STTApp/Intents`: the Shortcuts actions (App Intents): Dictate, Transcribe Audio File.
+  BLIND and not discoverable from a SwiftPM build: Shortcuts finds actions through the `Metadata.appintents` bundle that Xcode's
+  App Intents metadata extraction writes, and neither `swift build` nor `scripts/make-app.sh`
+  produces it, so a `jdf-stt.app` built here shows no actions. Making them appear needs an Xcode
+  build with that step, which is tracked as a follow-up; until then the actions are compiled but
+  never run.
 - `Resources/Info.plist`: LSUIElement, NSMicrophoneUsageDescription, bundle id `eu.joaof.jdf-stt`.
 - `scripts/make-app.sh`: release build, `build/jdf-stt.app`, ad-hoc signature.
+- `STTCore/TemporaryFile`: the copy of a Shortcuts file that arrives without a URL, in its own
+  temporary directory (the untrusted filename is cut to its last component).
 - `Tests/fixtures/fake-jdf-stt`: a shell stand-in for the CLI used by `CLIClientTests` and `DictationControllerTests`.
 
 ## Development
