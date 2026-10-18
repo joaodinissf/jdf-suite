@@ -51,5 +51,16 @@ export async function startOpenLinks(context, sw, page) {
   return sw.evaluate((id) => armClumper(id), tabId);
 }
 
-// The hint the page shows once it's started, inside Huddle's shadow root.
+// The hint the page shows each time it's started, inside Huddle's shadow root.
 export const hint = (page) => page.locator('[data-jdf-tab-huddle="open-links-hint"] [role="status"]');
+export const HINT_TEXT = 'Huddle: drag over links to open them as tabs. Esc cancels.';
+
+// A plain drag with Playwright's mouse, whose events are the user's own
+// (trusted), from the top-left corner down past the nth link. No key is held:
+// once started, the next drag is the lasso.
+export async function drag(page, n) {
+  await page.mouse.move(2, 2);
+  await page.mouse.down();
+  await page.mouse.move(200, n * 15 - 5, { steps: 5 });
+  await page.mouse.up();
+}

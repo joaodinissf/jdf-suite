@@ -40,7 +40,7 @@ Snooze tabs until later
 • The nap room lists everything that's sleeping, with Wake now and Discard (which you can undo).
 
 Open links as tabs
-• On a page full of links, press Alt+Shift+L (or the popup's Open links as tabs), then hold Z and drag a box over the links you want. They open as tabs next to the current one.
+• On a page full of links, press Alt+Shift+L (or the popup's Open links as tabs), then drag a box over the links you want. They open as tabs next to the current one, and the page goes back to normal.
 • Huddle starts it only when you ask, only in that one tab, and it stops when the page reloads or you leave it. Huddle has no access to any other site.
 
 Suggest groups with AI (optional)
@@ -52,7 +52,7 @@ Keyboard first
 • Every popup action has a single-key shortcut, shown on its button, and every page works with the keyboard and a screen reader.
 
 Privacy
-Huddle has no account, no server and no analytics. Your settings, your OpenRouter key and your snoozed tabs stay in your browser; only the Open links as tabs key syncs with your Chrome sign-in. Nothing leaves your computer unless you use Organize with AI: then that window's tab titles and addresses (without the part after ? or #) go to OpenRouter with your key. Huddle asks for no access to websites. Privacy policy: https://joaof.eu/privacy/huddle/
+Huddle has no account, no server and no analytics. Your settings, your OpenRouter key and your snoozed tabs stay in your browser; nothing syncs with your Chrome sign-in. Nothing leaves your computer unless you use Organize with AI: then that window's tab titles and addresses (without the part after ? or #) go to OpenRouter with your key. Huddle asks for no access to websites. Privacy policy: https://joaof.eu/privacy/huddle/
 
 Huddle is open source (MIT): https://github.com/joaodinissf/jdf-suite/tree/main/packages/jdf-tab-huddle
 ```

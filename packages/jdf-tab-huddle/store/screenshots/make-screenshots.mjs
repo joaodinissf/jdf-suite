@@ -549,7 +549,7 @@ async function openLinksShot(context, sw) {
   await cdp.detach();
   const reply = await sw.evaluate(async (url) => armClumper((await chrome.tabs.query({ url }))[0].id), page.url());
   if (!reply.success) throw new Error(`Open links as tabs did not start: ${JSON.stringify(reply)}`);
-  // Hold Z and drag over four links while the hint is still up (3 s).
+  // Drag over four links while the hint is still up (3 s).
   await page.locator('[data-jdf-tab-huddle="open-links-hint"]').evaluate((host) => new Promise((resolve) => {
     const check = () => (host.shadowRoot.querySelector('.hint.shown') ? resolve() : setTimeout(check, 20));
     check();
@@ -557,7 +557,6 @@ async function openLinksShot(context, sw) {
   const links = page.locator('main a');
   const first = await links.nth(1).boundingBox();
   const last = await links.nth(4).boundingBox();
-  await page.keyboard.down('z');
   await page.mouse.move(first.x - 30, first.y - 14);
   await page.mouse.down();
   await page.mouse.move(last.x + last.width + 60, last.y + last.height + 26, { steps: 4 });
@@ -569,7 +568,6 @@ async function openLinksShot(context, sw) {
   save('4-open-links-as-tabs.png', await page.screenshot());
   await page.keyboard.press('Escape');
   await page.mouse.up();
-  await page.keyboard.up('z');
   await page.close();
 }
 

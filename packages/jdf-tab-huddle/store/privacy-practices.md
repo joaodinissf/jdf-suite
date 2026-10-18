@@ -33,7 +33,7 @@ Huddle reads and rebuilds your tab groups (title, colour, collapsed state) so so
 ### `storage`
 
 ```text
-Huddle keeps its settings, your snoozed tabs (their titles and addresses, so they can be reopened) and, if you add one, your own OpenRouter API key in Chrome's extension storage on your computer. Only the Open links as tabs key and modifier use Chrome sync, so they follow your Chrome profile. Nothing is stored on any server of ours; there isn't one.
+Huddle keeps its settings, your snoozed tabs (their titles and addresses, so they can be reopened) and, if you add one, your own OpenRouter API key in Chrome's extension storage on your computer. Nothing uses Chrome sync. Nothing is stored on any server of ours; there isn't one.
 ```
 
 ### `alarms`
@@ -63,7 +63,7 @@ Used only by Open links as tabs. When you open Huddle's popup or press its short
 ### `scripting`
 
 ```text
-Used only with activeTab, for Open links as tabs: after you start it on a page, Huddle injects its own bundled script (content-clumper.js) into that tab. The script lets you hold a key and drag a rectangle over links, reads the addresses of the links inside it, and asks Huddle to open them as tabs. It reads nothing else from the page, sends nothing anywhere, and stops when the page reloads.
+Used only with activeTab, for Open links as tabs: after you start it on a page, Huddle injects its own bundled script (content-clumper.js) into that tab. The script lets you drag one rectangle over links, reads the addresses of the links inside it, and asks Huddle to open them as tabs. It reads nothing else from the page, sends nothing anywhere, and can't read Huddle's storage; after that one drag it does nothing until you start it again.
 ```
 
 ### Host permissions
@@ -116,5 +116,5 @@ https://joaof.eu/privacy/huddle/
 The dashboard's data usage section takes the checkboxes above and the policy URL; it has no free-text field of its own. This short statement mirrors the policy, for the listing's description (its Privacy paragraph says the same), for a reviewer who asks, or for any free-text box the dashboard adds:
 
 ```text
-Huddle has no server, no account and no analytics. It reads your tabs and tab groups only to organize them. Your settings, your snoozed tabs and your OpenRouter key stay in Chrome's storage on your computer; only the Open links as tabs key and modifier sync with your Chrome sign-in. Nothing leaves your browser unless you start Organize with AI: then that window's tab titles and addresses (without their query and fragment), and any instructions you type, go to OpenRouter with your key, and OpenRouter passes them to a model provider. By default Huddle asks OpenRouter to skip providers that train on prompts. Huddle also loads OpenRouter's public list of models, without your key. Huddle's use of information received from Chrome APIs adheres to the Chrome Web Store User Data Policy, including the Limited Use requirements. Full policy: https://joaof.eu/privacy/huddle/
+Huddle has no server, no account and no analytics. It reads your tabs and tab groups only to organize them. Your settings, your snoozed tabs and your OpenRouter key stay in Chrome's storage on your computer; nothing syncs with your Chrome sign-in. Nothing leaves your browser unless you start Organize with AI: then that window's tab titles and addresses (without their query and fragment), and any instructions you type, go to OpenRouter with your key, and OpenRouter passes them to a model provider. By default Huddle asks OpenRouter to skip providers that train on prompts. Huddle also loads OpenRouter's public list of models, without your key. Huddle's use of information received from Chrome APIs adheres to the Chrome Web Store User Data Policy, including the Limited Use requirements. Full policy: https://joaof.eu/privacy/huddle/
 ```

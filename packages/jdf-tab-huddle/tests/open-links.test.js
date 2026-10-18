@@ -22,16 +22,16 @@ const hintStatus = () => hintHost() && hintHost().shadowRoot.querySelector('[rol
 // chrome.scripting.executeScript as Chrome runs it in this (jsdom) page:
 // `func` runs here in the page, and injecting content-clumper.js does what the
 // script's last lines do (it is already loaded by tests/setup.js, so loading
-// it again would add a second set of listeners). `fresh` starts on a page the
+// it again would add a second set of listeners). It starts on a page the
 // clumper has not run in.
-function scriptThisPage({ fresh = true } = {}) {
-  const showHint = global.clumperShowHint;
-  if (fresh) delete globalThis.huddleOpenLinksHint;
+function scriptThisPage() {
+  const start = global.clumperStart;
+  delete globalThis.huddleOpenLinksStart;
   chrome.scripting.executeScript.mockImplementation(async (details) => {
     if (details.func) return [{ frameId: 0, documentId: 'doc-1', result: details.func() }];
     expect(details.files).toEqual(['content-clumper.js']);
-    globalThis.huddleOpenLinksHint = showHint;
-    showHint();
+    start();
+    globalThis.huddleOpenLinksStart = start;
     return [{ frameId: 0, result: null }];
   });
 }
@@ -42,13 +42,13 @@ function placeLinks(n) {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  global.clumperHideHint?.();
-  global.clumperApplySettings({ key: 'z', modifier: null });
+  global.clumperHideHint();
 });
 
 afterEach(() => {
-  global.clumperHideHint?.();
-  globalThis.huddleOpenLinksHint = global.clumperShowHint;
+  global.clumperHideHint();
+  global.clumperResetStateForTest();
+  globalThis.huddleOpenLinksStart = global.clumperStart;
   chrome.scripting.executeScript.mockReset().mockResolvedValue([]);
   vi.useRealTimers();
 });
@@ -143,7 +143,7 @@ describe('armClumper', () => {
 
   test('if the page reloaded or changed between the check and the load, it says to start again', async () => {
     placeLinks(3);
-    delete globalThis.huddleOpenLinksHint;
+    delete globalThis.huddleOpenLinksStart;
     chrome.scripting.executeScript.mockImplementation(async (details) => {
       if (details.func) return [{ frameId: 0, documentId: 'doc-1', result: details.func() }];
       throw new Error('No document with id doc-1 in tab 5');
@@ -151,24 +151,29 @@ describe('armClumper', () => {
     expect(await armClumper(5)).toEqual({ success: false, reason: 'The page changed. Start Open links as tabs again.' });
   });
 
-  test('a page with links gets the clumper and its hint', async () => {
+  test('a page with links gets the clumper, armed, and its hint', async () => {
     placeLinks(3);
     scriptThisPage();
     expect(await armClumper(5)).toEqual({ success: true, already: false });
+    expect(global.clumperGetStateForTest()).toMatchObject({ armed: true, crosshair: true });
     vi.advanceTimersByTime(100);
-    expect(hintStatus().textContent).toBe('Huddle: hold Z and drag over links to open them as tabs. On until this page reloads.');
+    expect(hintStatus().textContent).toBe('Huddle: drag over links to open them as tabs. Esc cancels.');
   });
 
-  test('starting it twice shows the hint again, loads one copy, and is no error', async () => {
+  test('starting it again after a drag re-arms the copy already there, shows the hint again, and is no error', async () => {
     placeLinks(3);
     scriptThisPage();
     expect(await armClumper(5)).toEqual({ success: true, already: false });
     vi.advanceTimersByTime(3000);
     expect(hintHost()).toBeNull();
+    // Escape stands in for the drag: either one puts the page back.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(global.clumperGetStateForTest().armed).toBe(false);
 
     expect(await armClumper(5)).toEqual({ success: true, already: true });
+    expect(global.clumperGetStateForTest()).toMatchObject({ armed: true, crosshair: true });
     vi.advanceTimersByTime(100);
-    expect(hintStatus().textContent).toBe('Huddle is already on: hold Z and drag over links to open them as tabs.');
+    expect(hintStatus().textContent).toBe('Huddle: drag over links to open them as tabs. Esc cancels.');
     expect(chrome.scripting.executeScript.mock.calls.filter(([d]) => d.files)).toHaveLength(1);
     expect(document.querySelectorAll('[data-jdf-tab-huddle="open-links-hint"]')).toHaveLength(1);
   });
@@ -186,7 +191,7 @@ describe('armClumper', () => {
 
   test('the check runs in the page and reports what it found', () => {
     placeLinks(4);
-    delete globalThis.huddleOpenLinksHint;
+    delete globalThis.huddleOpenLinksStart;
     expect(openLinksPageCheck()).toEqual({ already: false, contentType: 'text/html', links: 4 });
   });
 
@@ -324,11 +329,11 @@ describe('the page\'s hint', () => {
     expect(document.activeElement).toBe(focused);
   });
 
-  test('shows the configured key as a key badge', () => {
-    global.clumperApplySettings({ key: 'q', modifier: 'shift' });
+  test('says how to cancel, with Esc as a key badge', () => {
     global.clumperShowHint();
     vi.advanceTimersByTime(100);
-    expect(hintStatus().querySelector('kbd').textContent).toBe('Shift+Q');
+    expect(hintStatus().textContent).toBe('Huddle: drag over links to open them as tabs. Esc cancels.');
+    expect(hintStatus().querySelector('kbd').textContent).toBe('Esc');
   });
 
   test('goes after about 3 seconds', () => {

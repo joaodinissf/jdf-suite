@@ -1327,7 +1327,7 @@ function showOpenShortcut() {
 // Open links as tabs
 // ============================================================
 // Starts the link clumper in the tab the popup was opened over, then closes
-// the popup so the page's "hold Z and drag" hint can be seen. Opening the
+// the popup so the page's "drag over links" hint can be seen. Opening the
 // popup is the gesture that lets Huddle into that tab (activeTab). On a page
 // Chrome keeps from extensions the button says so instead, and stays
 // focusable so the reason can be read.

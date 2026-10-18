@@ -148,7 +148,8 @@ global.chrome = {
     sync: {
       get: vi.fn(),
       set: vi.fn(),
-      remove: vi.fn(),
+      remove: vi.fn().mockResolvedValue(undefined),
+      setAccessLevel: vi.fn().mockResolvedValue(undefined),
     },
     onChanged: {
       addListener: vi.fn(),
@@ -266,6 +267,13 @@ const backgroundWrapper = `
 })();
 `;
 eval(backgroundWrapper);
+
+// What the worker asked of storage as it started, before beforeEach clears
+// the mocks' calls.
+global.storageAccessLevelsAtStart = {
+  local: chrome.storage.local.setAccessLevel.mock.calls.slice(),
+  sync: chrome.storage.sync.setAccessLevel.mock.calls.slice(),
+};
 
 // The worker's own onMessage listeners (the pages loaded below register
 // theirs on the same mock). dispatch() sends a message to these only, the way
@@ -446,16 +454,21 @@ const clumperWrapper = `
   if (typeof clumperIsOpenableUrl !== 'undefined') global.clumperIsOpenableUrl = clumperIsOpenableUrl;
   if (typeof clumperRectsOverlap !== 'undefined') global.clumperRectsOverlap = clumperRectsOverlap;
   if (typeof clumperBoxFromPoints !== 'undefined') global.clumperBoxFromPoints = clumperBoxFromPoints;
-  if (typeof clumperKeyMatches !== 'undefined') global.clumperKeyMatches = clumperKeyMatches;
-  if (typeof clumperModifierMatches !== 'undefined') global.clumperModifierMatches = clumperModifierMatches;
   if (typeof clumperCollectUrlsInRect !== 'undefined') global.clumperCollectUrlsInRect = clumperCollectUrlsInRect;
-  if (typeof clumperIsTextInputTarget !== 'undefined') global.clumperIsTextInputTarget = clumperIsTextInputTarget;
   if (typeof clumperResetStateForTest !== 'undefined') global.clumperResetStateForTest = clumperResetStateForTest;
   if (typeof clumperGetStateForTest !== 'undefined') global.clumperGetStateForTest = clumperGetStateForTest;
-  if (typeof clumperApplySettings !== 'undefined') global.clumperApplySettings = clumperApplySettings;
+  if (typeof clumperStart !== 'undefined') global.clumperStart = clumperStart;
   if (typeof clumperShowHint !== 'undefined') global.clumperShowHint = clumperShowHint;
   if (typeof clumperHideHint !== 'undefined') global.clumperHideHint = clumperHideHint;
-  if (typeof clumperLoadSettings !== 'undefined') global.clumperLoadSettings = clumperLoadSettings;
+  // Injecting the script starts it at once: how the page was then, before the
+  // tests put it back to normal below.
+  global.clumperStateAtLoad = {
+    ...clumperGetStateForTest(),
+    userSelect: document.body.style.userSelect,
+    hint: Boolean(document.querySelector('[data-jdf-tab-huddle="open-links-hint"]')),
+  };
+  if (typeof clumperHideHint !== 'undefined') clumperHideHint();
+  clumperResetStateForTest();
   // jsdom's events are never trusted, so the tests trust every event unless a
   // test asks for the real check: clumperTrustAllEventsForTest(false).
   const clumperRealEventIsTrusted = clumperEventIsTrusted;
@@ -473,16 +486,7 @@ const optionsWrapper = `
 (function() {
   ${optionsJs}
 
-  if (typeof CLUMPING_DEFAULTS !== 'undefined') global.CLUMPING_DEFAULTS = CLUMPING_DEFAULTS;
-  if (typeof getAllowedKeys !== 'undefined') global.getAllowedKeys = getAllowedKeys;
-  if (typeof applyDefaults !== 'undefined') global.optionsApplyDefaults = applyDefaults;
-  if (typeof loadClumpingSettings !== 'undefined') global.loadClumpingSettings = loadClumpingSettings;
-  if (typeof saveClumpingSettings !== 'undefined') global.saveClumpingSettings = saveClumpingSettings;
-  if (typeof populateKeyDropdown !== 'undefined') global.populateKeyDropdown = populateKeyDropdown;
-  if (typeof readFormState !== 'undefined') global.readFormState = readFormState;
-  if (typeof writeFormState !== 'undefined') global.writeFormState = writeFormState;
   if (typeof showStatus !== 'undefined') global.showStatus = showStatus;
-  if (typeof handleFormChange !== 'undefined') global.handleFormChange = handleFormChange;
   if (typeof showOpenLinksShortcut !== 'undefined') global.showOpenLinksShortcut = showOpenLinksShortcut;
 })();
 `;

@@ -1,21 +1,16 @@
 // Open links as tabs: the link clumper.
-// Hold a key (default: Z) and click-drag a rectangle to collect every link
-// inside it. On release, the selection is sent to the service worker which
-// opens each link as a background tab adjacent to the current one.
+// Once started, the next click-drag draws a rectangle and collects every link
+// inside it. On release, the selection is sent to the service worker, which
+// opens each link as a background tab next to the current one, and the page
+// goes back to normal. Escape, or a click without a drag, cancels.
 //
 // The worker injects this script into one page when the user starts Open
-// links as tabs there (the shortcut or the popup), through activeTab. It
-// stays until the page reloads or the tab moves to another page.
+// links as tabs there (the shortcut or the popup), through activeTab. Each
+// start is good for one drag; starting again on the same page re-arms this
+// copy (see armClumper in background.js).
 //
 // Clean-room implementation from a behavior spec; not derived from upstream
 // linkclump source. See packages/jdf-tab-huddle/README.md for attribution.
-
-// --- Configuration (read from chrome.storage.sync; defaults applied if unset) ---
-const CLUMPER_DEFAULT_KEY = 'z';
-const CLUMPER_DEFAULT_MODIFIER = null; // null | 'shift' | 'ctrl' | 'alt'
-
-let clumperActivationKey = CLUMPER_DEFAULT_KEY;
-let clumperActivationModifier = CLUMPER_DEFAULT_MODIFIER;
 
 // --- Visual constants ---
 const CLUMPER_COLOR = '#ff6600';
@@ -23,17 +18,21 @@ const CLUMPER_FILL = 'rgba(255, 102, 0, 0.1)';
 const CLUMPER_LINK_HIGHLIGHT = 'rgba(255, 102, 0, 0.3)';
 const CLUMPER_Z_INDEX = 2147483647;
 
-// How long the "hold Z and drag" hint stays up.
+// How long the "drag over links" hint stays up.
 const CLUMPER_HINT_MS = 3000;
 
 // --- State ---
-let clumperKeyHeld = false;
+let clumperArmed = false;
 let clumperDragging = false;
 let clumperDragStart = null; // {x, y} in page coords
 let clumperSelectionBox = null; // DOM element or null
 const clumperHighlightOverlays = []; // array of overlay DOM elements
 let clumperHighlightContainer = null; // parent element holding all overlays
 let clumperPrevBodyUserSelect = null; // saved value of document.body.style.userSelect while suppressed
+let clumperCursorStyle = null; // the <style> that shows a crosshair while armed
+// The click that follows the drag's mouseup must not reach the page, or a
+// drag that starts and ends on one link would also follow it.
+let clumperSwallowClick = false;
 
 // A page can dispatch its own key and mouse events, and they reach this
 // script's listeners too; only the user's own input is trusted. Page scripts
@@ -45,6 +44,9 @@ let clumperEventIsTrusted = (event) => event.isTrusted;
 // CLUMPER_MAX_URLS.
 const CLUMPER_CONFIRM_ABOVE = 10;
 const CLUMPER_MAX_URLS = 25;
+
+// A drag smaller than this either way is a click: it cancels.
+const CLUMPER_MIN_DRAG_PX = 4;
 
 // --- Pure helpers ---
 
@@ -88,43 +90,6 @@ function clumperPageY(event) {
   return cy + sy;
 }
 
-// Match the character first, so the labelled key works on any layout (on
-// AZERTY the key labelled A sends code KeyQ). Shift and Option change the
-// character (Shift+1 reports '!', macOS Option+Z reports 'Ω'), so only then
-// fall back to the physical key (event.code: KeyZ / Digit1).
-function clumperKeyMatches(event, key) {
-  if (!event || !key) return false;
-  const k = key.toLowerCase();
-  if (event.key && event.key.toLowerCase() === k) return true;
-  if (!event.code || !(event.shiftKey || event.altKey)) return false;
-  return event.code === (/^[0-9]$/.test(k) ? 'Digit' + k : 'Key' + k.toUpperCase());
-}
-
-function clumperModifierMatches(event, modifier) {
-  if (!event) return false;
-  // Cmd+Z is undo. macOS also sends no keyup for a key released while Cmd is
-  // held, so arming here would leave the clumper stuck on.
-  if (event.metaKey) return false;
-  const shift = Boolean(event.shiftKey);
-  const ctrl = Boolean(event.ctrlKey);
-  const alt = Boolean(event.altKey);
-  switch (modifier) {
-    case null:
-    case undefined:
-    case '':
-    case 'none':
-      return !shift && !ctrl && !alt;
-    case 'shift':
-      return shift && !ctrl && !alt;
-    case 'ctrl':
-      return ctrl && !shift && !alt;
-    case 'alt':
-      return alt && !shift && !ctrl;
-    default:
-      return false;
-  }
-}
-
 function clumperPageRectOf(element) {
   const r = element.getBoundingClientRect();
   const sx = typeof window !== 'undefined' ? window.pageXOffset || 0 : 0;
@@ -155,14 +120,6 @@ function clumperCollectUrlsInRect(selRect, root) {
     urls.push(canonical);
   }
   return urls;
-}
-
-function clumperIsTextInputTarget(target) {
-  if (!target || !target.tagName) return false;
-  const tag = target.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-  if (target.isContentEditable) return true;
-  return false;
 }
 
 // --- DOM helpers ---
@@ -260,6 +217,20 @@ function clumperRestoreTextSelection() {
   clumperPrevBodyUserSelect = null;
 }
 
+function clumperShowCrosshair() {
+  if (clumperCursorStyle) return;
+  const style = document.createElement('style');
+  style.setAttribute('data-jdf-tab-huddle', 'clumper-cursor');
+  style.textContent = '* { cursor: crosshair !important; }';
+  (document.head || document.documentElement).appendChild(style);
+  clumperCursorStyle = style;
+}
+
+function clumperHideCrosshair() {
+  if (clumperCursorStyle) clumperCursorStyle.remove();
+  clumperCursorStyle = null;
+}
+
 function clumperTeardown() {
   clumperDragging = false;
   clumperDragStart = null;
@@ -268,54 +239,44 @@ function clumperTeardown() {
     clumperSelectionBox = null;
   }
   clumperClearHighlights();
-  clumperRestoreTextSelection();
 }
 
-// Lets go of the key as far as the clumper knows: for when its keyup can't
-// arrive (the window lost focus, the tab was hidden) or Escape was pressed.
+// Ready for one drag: a crosshair, and no text selection while it lasts.
+function clumperArm() {
+  clumperArmed = true;
+  clumperShowCrosshair();
+  clumperSuppressTextSelection();
+}
+
+// Back to the page as it was: after the drag, on Escape, or a plain click.
 function clumperDisarm() {
-  clumperKeyHeld = false;
+  clumperArmed = false;
   clumperTeardown();
+  clumperHideCrosshair();
+  clumperRestoreTextSelection();
 }
 
 // --- Event handlers ---
 
-function clumperHandleKeyDown(event) {
-  if (!clumperEventIsTrusted(event)) return;
-  // After the extension is updated or reloaded, this copy can no longer open
-  // tabs, so it never arms.
-  if (!chrome.runtime?.id) return;
-  if (clumperKeyHeld) return;
-  if (clumperIsTextInputTarget(event.target)) return;
-  if (!clumperKeyMatches(event, clumperActivationKey)) return;
-  if (!clumperModifierMatches(event, clumperActivationModifier)) return;
-  clumperKeyHeld = true;
-  clumperSuppressTextSelection();
-}
-
-function clumperHandleKeyUp(event) {
-  if (!clumperKeyMatches(event, clumperActivationKey)) return;
-  clumperKeyHeld = false;
-  if (clumperDragging) {
-    clumperTeardown();
-  } else {
-    // Key released without a drag — still need to restore page's selection CSS
-    clumperRestoreTextSelection();
-  }
-}
-
 function clumperHandleEscape(event) {
+  if (!clumperEventIsTrusted(event)) return;
   if (event.key !== 'Escape') return;
-  if (!clumperKeyHeld && !clumperDragging) return;
+  if (!clumperArmed && !clumperDragging) return;
   clumperDisarm();
 }
 
 function clumperHandleMouseDown(event) {
   if (!clumperEventIsTrusted(event)) return;
-  if (!chrome.runtime?.id) return;
-  if (!clumperKeyHeld) return;
+  if (!clumperArmed) return;
   if (event.button !== 0) return;
+  // After the extension is updated or reloaded, this copy can no longer open
+  // tabs, so it lets the page have its mouse back.
+  if (!chrome.runtime?.id) {
+    clumperDisarm();
+    return;
+  }
   clumperDragging = true;
+  clumperSwallowClick = false;
   clumperDragStart = { x: clumperPageX(event), y: clumperPageY(event) };
   clumperSelectionBox = clumperCreateSelectionBox();
   clumperUpdateSelectionBox(clumperSelectionBox, clumperBoxFromPoints(clumperDragStart, clumperDragStart));
@@ -335,13 +296,16 @@ function clumperHandleMouseUp(event) {
   if (!clumperDragging || !clumperSelectionBox) return;
   if (event.button !== 0) return;
   event.preventDefault();
+  clumperSwallowClick = true;
+  // The click comes in the same task as the mouseup, if at all, so the flag
+  // never outlives it.
+  setTimeout(() => { clumperSwallowClick = false; }, 0);
   const rect = clumperBoxFromPoints(clumperDragStart, { x: clumperPageX(event), y: clumperPageY(event) });
-  let urls = clumperCollectUrlsInRect(rect);
-  clumperTeardown();
+  // A click without a drag selects nothing, so it only cancels.
+  const dragged = rect.right - rect.left >= CLUMPER_MIN_DRAG_PX || rect.bottom - rect.top >= CLUMPER_MIN_DRAG_PX;
+  let urls = dragged ? clumperCollectUrlsInRect(rect) : [];
+  clumperDisarm();
   if (urls.length > CLUMPER_CONFIRM_ABOVE) {
-    // The key is let go while the dialog is up, and that keyup never reaches
-    // the page.
-    clumperKeyHeld = false;
     // The browser's own dialog: a page can't click it or answer it.
     const question = urls.length > CLUMPER_MAX_URLS
       ? `Huddle: open the first ${CLUMPER_MAX_URLS} of ${urls.length} links?`
@@ -354,39 +318,31 @@ function clumperHandleMouseUp(event) {
   }
 }
 
+// Swallows the one click that follows a drag's mouseup.
+function clumperHandleClick(event) {
+  if (!clumperSwallowClick) return;
+  clumperSwallowClick = false;
+  event.preventDefault();
+  event.stopPropagation();
+}
+
 function clumperResetStateForTest() {
   clumperDisarm();
+  clumperSwallowClick = false;
 }
 
 function clumperGetStateForTest() {
   return {
-    keyHeld: clumperKeyHeld,
+    armed: clumperArmed,
     dragging: clumperDragging,
     dragStart: clumperDragStart,
     hasSelectionBox: Boolean(clumperSelectionBox),
     highlightCount: clumperHighlightOverlays.length,
+    crosshair: Boolean(clumperCursorStyle && clumperCursorStyle.isConnected),
   };
 }
 
-function clumperApplySettings(raw) {
-  const c = raw && typeof raw === 'object' ? raw : {};
-  clumperActivationKey = typeof c.key === 'string' && c.key.length === 1
-    ? c.key.toLowerCase()
-    : CLUMPER_DEFAULT_KEY;
-  clumperActivationModifier = c.modifier === 'shift' || c.modifier === 'ctrl' || c.modifier === 'alt'
-    ? c.modifier
-    : CLUMPER_DEFAULT_MODIFIER;
-}
-
-function clumperLoadSettings(then) {
-  if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.sync) return;
-  chrome.storage.sync.get(['clumping'], (result) => {
-    clumperApplySettings(result && result.clumping);
-    if (then) then();
-  });
-}
-
-// --- The hint: "hold Z and drag" ---
+// --- The hint: "drag over links" ---
 // A small notice at the bottom centre of the page, drawn like the popup's
 // toasts, in a shadow root so the page's CSS can't restyle it. It never takes
 // focus or clicks, is announced politely, goes after CLUMPER_HINT_MS, and
@@ -394,7 +350,6 @@ function clumperLoadSettings(then) {
 // (Huddle exposes no web_accessible_resources), so it uses the system's.
 
 let clumperHintHost = null;
-let clumperHintAgain = false;
 let clumperHintTimers = [];
 
 const CLUMPER_HINT_CSS = `
@@ -436,19 +391,6 @@ const CLUMPER_HINT_CSS = `
   }
 `;
 
-// "Z", or "Shift+Z" with a modifier.
-function clumperKeyLabel() {
-  const modifier = { shift: 'Shift', ctrl: 'Ctrl', alt: 'Alt' }[clumperActivationModifier];
-  const key = clumperActivationKey.toUpperCase();
-  return modifier ? `${modifier}+${key}` : key;
-}
-
-function clumperHintText(again) {
-  return again
-    ? ['Huddle is already on: hold ', ' and drag over links to open them as tabs.']
-    : ['Huddle: hold ', ' and drag over links to open them as tabs. On until this page reloads.'];
-}
-
 function clumperHideHint() {
   for (const t of clumperHintTimers) clearTimeout(t);
   clumperHintTimers = [];
@@ -462,9 +404,8 @@ function clumperHintEscape(event) {
   if (event.key === 'Escape') clumperHideHint();
 }
 
-function clumperShowHint(again = false) {
+function clumperShowHint() {
   clumperHideHint();
-  clumperHintAgain = again;
   const host = document.createElement('div');
   host.setAttribute('data-jdf-tab-huddle', 'open-links-hint');
   // Inline !important beats any page rule, so the page can't move or hide it.
@@ -484,11 +425,10 @@ function clumperShowHint(again = false) {
   document.addEventListener('keydown', clumperHintEscape, true);
 
   // Filled once the live region is in the page, so a screen reader announces it.
-  const [before, after] = clumperHintText(again);
   clumperHintTimers.push(setTimeout(() => {
-    const key = document.createElement('kbd');
-    key.textContent = clumperKeyLabel();
-    box.append(before, key, after);
+    const esc = document.createElement('kbd');
+    esc.textContent = 'Esc';
+    box.append('Huddle: drag over links to open them as tabs. ', esc, ' cancels.');
     clumperHintTimers.push(setTimeout(() => box.classList.add('shown'), 20));
   }, 50));
   clumperHintTimers.push(setTimeout(clumperHideHint, CLUMPER_HINT_MS));
@@ -496,36 +436,28 @@ function clumperShowHint(again = false) {
 
 // Register listeners. Capturing phase so we beat the page's own handlers.
 if (typeof document !== 'undefined') {
-  document.addEventListener('keydown', clumperHandleKeyDown, true);
-  document.addEventListener('keyup', clumperHandleKeyUp, true);
   document.addEventListener('keydown', clumperHandleEscape, true);
   document.addEventListener('mousedown', clumperHandleMouseDown, true);
   document.addEventListener('mousemove', clumperHandleMouseMove, true);
   document.addEventListener('mouseup', clumperHandleMouseUp, true);
-  // The key's keyup goes elsewhere when it is released in another window, tab
-  // or frame.
-  window.addEventListener('blur', clumperDisarm);
+  document.addEventListener('click', clumperHandleClick, true);
+  // The mouseup goes elsewhere when the button is released in another window,
+  // tab or frame, so a drag in flight ends there; the page stays armed.
+  window.addEventListener('blur', clumperTeardown);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) clumperDisarm();
+    if (document.hidden) clumperTeardown();
   });
 }
 
-// Load the key from Settings, then say how to use it. A second start can
-// already have shown "already on" (with the default key) before the settings
-// arrive; that hint is then redrawn with the right key, not replaced. Keep the
-// key in sync with any later change made in Settings (or from another Chrome
-// signin).
-clumperLoadSettings(() => clumperShowHint(Boolean(clumperHintHost) && clumperHintAgain));
-if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'sync' || !changes.clumping) return;
-    clumperApplySettings(changes.clumping.newValue);
-    // The old key's keyup would no longer match, so let go of a held key or
-    // a drag in flight rather than leave it stuck.
-    if (clumperKeyHeld || clumperDragging) clumperDisarm();
-  });
+// Each start (this one, or a later one on the same page) arms the clumper for
+// one drag and says how to use it.
+function clumperStart() {
+  clumperArm();
+  clumperShowHint();
 }
 
-// The worker's check before injecting finds this, and shows the hint again
-// rather than loading a second copy (see armClumper in background.js).
-globalThis.huddleOpenLinksHint = clumperShowHint;
+clumperStart();
+
+// The worker's check before injecting finds this, and re-arms this copy
+// rather than loading a second one (see armClumper in background.js).
+globalThis.huddleOpenLinksStart = clumperStart;
