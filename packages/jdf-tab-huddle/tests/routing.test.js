@@ -518,6 +518,16 @@ describe('the trust boundary', () => {
     // chrome.storage.local.setAccessLevel is proven on 147 (CI) and up.
     expect(manifest.minimum_chrome_version).toBe('147');
   });
+
+  test('the worker keeps both storage.local and storage.sync from content scripts as it starts', () => {
+    const trusted = [[{ accessLevel: 'TRUSTED_CONTEXTS' }]];
+    expect(global.storageAccessLevelsAtStart).toEqual({ local: trusted, sync: trusted });
+  });
+
+  test('an install or update clears the key and modifier the clumper used to sync', async () => {
+    await Promise.allSettled(chrome.runtime.onInstalled.callListeners({ reason: 'update' }));
+    expect(chrome.storage.sync.remove).toHaveBeenCalledWith('clumping');
+  });
 });
 
 // Which tabs each Deduplicate closes, in the fake browser plus: window 1 gains

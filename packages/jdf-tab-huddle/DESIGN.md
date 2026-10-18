@@ -62,10 +62,10 @@ The mark is three tabs huddled into one group, on Chrome blue, over a group line
 
 ## Open links as tabs: the page hint
 
-Starting Open links as tabs shows a hint in the page itself: "Huddle: hold `Z` and drag over links to open them as tabs. On until this page reloads.", or "Huddle is already on: …" when it was already on.
-- **Drawn like the popup's toasts:** fixed at the bottom centre, 24px up, a `--comp-hi` surface with a `--bd-hi` edge, 10px radius and `--shadow-float`, 13px text (a web page's scale, not the popup's), the key as a mono `--kbd-bg` badge. Light and dark follow the system. The token values are copied into the hint, since a web page can't load Huddle's stylesheet or fonts (no web_accessible_resources), so it uses the system UI and mono fonts.
+Starting Open links as tabs turns the pointer into a crosshair until the drag ends, and shows a hint in the page itself: "Huddle: drag over links to open them as tabs. `Esc` cancels."
+- **Drawn like the popup's toasts:** fixed at the bottom centre, 24px up, a `--comp-hi` surface with a `--bd-hi` edge, 10px radius and `--shadow-float`, 13px text (a web page's scale, not the popup's), Esc as a mono `--kbd-bg` badge. Light and dark follow the system. The token values are copied into the hint, since a web page can't load Huddle's stylesheet or fonts (no web_accessible_resources), so it uses the system UI and mono fonts.
 - **Out of the page's reach:** it lives in a shadow root, and its host's position is set inline with `!important`, so the page's CSS can't restyle or move it.
-- **Never in the way:** `pointer-events: none`, it never takes focus, and it is a polite `role="status"` (filled after it is inserted, so it is announced). It goes after 3 s, and Escape puts it away sooner without taking the key from the page. It fades and rises in 160ms only without `prefers-reduced-motion`.
+- **Never in the way:** `pointer-events: none`, it never takes focus, and it is a polite `role="status"` (filled after it is inserted, so it is announced). It goes after 3 s; Escape puts it away sooner and cancels. It fades and rises in 160ms only without `prefers-reduced-motion`.
 - The drag's own selection box and link highlights keep their orange: they mark what the drag will open, over any page's colours.
 - **Where it can't start,** the shortcut has no popup to answer in: Huddle's toolbar button shows a "!" badge in the warning orange (`--warn-edge`) for 5 s, with the reason as its tooltip.
 

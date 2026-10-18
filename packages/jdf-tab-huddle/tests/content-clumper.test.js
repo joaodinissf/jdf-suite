@@ -89,96 +89,6 @@ describe('clumperBoxFromPoints', () => {
   });
 });
 
-describe('clumperKeyMatches', () => {
-  it('matches case-insensitively', () => {
-    expect(global.clumperKeyMatches({ key: 'Z' }, 'z')).toBe(true);
-    expect(global.clumperKeyMatches({ key: 'z' }, 'Z')).toBe(true);
-    expect(global.clumperKeyMatches({ key: 'A' }, 'a')).toBe(true);
-  });
-
-  it('rejects different keys', () => {
-    expect(global.clumperKeyMatches({ key: 'Z' }, 'a')).toBe(false);
-    expect(global.clumperKeyMatches({ key: 'Escape' }, 'z')).toBe(false);
-  });
-
-  it('handles missing key property', () => {
-    expect(global.clumperKeyMatches({}, 'z')).toBe(false);
-    expect(global.clumperKeyMatches(null, 'z')).toBe(false);
-  });
-
-  it('matches the labelled key on any layout', () => {
-    expect(global.clumperKeyMatches({ key: 'z', code: 'KeyZ' }, 'z')).toBe(true);
-    expect(global.clumperKeyMatches({ key: 'a', code: 'KeyA' }, 'z')).toBe(false);
-    // AZERTY: the key labelled A sends code KeyQ.
-    expect(global.clumperKeyMatches({ key: 'a', code: 'KeyQ' }, 'a')).toBe(true);
-    expect(global.clumperKeyMatches({ key: 'a', code: 'KeyQ' }, 'q')).toBe(false);
-  });
-
-  it('matches Shift+digit, whose event.key is the shifted symbol', () => {
-    expect(global.clumperKeyMatches({ key: '!', code: 'Digit1', shiftKey: true }, '1')).toBe(true);
-  });
-
-  it('matches macOS Option+letter, whose event.key is a composed character', () => {
-    expect(global.clumperKeyMatches({ key: 'Ω', code: 'KeyZ', altKey: true }, 'z')).toBe(true);
-  });
-});
-
-describe('clumperModifierMatches', () => {
-  const base = { shiftKey: false, ctrlKey: false, altKey: false };
-
-  it('no modifier: requires all three unpressed', () => {
-    expect(global.clumperModifierMatches(base, null)).toBe(true);
-    expect(global.clumperModifierMatches(base, 'none')).toBe(true);
-    expect(global.clumperModifierMatches({ ...base, shiftKey: true }, null)).toBe(false);
-  });
-
-  it('shift: requires only shift', () => {
-    expect(global.clumperModifierMatches({ ...base, shiftKey: true }, 'shift')).toBe(true);
-    expect(global.clumperModifierMatches({ shiftKey: true, ctrlKey: true, altKey: false }, 'shift')).toBe(false);
-    expect(global.clumperModifierMatches(base, 'shift')).toBe(false);
-  });
-
-  it('ctrl: requires only ctrl', () => {
-    expect(global.clumperModifierMatches({ ...base, ctrlKey: true }, 'ctrl')).toBe(true);
-    expect(global.clumperModifierMatches({ ctrlKey: true, shiftKey: true, altKey: false }, 'ctrl')).toBe(false);
-  });
-
-  it('alt: requires only alt', () => {
-    expect(global.clumperModifierMatches({ ...base, altKey: true }, 'alt')).toBe(true);
-    expect(global.clumperModifierMatches({ altKey: true, ctrlKey: true, shiftKey: false }, 'alt')).toBe(false);
-  });
-
-  it('unknown modifier name rejects everything', () => {
-    expect(global.clumperModifierMatches({ ...base, shiftKey: true }, 'meta')).toBe(false);
-  });
-
-  it('Cmd (metaKey) never matches, so Cmd+Z does not arm the clumper', () => {
-    expect(global.clumperModifierMatches({ ...base, metaKey: true }, null)).toBe(false);
-    expect(global.clumperModifierMatches({ ...base, metaKey: true, shiftKey: true }, 'shift')).toBe(false);
-    expect(global.clumperModifierMatches({ ...base, metaKey: true, ctrlKey: true }, 'ctrl')).toBe(false);
-    expect(global.clumperModifierMatches({ ...base, metaKey: true, altKey: true }, 'alt')).toBe(false);
-  });
-});
-
-describe('clumperIsTextInputTarget', () => {
-  it('detects input and textarea tags', () => {
-    expect(global.clumperIsTextInputTarget({ tagName: 'INPUT' })).toBe(true);
-    expect(global.clumperIsTextInputTarget({ tagName: 'TEXTAREA' })).toBe(true);
-    expect(global.clumperIsTextInputTarget({ tagName: 'SELECT' })).toBe(true);
-  });
-
-  it('detects contentEditable', () => {
-    expect(global.clumperIsTextInputTarget({ tagName: 'DIV', isContentEditable: true })).toBe(true);
-  });
-
-  it('rejects other elements', () => {
-    expect(global.clumperIsTextInputTarget({ tagName: 'DIV' })).toBe(false);
-    expect(global.clumperIsTextInputTarget({ tagName: 'A', isContentEditable: false })).toBe(false);
-    expect(global.clumperIsTextInputTarget(null)).toBe(false);
-    expect(global.clumperIsTextInputTarget({})).toBe(false);
-  });
-});
-
 describe('clumperCollectUrlsInRect', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
@@ -240,87 +150,6 @@ describe('clumperCollectUrlsInRect', () => {
   });
 });
 
-describe('content-clumper event handler integration', () => {
-  beforeEach(() => {
-    document.body.innerHTML = '';
-    global.clumperResetStateForTest();
-    // Clear any mocked chrome.runtime.sendMessage calls
-    if (global.chrome && global.chrome.runtime && global.chrome.runtime.sendMessage) {
-      global.chrome.runtime.sendMessage.mockClear();
-    }
-  });
-
-  it('activation key keydown sets keyHeld; keyup clears it', () => {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', bubbles: true }));
-    expect(global.clumperGetStateForTest().keyHeld).toBe(true);
-    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'z', bubbles: true }));
-    expect(global.clumperGetStateForTest().keyHeld).toBe(false);
-  });
-
-  it('non-activation keys do not arm the clumper', () => {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
-    expect(global.clumperGetStateForTest().keyHeld).toBe(false);
-  });
-
-  it('keydown while focused in text input is ignored', () => {
-    const input = document.createElement('input');
-    document.body.appendChild(input);
-    // jsdom-safe way to fire keydown against a specific target
-    const evt = new KeyboardEvent('keydown', { key: 'z', bubbles: true });
-    input.dispatchEvent(evt);
-    expect(global.clumperGetStateForTest().keyHeld).toBe(false);
-  });
-
-  it('mousedown without key held does not start a drag', () => {
-    document.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
-    expect(global.clumperGetStateForTest().dragging).toBe(false);
-  });
-
-  it('full drag sequence sends urls to background as clumpOpenUrls', () => {
-    const a = document.createElement('a');
-    a.href = 'https://example.com/';
-    a.textContent = 'ex';
-    document.body.appendChild(a);
-    a.getBoundingClientRect = () => ({ left: 10, top: 10, right: 30, bottom: 30, width: 20, height: 20, x: 10, y: 10 });
-
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', bubbles: true }));
-    document.dispatchEvent(new MouseEvent('mousedown', { button: 0, clientX: 0, clientY: 0, bubbles: true }));
-    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 100, bubbles: true }));
-    document.dispatchEvent(new MouseEvent('mouseup', { button: 0, clientX: 100, clientY: 100, bubbles: true }));
-
-    expect(global.chrome.runtime.sendMessage).toHaveBeenCalledTimes(1);
-    const [msg] = global.chrome.runtime.sendMessage.mock.calls[0];
-    expect(msg.action).toBe('clumpOpenUrls');
-    expect(msg.urls).toEqual(['https://example.com/']);
-  });
-
-  it('releasing the activation key during drag tears down without opening', () => {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', bubbles: true }));
-    document.dispatchEvent(new MouseEvent('mousedown', { button: 0, clientX: 0, clientY: 0, bubbles: true }));
-    expect(global.clumperGetStateForTest().dragging).toBe(true);
-    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'z', bubbles: true }));
-    expect(global.clumperGetStateForTest().dragging).toBe(false);
-    document.dispatchEvent(new MouseEvent('mouseup', { button: 0, clientX: 100, clientY: 100, bubbles: true }));
-    expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
-  });
-
-  it('Escape during armed state cancels without sending', () => {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', bubbles: true }));
-    document.dispatchEvent(new MouseEvent('mousedown', { button: 0, clientX: 0, clientY: 0, bubbles: true }));
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    expect(global.clumperGetStateForTest().dragging).toBe(false);
-    expect(global.clumperGetStateForTest().keyHeld).toBe(false);
-    document.dispatchEvent(new MouseEvent('mouseup', { button: 0, clientX: 100, clientY: 100, bubbles: true }));
-    expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
-  });
-
-  it('non-left mouse button does not start a drag', () => {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', bubbles: true }));
-    document.dispatchEvent(new MouseEvent('mousedown', { button: 2, clientX: 0, clientY: 0, bubbles: true }));
-    expect(global.clumperGetStateForTest().dragging).toBe(false);
-  });
-});
-
 // Drag helpers: links laid out in a column, 20 px apart, from y = 0.
 function placeLinks(n, host = 'site.example') {
   const links = [];
@@ -335,155 +164,262 @@ function placeLinks(n, host = 'site.example') {
   }
   return links;
 }
-const keydown = (init = {}) => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', code: 'KeyZ', bubbles: true, ...init }));
-const keyup = () => document.dispatchEvent(new KeyboardEvent('keyup', { key: 'z', code: 'KeyZ', bubbles: true }));
-function drag() {
-  const down = new MouseEvent('mousedown', { button: 0, clientX: 0, clientY: 0, bubbles: true, cancelable: true });
-  document.dispatchEvent(down);
-  document.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 5000, bubbles: true, cancelable: true }));
-  const up = new MouseEvent('mouseup', { button: 0, clientX: 100, clientY: 5000, bubbles: true, cancelable: true });
-  document.dispatchEvent(up);
+// What the worker's start (the shortcut, or the popup) runs on a page that
+// already has the clumper.
+const start = () => globalThis.huddleOpenLinksStart();
+const mouse = (type, x, y, init = {}) => {
+  const event = new MouseEvent(type, { button: 0, clientX: x, clientY: y, bubbles: true, cancelable: true, ...init });
+  document.dispatchEvent(event);
+  return event;
+};
+function drag(from = { x: 0, y: 0 }, to = { x: 100, y: 5000 }) {
+  const down = mouse('mousedown', from.x, from.y);
+  mouse('mousemove', to.x, to.y);
+  const up = mouse('mouseup', to.x, to.y);
   return { down, up };
 }
 const sentUrls = () => global.chrome.runtime.sendMessage.mock.calls.map(([m]) => m.urls);
+const state = () => global.clumperGetStateForTest();
+
+beforeEach(() => {
+  document.body.innerHTML = '';
+  document.body.style.userSelect = '';
+  global.clumperResetStateForTest();
+  global.chrome.runtime.sendMessage.mockClear();
+});
+afterEach(() => {
+  global.clumperHideHint();
+  global.clumperResetStateForTest();
+  global.clumperTrustAllEventsForTest(true);
+});
+
+describe('starting it arms the page for one drag', () => {
+  it('injecting the script arms it at once: a crosshair, no text selection, and the hint', () => {
+    expect(global.clumperStateAtLoad).toMatchObject({ armed: true, dragging: false, crosshair: true, userSelect: 'none', hint: true });
+  });
+
+  it('before it is started, a drag does nothing', () => {
+    placeLinks(3);
+    const { down } = drag();
+    expect(state().dragging).toBe(false);
+    expect(down.defaultPrevented).toBe(false);
+    expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('a plain drag, with no key held, opens the links it covers and puts the page back', () => {
+    const links = placeLinks(3);
+    start();
+    expect(state()).toMatchObject({ armed: true, crosshair: true });
+    expect(document.querySelector('style[data-jdf-tab-huddle="clumper-cursor"]').textContent).toMatch(/crosshair/);
+    expect(document.body.style.userSelect).toBe('none');
+
+    drag();
+    expect(global.chrome.runtime.sendMessage).toHaveBeenCalledTimes(1);
+    const [msg] = global.chrome.runtime.sendMessage.mock.calls[0];
+    expect(msg).toEqual({ action: 'clumpOpenUrls', urls: links });
+    expect(state()).toMatchObject({ armed: false, dragging: false, hasSelectionBox: false, highlightCount: 0, crosshair: false });
+    expect(document.querySelector('style[data-jdf-tab-huddle="clumper-cursor"]')).toBeNull();
+    expect(document.body.style.userSelect).toBe('');
+  });
+
+  it('a second drag after that does nothing, until it is started again', () => {
+    placeLinks(3);
+    start();
+    drag();
+    global.chrome.runtime.sendMessage.mockClear();
+    const { down } = drag();
+    expect(down.defaultPrevented).toBe(false);
+    expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
+
+    start();
+    expect(state()).toMatchObject({ armed: true, crosshair: true });
+    drag();
+    expect(sentUrls()).toHaveLength(1);
+  });
+
+  it('starting it again while armed keeps one crosshair and gives the page\'s own selection style back after', () => {
+    document.body.style.userSelect = 'text';
+    start();
+    start();
+    expect(document.querySelectorAll('style[data-jdf-tab-huddle="clumper-cursor"]')).toHaveLength(1);
+    drag();
+    expect(document.body.style.userSelect).toBe('text');
+  });
+
+  it('a click without a drag (under 4 px either way) opens nothing and puts the page back', () => {
+    placeLinks(3);
+    start();
+    drag({ x: 12, y: 2 }, { x: 15, y: 5 });
+    expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(state()).toMatchObject({ armed: false, crosshair: false });
+    expect(document.body.style.userSelect).toBe('');
+  });
+
+  it('a drag of 4 px is a drag', () => {
+    const links = placeLinks(3);
+    start();
+    drag({ x: 12, y: 2 }, { x: 16, y: 2 });
+    expect(sentUrls()).toEqual([[links[0]]]);
+  });
+
+  it('Escape before the drag cancels it, and a drag then does nothing', () => {
+    placeLinks(3);
+    start();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(state()).toMatchObject({ armed: false, crosshair: false });
+    expect(document.body.style.userSelect).toBe('');
+    drag();
+    expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('Escape mid-drag cancels without sending', () => {
+    placeLinks(3);
+    start();
+    mouse('mousedown', 0, 0);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(state()).toMatchObject({ armed: false, dragging: false, hasSelectionBox: false });
+    mouse('mouseup', 100, 5000);
+    expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('a non-left mouse button does not start a drag', () => {
+    start();
+    mouse('mousedown', 0, 0, { button: 2 });
+    expect(state()).toMatchObject({ armed: true, dragging: false });
+  });
+});
+
+describe('the click that follows a drag does not reach the page', () => {
+  it('is swallowed once, so a drag that ends on a link does not also follow it; the next click gets through', () => {
+    placeLinks(1);
+    const link = document.querySelector('a');
+    const pageSaw = vi.fn((e) => e.preventDefault());
+    link.addEventListener('click', pageSaw);
+    start();
+    drag({ x: 0, y: 0 }, { x: 20, y: 5 });
+    expect(sentUrls()).toHaveLength(1);
+
+    const first = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link.dispatchEvent(first);
+    expect(first.defaultPrevented).toBe(true);
+    expect(pageSaw).not.toHaveBeenCalled();
+
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(pageSaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('a click without a drag is swallowed too: it only cancels', () => {
+    placeLinks(1);
+    const link = document.querySelector('a');
+    const pageSaw = vi.fn((e) => e.preventDefault());
+    link.addEventListener('click', pageSaw);
+    start();
+    drag({ x: 12, y: 2 }, { x: 12, y: 2 });
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(pageSaw).not.toHaveBeenCalled();
+  });
+
+  it('when no click comes, a later one is not swallowed', async () => {
+    placeLinks(1);
+    const link = document.querySelector('a');
+    const pageSaw = vi.fn((e) => e.preventDefault());
+    link.addEventListener('click', pageSaw);
+    start();
+    drag();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(pageSaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('a click with no drag before it reaches the page', () => {
+    placeLinks(1);
+    const link = document.querySelector('a');
+    const pageSaw = vi.fn((e) => e.preventDefault());
+    link.addEventListener('click', pageSaw);
+    start();
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(pageSaw).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('the clumper acts only on the user\'s own input', () => {
-  beforeEach(() => {
-    document.body.innerHTML = '';
-    document.body.style.userSelect = '';
-    global.clumperResetStateForTest();
-    global.chrome.runtime.sendMessage.mockClear();
-  });
-  afterEach(() => {
-    global.clumperTrustAllEventsForTest(true);
-  });
-
-  it('a page\'s own key and mouse events (untrusted) open nothing and do not arm it', () => {
+  it('a page\'s own mousedown and mouseup (untrusted) open nothing, and it stays armed', () => {
     placeLinks(5);
+    start();
     global.clumperTrustAllEventsForTest(false);
-    keydown();
-    expect(global.clumperGetStateForTest().keyHeld).toBe(false);
-    expect(document.body.style.userSelect).toBe('');
     const { down, up } = drag();
-    expect(global.clumperGetStateForTest().dragging).toBe(false);
+    expect(state()).toMatchObject({ armed: true, dragging: false });
     expect(down.defaultPrevented).toBe(false);
     expect(up.defaultPrevented).toBe(false);
     expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
   });
 
-  it('with the key really held, a page\'s fake mousedown and mouseup still open nothing', () => {
-    placeLinks(5);
-    keydown(); // trusted
-    expect(global.clumperGetStateForTest().keyHeld).toBe(true);
+  it('a page\'s own Escape (untrusted) does not cancel it', () => {
+    placeLinks(3);
+    start();
     global.clumperTrustAllEventsForTest(false);
-    drag();
-    expect(global.clumperGetStateForTest().dragging).toBe(false);
-    expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(state()).toMatchObject({ armed: true, crosshair: true });
   });
 
   it('a page\'s fake mouseup cannot end the user\'s real drag', () => {
     placeLinks(5);
-    keydown();
-    document.dispatchEvent(new MouseEvent('mousedown', { button: 0, clientX: 0, clientY: 0, bubbles: true }));
+    start();
+    mouse('mousedown', 0, 0);
     global.clumperTrustAllEventsForTest(false);
-    document.dispatchEvent(new MouseEvent('mouseup', { button: 0, clientX: 100, clientY: 5000, bubbles: true }));
-    expect(global.clumperGetStateForTest().dragging).toBe(true);
+    mouse('mouseup', 100, 5000);
+    expect(state().dragging).toBe(true);
     expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
-  });
-
-  it('Cmd+Z does not arm it', () => {
-    keydown({ metaKey: true });
-    expect(global.clumperGetStateForTest().keyHeld).toBe(false);
-    expect(document.body.style.userSelect).toBe('');
   });
 });
 
-describe('the clumper lets go when the key is released elsewhere', () => {
-  beforeEach(() => {
-    document.body.innerHTML = '';
-    document.body.style.userSelect = '';
-    global.clumperResetStateForTest();
-    global.chrome.runtime.sendMessage.mockClear();
-  });
+describe('a drag the mouse is released elsewhere from', () => {
   afterEach(() => {
     delete document.hidden;
   });
 
-  it('the window losing focus disarms it: text selects again and a plain drag opens nothing', () => {
-    placeLinks(5);
-    keydown();
+  it('the window losing focus mid-drag ends the drag, and the page stays armed for another', () => {
+    const links = placeLinks(3);
+    start();
+    mouse('mousedown', 0, 0);
+    window.dispatchEvent(new window.FocusEvent('blur'));
+    expect(state()).toMatchObject({ armed: true, dragging: false, hasSelectionBox: false, crosshair: true });
     expect(document.body.style.userSelect).toBe('none');
-    window.dispatchEvent(new window.FocusEvent('blur'));
-    expect(global.clumperGetStateForTest().keyHeld).toBe(false);
-    expect(document.body.style.userSelect).toBe('');
+    mouse('mouseup', 100, 5000);
+    expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
     drag();
-    expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(sentUrls()).toEqual([links]);
   });
 
-  it('losing focus mid-drag cancels the drag', () => {
-    placeLinks(5);
-    keydown();
-    document.dispatchEvent(new MouseEvent('mousedown', { button: 0, clientX: 0, clientY: 0, bubbles: true }));
-    window.dispatchEvent(new window.FocusEvent('blur'));
-    expect(global.clumperGetStateForTest()).toMatchObject({ keyHeld: false, dragging: false, hasSelectionBox: false });
-    document.dispatchEvent(new MouseEvent('mouseup', { button: 0, clientX: 100, clientY: 5000, bubbles: true }));
-    expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
-  });
-
-  it('the tab being hidden disarms it; becoming visible does not', () => {
-    keydown();
+  it('the tab being hidden mid-drag ends the drag; becoming visible does not', () => {
+    start();
+    mouse('mousedown', 0, 0);
     Object.defineProperty(document, 'hidden', { value: false, configurable: true });
     document.dispatchEvent(new window.Event('visibilitychange'));
-    expect(global.clumperGetStateForTest().keyHeld).toBe(true);
+    expect(state().dragging).toBe(true);
     Object.defineProperty(document, 'hidden', { value: true, configurable: true });
     document.dispatchEvent(new window.Event('visibilitychange'));
-    expect(global.clumperGetStateForTest().keyHeld).toBe(false);
-    expect(document.body.style.userSelect).toBe('');
-  });
-
-  it('while the key stays held, a second drag still opens its links', () => {
-    placeLinks(3);
-    keydown();
-    drag();
-    drag();
-    expect(sentUrls()).toHaveLength(2);
-    expect(global.clumperGetStateForTest().keyHeld).toBe(true);
+    expect(state()).toMatchObject({ armed: true, dragging: false });
   });
 });
 
 describe('a copy of the clumper left behind by an extension update or reload', () => {
   let id;
   beforeEach(() => {
-    document.body.innerHTML = '';
-    document.body.style.userSelect = '';
-    global.clumperResetStateForTest();
-    global.chrome.runtime.sendMessage.mockClear();
     id = global.chrome.runtime.id;
   });
   afterEach(() => {
     global.chrome.runtime.id = id;
   });
 
-  it('never arms, so the page\'s selection and drags are left alone', () => {
+  it('armed before the update, its mousedown puts the page back and lets the page have it', () => {
     placeLinks(5);
+    start();
     global.chrome.runtime.id = undefined;
-    keydown();
-    expect(global.clumperGetStateForTest().keyHeld).toBe(false);
-    expect(document.body.style.userSelect).toBe('');
     const { down, up } = drag();
     expect(down.defaultPrevented).toBe(false);
     expect(up.defaultPrevented).toBe(false);
-    expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
-  });
-
-  it('armed before the update, it starts no drag after it, and keyup gives selection back', () => {
-    placeLinks(5);
-    keydown();
-    global.chrome.runtime.id = undefined;
-    const { down } = drag();
-    expect(down.defaultPrevented).toBe(false);
-    expect(global.clumperGetStateForTest().dragging).toBe(false);
-    keyup();
+    expect(state()).toMatchObject({ armed: false, dragging: false, crosshair: false });
     expect(document.body.style.userSelect).toBe('');
     expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
   });
@@ -492,9 +428,6 @@ describe('a copy of the clumper left behind by an extension update or reload', (
 describe('a big drag asks first and opens at most 25 links', () => {
   let confirmSpy;
   beforeEach(() => {
-    document.body.innerHTML = '';
-    global.clumperResetStateForTest();
-    global.chrome.runtime.sendMessage.mockClear();
     confirmSpy = vi.spyOn(window, 'confirm');
   });
   afterEach(() => {
@@ -503,7 +436,7 @@ describe('a big drag asks first and opens at most 25 links', () => {
 
   it('10 links open without asking', () => {
     const links = placeLinks(10);
-    keydown();
+    start();
     drag();
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(sentUrls()).toEqual([links]);
@@ -512,7 +445,7 @@ describe('a big drag asks first and opens at most 25 links', () => {
   it('11 links ask; Cancel opens nothing', () => {
     placeLinks(11);
     confirmSpy.mockReturnValue(false);
-    keydown();
+    start();
     drag();
     expect(confirmSpy).toHaveBeenCalledWith('Huddle: open 11 links?');
     expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
@@ -521,7 +454,7 @@ describe('a big drag asks first and opens at most 25 links', () => {
   it('11 links ask; OK opens all 11', () => {
     const links = placeLinks(11);
     confirmSpy.mockReturnValue(true);
-    keydown();
+    start();
     drag();
     expect(sentUrls()).toEqual([links]);
   });
@@ -529,22 +462,22 @@ describe('a big drag asks first and opens at most 25 links', () => {
   it('40 links offer the first 25, and OK opens those 25', () => {
     const links = placeLinks(40);
     confirmSpy.mockReturnValue(true);
-    keydown();
+    start();
     drag();
     expect(confirmSpy).toHaveBeenCalledWith('Huddle: open the first 25 of 40 links?');
     expect(sentUrls()).toEqual([links.slice(0, 25)]);
   });
 
-  it('after the dialog the clumper is no longer armed, since the key\'s keyup went to the dialog', () => {
+  it('the page is back to normal while the dialog is up, whatever the answer', () => {
     placeLinks(11);
-    confirmSpy.mockReturnValue(true);
-    keydown();
+    confirmSpy.mockImplementation(() => {
+      expect(state()).toMatchObject({ armed: false, crosshair: false });
+      expect(document.body.style.userSelect).toBe('');
+      return false;
+    });
+    start();
     drag();
-    expect(global.clumperGetStateForTest().keyHeld).toBe(false);
-    expect(document.body.style.userSelect).toBe('');
-    global.chrome.runtime.sendMessage.mockClear();
-    drag();
-    expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
   });
 });
 

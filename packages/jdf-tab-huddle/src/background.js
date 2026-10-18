@@ -1,17 +1,25 @@
 // Background service worker for persistent logging
 console.log('Huddle service worker starting...');
 
-// storage.local holds the OpenRouter key: only Huddle's own pages and this
-// worker may read it, not the link clumper's content script in the pages
-// where Open links as tabs was started (L10). Called on every worker start, so it never depends on an install
-// event having run. storage.sync stays readable there: the clumper reads its
-// settings from it.
-if (chrome.storage.local.setAccessLevel) {
-  chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' })
-    .catch((e) => console.warn('[Huddle] storage.local.setAccessLevel failed:', e));
-} else {
-  console.warn('[Huddle] storage.local.setAccessLevel is missing: content scripts can read storage.local');
+// Only Huddle's own pages and this worker may read its storage, not the link
+// clumper's content script in the pages where Open links as tabs was started
+// (L10): storage.local holds the OpenRouter key, and the clumper needs no
+// storage at all. Called on every worker start, so it never depends on an
+// install event having run.
+for (const [name, area] of [['local', chrome.storage.local], ['sync', chrome.storage.sync]]) {
+  if (area && area.setAccessLevel) {
+    area.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' })
+      .catch((e) => console.warn(`[Huddle] storage.${name}.setAccessLevel failed:`, e));
+  } else {
+    console.warn(`[Huddle] storage.${name}.setAccessLevel is missing: content scripts can read storage.${name}`);
+  }
 }
+
+// Up to v0.8.0 the clumper's key and modifier synced as `clumping`. Nothing
+// syncs now, so an update clears it from the user's Chrome profile.
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.sync.remove('clumping').catch(() => {});
+});
 
 // Whether a message or port comes from one of Huddle's own pages (the popup,
 // the nap room, Settings, the organize page, the split dialog). Content
@@ -3731,8 +3739,7 @@ async function rearmKeyExpiryAlarm() {
 // The link clumper runs only in a page the user started it on: the
 // open-links shortcut, or the popup's Open links as tabs. Either one is a user
 // gesture that gives Huddle access to that tab alone (activeTab), so Huddle
-// needs no access to every site. It stays on until the page reloads or the
-// tab moves to another page.
+// needs no access to every site. Each start is good for one drag.
 
 const OPEN_LINKS_REFUSALS = {
   restricted: 'Chrome doesn\'t let extensions run on this page',
@@ -3744,14 +3751,14 @@ const OPEN_LINKS_REFUSALS = {
 const OPEN_LINKS_BADGE_MS = 5000;
 
 // Runs in the page, in Huddle's own isolated world, before anything is
-// injected. content-clumper.js sets huddleOpenLinksHint once it runs, so a
-// second start shows the hint again instead of loading a second copy. A PDF
+// injected. content-clumper.js sets huddleOpenLinksStart once it runs, so a
+// later start re-arms that copy instead of loading a second one. A PDF
 // (Chrome's viewer can be scripted) or a page with no links has nothing to
 // open.
 function openLinksPageCheck() {
-  const showHint = globalThis.huddleOpenLinksHint;
-  const already = typeof showHint === 'function';
-  if (already) showHint(true);
+  const start = globalThis.huddleOpenLinksStart;
+  const already = typeof start === 'function';
+  if (already) start();
   return { already, contentType: document.contentType, links: document.links.length };
 }
 

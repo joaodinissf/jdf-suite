@@ -13,9 +13,9 @@ Try it
 
 Open links as tabs
 1. Go to an ordinary web page with several links (for example a Wikipedia article). It can't start on chrome:// pages, other extensions' pages or the Chrome Web Store itself; there the popup's button is dimmed and says why, and the shortcut shows a "!" on the toolbar button.
-2. Press Alt+Shift+L, or open the popup and press K (Open links as tabs). A hint at the bottom of the page says it is on.
-3. Hold Z and drag a rectangle over some links. On release they open as background tabs next to the current one. More than 10 links asks first; at most 25 open.
-This is the only time Huddle touches a page: the shortcut or the popup grants activeTab for that one tab, and only when you choose Open links as tabs does Huddle inject its bundled content-clumper.js there. The selector stops when the page reloads or you navigate away; Chrome's activeTab grant itself lasts until the tab moves to another site or closes.
+2. Press Alt+Shift+L, or open the popup and press K (Open links as tabs). The pointer becomes a crosshair and a hint at the bottom of the page says to drag.
+3. Drag a rectangle over some links (no key to hold). On release they open as background tabs next to the current one, and the page goes back to normal. More than 10 links asks first; at most 25 open. Escape, or a click without a drag, cancels.
+This is the only time Huddle touches a page: the shortcut or the popup grants activeTab for that one tab, and only when you choose Open links as tabs does Huddle inject its bundled content-clumper.js there. Each start is good for one drag; Chrome's activeTab grant itself lasts until the tab moves to another site or closes.
 
 Organize with AI (optional)
 This feature uses the user's own OpenRouter API key (https://openrouter.ai), which we can't share. Without a key:

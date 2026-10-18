@@ -2,7 +2,7 @@
 
 > Part of the [jdf-suite](https://github.com/joaodinissf/jdf-suite) monorepo. Slug: `jdf-tab-huddle`. Display name: **Huddle**.
 
-**Huddle organizes your browser tabs.** From one popup, opened with **⌥⇧U** (Alt+Shift+U elsewhere) and driven by single-letter keys, it sorts, groups, de-duplicates and gathers the tabs on your real tab strip, across every window. It puts tabs to sleep until you need them, opens a set of links on a page as tabs in one drag, and, if you bring your own OpenRouter key, suggests groups for a messy window. Tab groups, pinned tabs and Split Views are kept as they are, or restored afterwards. There is no account and no Huddle server. Nothing is sent anywhere except what you send to OpenRouter for an AI suggestion; the Open links as tabs key and modifier also sync through your own Chrome sign-in.
+**Huddle organizes your browser tabs.** From one popup, opened with **⌥⇧U** (Alt+Shift+U elsewhere) and driven by single-letter keys, it sorts, groups, de-duplicates and gathers the tabs on your real tab strip, across every window. It puts tabs to sleep until you need them, opens a set of links on a page as tabs in one drag, and, if you bring your own OpenRouter key, suggests groups for a messy window. Tab groups, pinned tabs and Split Views are kept as they are, or restored afterwards. There is no account and no Huddle server. Nothing is sent anywhere except what you send to OpenRouter for an AI suggestion.
 
 ## What it does
 
@@ -46,14 +46,14 @@ Every action works in one of two modes, chosen at the top of the popup:
 
 ### Open several links as tabs at once
 
-- **Start it on a page** with **⌥⇧L** (Alt+Shift+L elsewhere, Alt+Shift+K on ChromeOS; rebind at `chrome://extensions/shortcuts`) or the popup's **Open links as tabs** (hotkey **K**), which closes the popup. A hint at the bottom of the page says which key to hold. It stays on in that page until the page reloads or you leave it; starting it again only shows the hint again.
-- Then hold the activation key (default: **Z**) and drag a rectangle over any set of links.
+- **Start it on a page** with **⌥⇧L** (Alt+Shift+L elsewhere, Alt+Shift+K on ChromeOS; rebind at `chrome://extensions/shortcuts`) or the popup's **Open links as tabs** (hotkey **K**), which closes the popup. The pointer becomes a crosshair, and a hint at the bottom of the page says to drag.
+- Then drag a rectangle over any set of links. No key to hold.
 - On release, every selected web (http or https) link opens in a new background tab next to the current one, in page order, with duplicates left out.
 - Up to 10 links open at once; for 11 to 25 the browser asks first, and above 25 it offers the first 25.
-- Only your own key presses and drags count: a page's scripts can't make it open tabs.
+- Each start is good for one drag: afterwards the page behaves as before, so selecting text and dragging work again. To open another set, start it again.
+- Only your own drags count: a page's scripts can't make it open tabs.
 - Huddle has no access to any website until you start it on one, and then only to that tab (Chrome's `activeTab`). On a page Chrome keeps from extensions (`chrome://` pages, other extensions, the Chrome Web Store, `file:` pages unless Huddle may read file URLs) the popup's button is dimmed and says so, and the shortcut shows a **!** on Huddle's toolbar button with the reason as its tooltip. On a PDF or a page with no links it says there are no links to open.
-- Press Escape mid-drag to cancel without opening; switching tabs or windows, or clicking into a frame, also lets go of the key. Cmd+Z doesn't start a drag.
-- Choose the key and an optional modifier (Shift, Ctrl or Alt) in **Settings → Open links as tabs**. They sync across your Chrome sign-ins.
+- Press Escape, or click without dragging, to cancel without opening. Switching tabs or windows mid-drag drops that drag; the page stays ready for another.
 
 ### AI suggestions for grouping (optional)
 
@@ -72,7 +72,7 @@ Every action works in one of two modes, chosen at the top of the popup:
 
 Huddle runs in your browser. It has no account, no server and no analytics, and it reads your tabs only to organize them.
 
-- **Your settings, your OpenRouter key and your snoozed tabs** stay in Chrome's storage on this computer. Only the Open links as tabs key and modifier sync with your Chrome sign-in.
+- **Your settings, your OpenRouter key and your snoozed tabs** stay in Chrome's storage on this computer. Nothing syncs with your Chrome sign-in.
 - **Nothing leaves your computer** unless you use Organize with AI. Then the titles and cleaned addresses of that window's tabs go to OpenRouter, with your key, and OpenRouter passes them to the model's provider. Huddle also checks your key with OpenRouter when you save it, and Settings loads OpenRouter's public list of models.
 - **No website access**: Huddle can't read or change the pages you visit, except the one tab you start Open links as tabs on, and only until it navigates.
 
@@ -105,7 +105,7 @@ The store's Huddle has a different extension ID from a copy you loaded unpacked,
 1. **Wake or discard your snoozed tabs** in the unpacked copy (the popup's Sleeping list or the nap room). Snoozed tabs belong to the copy that snoozed them, and removing it deletes them.
 2. **Remove the unpacked copy** at `chrome://extensions` before installing, so the store copy can take the shortcuts: Chrome gives no shortcut to a newly installed extension whose keys another one already holds.
 3. **Install Huddle from the Chrome Web Store.**
-4. **Re-enter your OpenRouter key** in Settings → Organize with AI, and **set your preferences again**: the default model and Don't use providers that train on my prompts, Groups or Flat, the Open links as tabs key and modifier, and any shortcuts you rebound at `chrome://extensions/shortcuts`.
+4. **Re-enter your OpenRouter key** in Settings → Organize with AI, and **set your preferences again**: the default model and Don't use providers that train on my prompts, Groups or Flat, and any shortcuts you rebound at `chrome://extensions/shortcuts`.
 
 ## Browser compatibility
 
@@ -146,8 +146,8 @@ Open links as tabs is inspired by [linkclump](https://github.com/benblack86/link
 
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (1064 tests)
-pnpm test:e2e          # Run E2E tests (139 tests, requires Chromium)
+pnpm test              # Run unit tests (1024 tests)
+pnpm test:e2e          # Run E2E tests (140 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
 pnpm run package       # Create extension zip
@@ -167,7 +167,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Split domains confirmation and result
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (1064 tests in 22 files)
+├── tests/                         # Vitest unit tests (1024 tests in 22 files)
 │   ├── setup.js                   # Chrome API mock, page scripts loaded, dispatch() to the worker
 │   ├── senders.js                 # The sender each caller (popup, pages, content script) arrives with
 │   ├── routing.test.js            # Every worker action, routed from its real caller; refused from a content script
@@ -176,7 +176,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── snooze.test.js             # Snoozing and waking, through the worker's handlers
 │   ├── store-listing.test.js      # The manifest's description and icons, and store/ kept in step with them
 │   └── confirmation-dialog.test.js
-├── e2e/                           # Playwright E2E tests (139 tests)
+├── e2e/                           # Playwright E2E tests (140 tests)
 │   ├── playwright.config.js       # Playwright configuration
 │   ├── fixtures/extension.js      # Custom fixture loading extension into Chromium
 │   ├── helpers/                   # Tab management, popup interaction, assertions
@@ -191,7 +191,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ### Testing
 
 #### Unit tests (Vitest + jest-chrome shim)
-1064 tests across 22 files covering core logic with mocked Chrome APIs:
+1024 tests across 22 files covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report
@@ -200,7 +200,7 @@ pnpm run test:coverage   # With coverage report
 `tests/routing.test.js` sends every action the service worker handles through its real `onMessage` listener, from the page that sends it (with the sender Chrome gives that page), and checks the reply and the Chrome call the handler makes. The dispatcher is an if/else chain on `message.action`, except the popup's logging message, which is keyed on `message.type`, and its first branch, the sender check: only Huddle's own pages (a sender `url` under `chrome-extension://<id>/`) may send anything but `clumpOpenUrls`, the one action the Open links as tabs content script (`content-clumper.js`) sends (the worker injects it into a page when Open links as tabs is started there). The test reads every branch of that chain from the source, fails on a branch it does not understand, and checks its table against the actions (and the logging message) found there and against what each page's scripts send; it also sends every row's message from the content script and expects `forbidden`. So a new worker action needs a row there. The test's `dispatch(message, sender)` (in `tests/setup.js`) resolves with the worker's reply, and fails when an action that replies later does not keep the channel open by returning `true`.
 
 #### E2E tests (Playwright + real Chromium)
-139 tests across 20 spec files that load the extension into a real browser:
+140 tests across 20 spec files that load the extension into a real browser:
 
 | Spec File | Tests | Coverage |
 |---|---|---|
@@ -219,10 +219,10 @@ pnpm run test:coverage   # With coverage report
 | split-view-compact | 2 | Compact then Expand; pinned/group runs, existing splits, no tab moves (skips below Chrome 155) |
 | split-view-repair | 5 | Splits survive sort (both modes), merge and extract; a separated pair is not forced back together (skips below Chrome 155) |
 | keyboard | 4 | Popup hotkey dispatch |
-| open-links | 7 | On the shipped manifest, started through the toolbar button (DevTools `Extensions.triggerAction`): nothing opens until it is started; its hint; a real drag opens 5 at once, and over 25 links asks and opens the first 25; starting again only shows the hint; a reload ends it; a page's own events open nothing; `chrome://` is refused; no site access and no `windows` permission |
+| open-links | 8 | On the shipped manifest, started through the toolbar button (DevTools `Extensions.triggerAction`): nothing opens until it is started; its hint; one plain drag opens 5 at once and ends it, so the next drag opens nothing; starting again re-arms it; over 25 links asks and opens the first 25; Escape cancels; a reload ends it; a page's own events open nothing; `chrome://` is refused; no site access and no `windows` permission |
 | snooze | 13 | Tab/window/group snooze, wake, alarms, edge cases; the Group button follows the active tab |
 | ai-flow | 26 | Organize with AI against a fake OpenRouter that answers CORS like the real one: Save key, the catalog and a run with no host permission, and an answer that fails the CORS check reads as a connection problem; runs, Apply, errors, the line under Organize and `data_collection: deny`; Claude Haiku 5.5 as the default, and a default saved as Haiku 4.5 kept; Settings with no key contacts OpenRouter only once the model list is used; only the organize page's window is sent, Apply never takes a tab from another window or unpins a tab, and Escape and Cmd/Ctrl+Enter in the proposal's fields |
-| trust-boundary | 2 | From the content script in a page where Open links as tabs was started: `storage.local` (the key) is refused and `storage.sync` still read; every action but `clumpOpenUrls` is forbidden and an organize port is closed |
+| trust-boundary | 2 | From the content script in a page where Open links as tabs was started: `storage.local` (the key) and `storage.sync` are refused; every action but `clumpOpenUrls` is forbidden and an organize port is closed |
 | settings | 1 | At 320 px the delete question keeps Delete and Keep side by side |
 
 ```bash

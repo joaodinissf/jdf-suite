@@ -32,7 +32,6 @@ function loadResponse(config) {
 // undefined leaves the callback unanswered.
 function loadSettingsPage(replies) {
   document.body.innerHTML = optionsBody;
-  chrome.storage.sync.get.mockImplementation((_keys, cb) => cb({}));
   const all = { loadOpenRouterModels: { success: true, models: MODELS, modelsMeta: MODELS_META }, ...replies };
   chrome.runtime.sendMessage.mockImplementation((message, cb) => {
     const reply = all[message.action];

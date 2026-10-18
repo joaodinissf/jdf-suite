@@ -40,20 +40,24 @@ test.beforeEach(async ({ sw, context }) => {
   await resetBrowserState(sw, context);
 });
 
-test('the content script cannot read storage.local, where the key is, and still reads its settings from storage.sync', async ({ sw, context }) => {
+test('the content script cannot read storage.local, where the key is, nor read or write storage.sync', async ({ sw, context }) => {
   await installFakeOpenRouter(context);
   await sw.evaluate(async (key) => {
     await chrome.storage.local.set({ aiConfig: { key: btoa(key), model: 'anthropic/claude-haiku-5.5', expiresAt: null, expiryDuration: null } });
-    await chrome.storage.sync.set({ clumping: { key: 'x' } });
+    await chrome.storage.sync.set({ probe: 'from Huddle' });
   }, GOOD_KEY);
   const page = await startedPage(context, sw);
 
   const local = await inContentScript(context, page,
     "chrome.storage.local.get('aiConfig').then((r) => 'read ' + Object.keys(r), (e) => 'refused: ' + e.message)");
   expect(local).toMatch(/^refused: Access to storage is not allowed/);
-  const sync = await inContentScript(context, page,
-    "chrome.storage.sync.get('clumping').then((r) => r.clumping, (e) => 'refused: ' + e.message)");
-  expect(sync).toEqual({ key: 'x' });
+  const syncRead = await inContentScript(context, page,
+    "chrome.storage.sync.get('probe').then((r) => 'read ' + Object.keys(r), (e) => 'refused: ' + e.message)");
+  expect(syncRead).toMatch(/^refused: Access to storage is not allowed/);
+  const syncWrite = await inContentScript(context, page,
+    "chrome.storage.sync.set({ probe: 'from the page' }).then(() => 'wrote', (e) => 'refused: ' + e.message)");
+  expect(syncWrite).toMatch(/^refused: Access to storage is not allowed/);
+  expect(await sw.evaluate(async () => (await chrome.storage.sync.get('probe')).probe)).toBe('from Huddle');
 });
 
 test('the content script may only open links: other actions are forbidden and an organize port is closed', async ({ sw, context }) => {
