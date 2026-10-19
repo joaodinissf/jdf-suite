@@ -146,7 +146,7 @@ Open links as tabs is inspired by [linkclump](https://github.com/benblack86/link
 
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (1024 tests)
+pnpm test              # Run unit tests (1025 tests)
 pnpm test:e2e          # Run E2E tests (140 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
@@ -167,7 +167,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Split domains confirmation and result
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (1024 tests in 22 files)
+├── tests/                         # Vitest unit tests (1025 tests in 22 files)
 │   ├── setup.js                   # Chrome API mock, page scripts loaded, dispatch() to the worker
 │   ├── senders.js                 # The sender each caller (popup, pages, content script) arrives with
 │   ├── routing.test.js            # Every worker action, routed from its real caller; refused from a content script
@@ -191,7 +191,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ### Testing
 
 #### Unit tests (Vitest + jest-chrome shim)
-1024 tests across 22 files covering core logic with mocked Chrome APIs:
+1025 tests across 22 files covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report
