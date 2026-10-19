@@ -206,6 +206,16 @@ describe('starting it arms the page for one drag', () => {
     expect(global.chrome.runtime.sendMessage).not.toHaveBeenCalled();
   });
 
+  it('the crosshair is Huddle\'s own, dark in a white outline, centred, with the system\'s as the fallback', () => {
+    start();
+    const css = document.querySelector('style[data-jdf-tab-huddle="clumper-cursor"]').textContent;
+    const [, svg, x, y] = css.match(/cursor: url\("data:image\/svg\+xml,([^"]+)"\) (\d+) (\d+), crosshair !important;/);
+    expect([x, y]).toEqual(['12', '12']);
+    const image = new window.DOMParser().parseFromString(decodeURIComponent(svg), 'image/svg+xml').documentElement;
+    expect([image.getAttribute('width'), image.getAttribute('height')]).toEqual(['24', '24']);
+    expect([...image.querySelectorAll('path')].map((path) => path.getAttribute('stroke'))).toEqual(['#fff', '#1b1d22']);
+  });
+
   it('a plain drag, with no key held, opens the links it covers and puts the page back', () => {
     const links = placeLinks(3);
     start();

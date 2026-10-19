@@ -18,6 +18,16 @@ const CLUMPER_FILL = 'rgba(255, 102, 0, 0.1)';
 const CLUMPER_LINK_HIGHLIGHT = 'rgba(255, 102, 0, 0.3)';
 const CLUMPER_Z_INDEX = 2147483647;
 
+// Huddle draws its own crosshair: the system's can be a thin white cross
+// (some Windows cursor schemes) that vanishes on a white page. Dark lines in
+// a white outline read on any page, and the gap keeps the exact point in
+// view. A page whose CSP blocks data: images gets the system's crosshair.
+const CLUMPER_CURSOR_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24">'
+  + '<path d="M12 1v10M12 13v10M1 12h10M13 12h10" stroke="#fff" stroke-width="4"/>'
+  + '<path d="M12 2v8M12 14v8M2 12h8M14 12h8" stroke="#1b1d22" stroke-width="2"/>'
+  + '<circle cx="12" cy="12" r="1.5" fill="#1b1d22" stroke="#fff"/></svg>';
+const CLUMPER_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(CLUMPER_CURSOR_SVG)}") 12 12, crosshair`;
+
 // How long the "drag over links" hint stays up.
 const CLUMPER_HINT_MS = 3000;
 
@@ -221,7 +231,7 @@ function clumperShowCrosshair() {
   if (clumperCursorStyle) return;
   const style = document.createElement('style');
   style.setAttribute('data-jdf-tab-huddle', 'clumper-cursor');
-  style.textContent = '* { cursor: crosshair !important; }';
+  style.textContent = `* { cursor: ${CLUMPER_CURSOR} !important; }`;
   (document.head || document.documentElement).appendChild(style);
   clumperCursorStyle = style;
 }
