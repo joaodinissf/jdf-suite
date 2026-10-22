@@ -44,7 +44,7 @@ class LockFile:
         return json.dumps(data, indent=2) + "\n"
 
     @classmethod
-    def from_json(cls, text: str) -> "LockFile":
+    def from_json(cls, text: str) -> LockFile:
         try:
             data = json.loads(text)
             return cls(
