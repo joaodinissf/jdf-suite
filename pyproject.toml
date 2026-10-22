@@ -1,3 +1,9 @@
+[tool.uv]
+# Only resolve releases at least 3 days old; certifi is exempt until the
+# 2026.10.19 eMudhra fix (CVE-2026-111943) ages past the window.
+exclude-newer = "3 days"
+exclude-newer-package = { certifi = "2026-10-23T00:00:00Z" }
+
 [tool.uv.workspace]
 # Glob over `packages/*` and prune directories that aren't Python workspace
 # members (Chrome extensions, userscripts, AppleScript, etc.). Every new
