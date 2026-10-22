@@ -89,7 +89,7 @@ def select_languages(detected: dict[str, list[str]]) -> set[str]:
 
         try:
             choice = input("  > ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
+        except EOFError, KeyboardInterrupt:
             print()
             sys.exit(1)
 
@@ -132,7 +132,7 @@ def select_hook_manager() -> str:
     while True:
         try:
             choice = input("  Choice [1-3]: ").strip()
-        except (EOFError, KeyboardInterrupt):
+        except EOFError, KeyboardInterrupt:
             print()
             sys.exit(1)
 
@@ -231,7 +231,7 @@ def confirm_overwrite(target_dir: Path, *, assume_yes: bool) -> bool:
         return False
     try:
         answer = input("Overwrite? [y/N]: ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
+    except EOFError, KeyboardInterrupt:
         print("\nAborted.")
         return False
     if answer not in ("y", "yes"):

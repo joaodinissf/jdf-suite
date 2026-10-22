@@ -205,7 +205,7 @@ def _has_audio(path: Path) -> bool:
     try:
         with wave.open(str(path)) as w:
             return w.getnframes() > 0
-    except (OSError, EOFError, wave.Error):
+    except OSError, EOFError, wave.Error:
         return False
 
 
