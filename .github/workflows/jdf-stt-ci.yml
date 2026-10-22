@@ -38,11 +38,10 @@ jobs:
     - run: uv sync --locked --package jdf-stt --extra mcp
     - run: uv run --package jdf-stt --extra mcp ruff check
     - run: uv run --package jdf-stt --extra mcp ruff format --check
-    # The workspace (uv.lock) needs Python >=3.14 because of another member, so the locked run
-    # uses 3.14; jdf-stt itself supports 3.12, which the next step checks outside the workspace.
+    # The next step also checks that jdf-stt installs and passes outside the workspace.
     - run: uv run --package jdf-stt --extra mcp pytest -m "not real" -v
-    - name: Unit tests on Python 3.12 (oldest supported)
-      run: uv run --isolated --no-project --python 3.12 --with 'pytest>=9' --with-editable '.[mcp]' pytest -m "not real" -p no:cacheprovider
+    - name: Unit tests outside the workspace (Python 3.14, oldest supported)
+      run: uv run --isolated --no-project --python 3.14 --with 'pytest>=9' --with-editable '.[mcp]' pytest -m "not real" -p no:cacheprovider
 
   macos-real:
     name: Real runs (macOS, whisper-cli + tiny model)

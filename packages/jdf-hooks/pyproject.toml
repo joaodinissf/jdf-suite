@@ -4,7 +4,7 @@ version = "1.4.1"
 description = "Interactive CLI to set up JDF hooks for any project"
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 authors = [{ name = "João Dinis Ferreira", email = "hello@joaof.eu" }]
 keywords = ["pre-commit", "lefthook", "git", "hooks", "linting", "formatting"]
 classifiers = [
@@ -43,7 +43,7 @@ include = ["/src"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py312"
+target-version = "py314"
 extend-exclude = ["tests/integration/example_files"]
 
 [tool.ruff.lint]

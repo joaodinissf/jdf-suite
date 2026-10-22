@@ -5,7 +5,7 @@ description = "Private, local dictation and transcription for the Mac, built on 
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 authors = [{ name = "João Dinis Ferreira", email = "hello@joaof.eu" }]
 keywords = ["speech-to-text", "transcription", "dictation", "whisper", "whisper.cpp", "offline", "privacy"]
 classifiers = [
@@ -45,7 +45,7 @@ build-backend = "uv_build"
 
 [tool.ruff]
 line-length = 120
-target-version = "py312"
+target-version = "py314"
 # The fakes are extensionless Python executables; lint them too.
 extend-include = ["tests/fakes/*"]
 
