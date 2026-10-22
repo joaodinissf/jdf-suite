@@ -174,7 +174,7 @@ def chat(o: TranscribeOptions, system: str, user: str) -> str:
             text = payload["message"]["content"]
         else:
             text = payload["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError):
+    except KeyError, IndexError, TypeError:
         raise SttError(f"{where} sent an answer without a message: {str(payload)[:300]}") from None
     if not isinstance(text, str):
         raise SttError(f"{where} sent an answer without a message: {str(payload)[:300]}")

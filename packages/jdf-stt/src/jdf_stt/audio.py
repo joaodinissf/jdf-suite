@@ -18,7 +18,7 @@ def _is_ready(path: Path) -> bool:
     try:
         with wave.open(str(path), "rb") as w:
             return (w.getframerate(), w.getnchannels(), w.getsampwidth()) == (RATE, 1, 2)
-    except (wave.Error, EOFError, OSError):
+    except wave.Error, EOFError, OSError:
         return False
 
 
@@ -44,5 +44,5 @@ def duration(wav: Path) -> float | None:
     try:
         with wave.open(str(wav), "rb") as w:
             return w.getnframes() / w.getframerate()
-    except (wave.Error, EOFError, OSError):
+    except wave.Error, EOFError, OSError:
         return None
