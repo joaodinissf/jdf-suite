@@ -185,6 +185,10 @@ const backgroundWrapper = `
   if (typeof handleCompactWindow !== 'undefined') global.handleCompactWindow = handleCompactWindow;
   if (typeof handleExpandWindow !== 'undefined') global.handleExpandWindow = handleExpandWindow;
   if (typeof handleHuddleUpWindow !== 'undefined') global.handleHuddleUpWindow = handleHuddleUpWindow;
+  if (typeof huddleUpStepByStep !== 'undefined') global.huddleUpStepByStep = huddleUpStepByStep;
+  if (typeof huddleUpFromPlan !== 'undefined') global.huddleUpFromPlan = huddleUpFromPlan;
+  if (typeof planHuddleUp !== 'undefined') global.planHuddleUp = planHuddleUp;
+  if (typeof planHuddleUpMoves !== 'undefined') global.planHuddleUpMoves = planHuddleUpMoves;
   if (typeof handleSortAllWindows !== 'undefined') global.handleSortAllWindows = handleSortAllWindows;
   if (typeof handleSortCurrentWindow !== 'undefined') global.handleSortCurrentWindow = handleSortCurrentWindow;
   if (typeof handleRemoveDuplicatesWindow !== 'undefined') global.handleRemoveDuplicatesWindow = handleRemoveDuplicatesWindow;

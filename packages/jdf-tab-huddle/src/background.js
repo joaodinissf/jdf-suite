@@ -2309,74 +2309,49 @@ async function moveTabsIntoSortedOrder(windowId, respectGroups = true) {
   return false;
 }
 
-// One pass of sortWindowTabs: query the window's tabs and move them into order.
-async function sortWindowTabsOnce(windowId, respectGroups) {
-  const tabsWithGroups = respectGroups ? await getTabsWithGroupInfo(windowId) : await chrome.tabs.query({ windowId });
-  
-  // Separate pinned tabs (never move these)
-  const pinnedTabs = tabsWithGroups.filter(tab => tab.pinned);
-  const unpinnedTabs = tabsWithGroups.filter(tab => !tab.pinned);
-  
-  if (!respectGroups) {
-    // Simple sort for individual mode (Split View pairs stay together)
-    const sortedTabs = sortTabsAsUnits(unpinnedTabs);
+// The order Sort puts a window's tabs in, without moving anything: pinned tabs
+// as they are, then (in Groups mode) the ungrouped tabs, then each group in
+// the order it first appears, each part sorted by address with Split View
+// pairs kept together. In Flat mode every unpinned tab is one part. Sort
+// moves the tabs part by part, and Huddle up plans its moves from the same
+// order.
+function sortedWindowSegments(tabs, respectGroups) {
+  const pinned = tabs.filter(tab => tab.pinned);
+  const unpinned = tabs.filter(tab => !tab.pinned);
+  if (!respectGroups) return { pinned, ungrouped: sortTabsAsUnits(unpinned), groups: [] };
 
-    // Move tabs to sorted positions as a batch (omit windowId — tabs are
-    // already in this window)
-    if (sortedTabs.length > 0) {
-      await chrome.tabs.move(
-        sortedTabs.map(t => t.id),
-        { index: pinnedTabs.length }
-      );
-    }
-    return;
-  }
-
-  // Group-aware sorting logic
   const ungroupedTabs = [];
   const groupedTabsMap = new Map();
-
-  for (const tab of unpinnedTabs) {
+  for (const tab of unpinned) {
     if (tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
       ungroupedTabs.push(tab);
     } else {
-      if (!groupedTabsMap.has(tab.groupId)) {
-        groupedTabsMap.set(tab.groupId, []);
-      }
+      if (!groupedTabsMap.has(tab.groupId)) groupedTabsMap.set(tab.groupId, []);
       groupedTabsMap.get(tab.groupId).push(tab);
     }
   }
+  return {
+    pinned,
+    ungrouped: sortTabsAsUnits(ungroupedTabs),
+    groups: [...groupedTabsMap.values()].map(sortTabsAsUnits),
+  };
+}
 
-  // Sort ungrouped tabs by URL (Split View pairs stay together)
-  const sortedUngrouped = sortTabsAsUnits(ungroupedTabs);
+// One pass of sortWindowTabs: query the window's tabs and move them into order.
+async function sortWindowTabsOnce(windowId, respectGroups) {
+  const tabsWithGroups = respectGroups ? await getTabsWithGroupInfo(windowId) : await chrome.tabs.query({ windowId });
+  const { pinned, ungrouped, groups } = sortedWindowSegments(tabsWithGroups, respectGroups);
 
-  // Sort tabs within each group by URL (Split View pairs stay together)
-  for (const [groupId, groupTabs] of groupedTabsMap.entries()) {
-    groupedTabsMap.set(groupId, sortTabsAsUnits(groupTabs));
-  }
-
-  // Determine the final order: pinned tabs, then ungrouped tabs, then grouped tabs
-  let currentIndex = pinnedTabs.length;
-
-  // Move ungrouped tabs first as a batch (omit windowId — tabs are already
-  // in this window, and passing windowId can trigger Chrome's cross-window
-  // group migration)
-  if (sortedUngrouped.length > 0) {
-    await chrome.tabs.move(
-      sortedUngrouped.map(t => t.id),
-      { index: currentIndex }
-    );
-  }
-  currentIndex += sortedUngrouped.length;
-
-  // Move grouped tabs as a batch per group to avoid Chrome's group migration
-  // behavior that can occur with sequential single-tab moves
-  for (const [_groupId, groupTabs] of groupedTabsMap.entries()) {
-    await chrome.tabs.move(
-      groupTabs.map(t => t.id),
-      { index: currentIndex }
-    );
-    currentIndex += groupTabs.length;
+  // Pinned tabs never move. The ungrouped tabs (in Flat mode, every unpinned
+  // tab) move first as a batch, then each group as its own batch: one batch
+  // per group avoids Chrome's group migration, which sequential single-tab
+  // moves can trigger. windowId is omitted, as the tabs are already in this
+  // window and passing it can also trigger the migration.
+  let currentIndex = pinned.length;
+  for (const part of [ungrouped, ...groups]) {
+    if (part.length === 0) continue;
+    await chrome.tabs.move(part.map(t => t.id), { index: currentIndex });
+    currentIndex += part.length;
   }
 }
 
@@ -2548,31 +2523,216 @@ async function handleExpandWindow(sendResponse) {
   }
 }
 
-// Huddle up: Expand, Deduplicate (which also sorts), then Compact, in one go
-// on the window it started in. Expanding first lets the tabs pair afresh
-// once the duplicates are gone, rather than around the old pairs.
+// Huddle up: Expand, Deduplicate (which also sorts), then Compact, on the
+// window it started in. Expanding first lets the tabs pair afresh once the
+// duplicates are gone, rather than around the old pairs.
+//
+// Done literally, that re-lays out the whole window even when little has
+// changed: every split is undone, every tab moved and every pair made again,
+// and each of those redraws real pages. So Huddle up works out from one read
+// what those three steps would leave, and changes only what differs from it:
+// it closes the duplicates, separates only the splits that won't survive,
+// moves only the tabs that are out of order, and makes only the missing
+// pairs. It then reads the window back, and if anything is not as planned it
+// finishes with the three steps themselves, so the result is the same either
+// way.
+
+// What Expand, Deduplicate and Compact would leave in a window, worked out
+// from its tabs with the same helpers, on a copy of the window with its
+// splits undone: the duplicates that close, the order the rest end in, and
+// the [left, right] pairs they end in.
+function planHuddleUp(tabs, respectGroups) {
+  const plain = [...tabs].sort((a, b) => a.index - b.index)
+    .map(tab => ({ ...tab, splitViewId: SPLIT_VIEW_ID_NONE }));
+  const { tabsToRemove } = findDuplicateTabs([plain], respectGroups);
+  const removed = new Set(tabsToRemove);
+  const { pinned, ungrouped, groups } = sortedWindowSegments(plain.filter(tab => !removed.has(tab.id)), respectGroups);
+  const order = [...pinned, ...ungrouped, ...groups.flat()];
+  return {
+    remove: tabsToRemove,
+    order: order.map(tab => tab.id),
+    pairs: planCompactPairs(order.map((tab, index) => ({ ...tab, index }))),
+  };
+}
+
+// The fewest single-tab moves that put a window into `target` order. `units`
+// is the window's current order as runs of ids that stay together (a split
+// that is already a planned pair) or single ids. The units on the longest run
+// already in target order stay put; every other tab, taken in target order,
+// goes right after the tab before it in the target. Returns the moves as
+// { id, index }, Chrome's final index for each in turn, and the units that
+// stay.
+function planHuddleUpMoves(units, target) {
+  const rank = new Map(target.map((id, i) => [id, i]));
+  const keys = units.map(unit => rank.get(unit[0]));
+  // Longest increasing run of keys (patience sorting), as unit positions.
+  const tails = [];
+  const previous = new Array(keys.length).fill(-1);
+  keys.forEach((key, i) => {
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (keys[tails[mid]] < key) lo = mid + 1; else hi = mid;
+    }
+    if (lo > 0) previous[i] = tails[lo - 1];
+    tails[lo] = i;
+  });
+  const staying = new Set();
+  for (let i = tails.length ? tails[tails.length - 1] : -1; i !== -1; i = previous[i]) staying.add(i);
+
+  const stays = new Set(units.filter((_, i) => staying.has(i)).flat());
+  const strip = units.flat();
+  const moves = [];
+  target.forEach((id, i) => {
+    if (stays.has(id)) return;
+    strip.splice(strip.indexOf(id), 1);
+    const index = i === 0 ? 0 : strip.indexOf(target[i - 1]) + 1;
+    strip.splice(index, 0, id);
+    moves.push({ id, index });
+  });
+  return { moves, stayingUnits: units.filter((_, i) => staying.has(i)) };
+}
+
+// The splits among `tabs` with both their tabs present, as [splitId, [leftId, rightId]].
+function splitsAmong(tabs) {
+  const bySplit = new Map();
+  for (const tab of [...tabs].sort((a, b) => a.index - b.index)) {
+    const splitId = tabSplitViewId(tab);
+    if (splitId === null) continue;
+    if (!bySplit.has(splitId)) bySplit.set(splitId, []);
+    bySplit.get(splitId).push(tab.id);
+  }
+  return [...bySplit.entries()].filter(([, ids]) => ids.length === 2);
+}
+
+// Huddle up done literally: Expand, Deduplicate (which also sorts), Compact.
+async function huddleUpStepByStep(windowId, respectGroups) {
+  const expanded = await unsplitWindowTabs(await chrome.tabs.query({ windowId }));
+  await settle();
+  const { tabsToRemove } = findDuplicateTabs([await chrome.tabs.query({ windowId })], respectGroups);
+  if (tabsToRemove.length > 0) await chrome.tabs.remove(tabsToRemove);
+  await settle();
+  const sorted = await sortWindowTabs(windowId, respectGroups);
+  const compacted = await pairWindowTabs(await chrome.tabs.query({ windowId }));
+  return {
+    removed: tabsToRemove.length,
+    paired: compacted.paired,
+    failed: expanded.failed + compacted.failed,
+    sortFailed: !sorted,
+  };
+}
+
+// Huddle up from its plan, changing only what differs from it.
+async function huddleUpFromPlan(windowId, respectGroups) {
+  const tabs = await chrome.tabs.query({ windowId });
+  const plan = planHuddleUp(tabs, respectGroups);
+  const planned = new Set(plan.pairs.map(pair => pair.join(':')));
+  const removed = new Set(plan.remove);
+  const rest = [...tabs].sort((a, b) => a.index - b.index).filter(tab => !removed.has(tab.id));
+
+  // A split that is already a planned pair moves as one unit, so it can stay.
+  const restSplits = splitsAmong(rest);
+  const splitOf = new Map(restSplits.flatMap(([splitId, ids]) => ids.map(id => [id, { splitId, ids }])));
+  const units = [];
+  for (let i = 0; i < rest.length; i++) {
+    const split = splitOf.get(rest[i].id);
+    if (split && split.ids[0] === rest[i].id && planned.has(split.ids.join(':'))) {
+      units.push(split.ids);
+      i++;
+    } else {
+      units.push([rest[i].id]);
+    }
+  }
+  const { moves, stayingUnits } = planHuddleUpMoves(units, plan.order);
+  const kept = new Set(stayingUnits.filter(unit => unit.length === 2).map(unit => unit.join(':')));
+
+  let failed = 0;
+  try {
+    if (plan.remove.length > 0) await chrome.tabs.remove(plan.remove);
+    for (const [splitId, ids] of restSplits) {
+      if (kept.has(ids.join(':'))) continue;
+      try {
+        await chrome.tabs.unsplit(splitId);
+      } catch (error) {
+        failed++;
+        console.error('[Huddle] Could not unsplit', splitId, error);
+      }
+    }
+    for (const { id, index } of moves) await chrome.tabs.move(id, { index });
+  } catch (error) {
+    console.warn('[Huddle] Huddle up could not follow its plan, so it does it step by step:', error);
+    return { ...(await huddleUpStepByStep(windowId, respectGroups)), removed: plan.remove.length };
+  }
+
+  // The window must now be in the planned order, every tab in its own group.
+  const after = await chrome.tabs.query({ windowId });
+  const groupBefore = new Map(tabs.map(tab => [tab.id, tab.groupId]));
+  const asPlanned = after.length === plan.order.length
+    && [...after].sort((a, b) => a.index - b.index).every((tab, i) => tab.id === plan.order[i])
+    && after.every(tab => tab.groupId === groupBefore.get(tab.id));
+  if (!asPlanned) {
+    console.warn('[Huddle] The window did not end as planned, so Huddle up does it step by step');
+    for (const tab of after) {
+      const groupId = groupBefore.get(tab.id);
+      if (groupId === undefined || tab.groupId === groupId) continue;
+      try {
+        if (groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) await chrome.tabs.ungroup(tab.id);
+        else await chrome.tabs.group({ groupId, tabIds: [tab.id] });
+      } catch (error) {
+        console.error('[Huddle] Could not put a tab back in its group', tab.id, error);
+      }
+    }
+    return { ...(await huddleUpStepByStep(windowId, respectGroups)), removed: plan.remove.length };
+  }
+
+  // Separate any split that isn't planned, then make the planned pairs that
+  // are missing.
+  let paired = 0;
+  const present = new Set();
+  for (const [splitId, ids] of splitsAmong(after)) {
+    if (planned.has(ids.join(':'))) {
+      present.add(ids.join(':'));
+      continue;
+    }
+    try {
+      await chrome.tabs.unsplit(splitId);
+    } catch (error) {
+      failed++;
+      console.error('[Huddle] Could not unsplit', splitId, error);
+    }
+  }
+  for (const pair of plan.pairs) {
+    if (present.has(pair.join(':'))) {
+      paired++;
+      continue;
+    }
+    try {
+      await chrome.tabs.createSplit(pair);
+      paired++;
+    } catch (error) {
+      failed++;
+      console.error('[Huddle] Could not split tabs', pair, error);
+    }
+  }
+  return { removed: plan.remove.length, paired, failed, sortFailed: false };
+}
+
 async function handleHuddleUpWindow(respectGroups = true, sendResponse) {
   try {
     if (!splitWriteSupported()) {
       sendResponse({ success: false, error: 'unsupported' });
       return;
     }
-    const start = await chrome.tabs.query({ currentWindow: true });
-    const { windowId } = start[0];
-    const expanded = await unsplitWindowTabs(start);
-    await settle();
-    const { tabsToRemove } = findDuplicateTabs([await chrome.tabs.query({ windowId })], respectGroups);
-    if (tabsToRemove.length > 0) await chrome.tabs.remove(tabsToRemove);
-    await settle();
-    const sorted = await sortWindowTabs(windowId, respectGroups);
-    const compacted = await pairWindowTabs(await chrome.tabs.query({ windowId }));
-    sendResponse({
-      success: true,
-      removed: tabsToRemove.length,
-      paired: compacted.paired,
-      failed: expanded.failed + compacted.failed,
-      sortFailed: !sorted,
-    });
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    const { windowId } = tabs[0];
+    // Flat mode on a window with groups: Sort's single batch move leaves the
+    // tabs' groups to Chrome, so the result can't be planned.
+    const plannable = respectGroups || tabs.every(tab => tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE);
+    const result = plannable
+      ? await huddleUpFromPlan(windowId, respectGroups)
+      : await huddleUpStepByStep(windowId, respectGroups);
+    sendResponse({ success: true, ...result });
   } catch (error) {
     console.error('[Huddle] Error in huddleUpWindow:', error);
     sendResponse({ success: false, error: error.message });

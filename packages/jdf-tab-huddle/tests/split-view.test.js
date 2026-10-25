@@ -1,3 +1,5 @@
+import { seeded, randomWindow } from '../e2e/helpers/random-window.js';
+
 // Split View: sort keeps pairs together and dedup keeps the split copy, which
 // only needs the read-only splitViewId and must degrade to the old behavior
 // when the property is absent. Compact/Expand create and remove splits and
@@ -317,70 +319,256 @@ describe('Compact / Expand handlers', () => {
   });
 });
 
-describe('Huddle up: Expand, Deduplicate, then Compact', () => {
-  // A window the fakes keep up to date, and the order of what was done to it.
-  let tabs;
-  let log;
-  const tab = (id, url, extra = {}) => ({ id, url, windowId: 1, pinned: false, groupId: -1, splitViewId: -1, ...extra });
+// A window that behaves like Chrome's tab strip where Huddle up relies on it:
+// moves land at Chrome's final index, moving a tab in a split dissolves that
+// split, splits need two unsplit neighbours with the same pinned state and
+// group, and closing a tab ends its split. Every change is logged.
+function fakeStrip(spec) {
+  let nextSplit = 100;
+  let tabs = spec.map((t, i) => ({ id: i + 1, windowId: 1, pinned: false, groupId: -1, splitViewId: -1, ...t }));
+  const log = [];
+  const view = () => tabs.map((t, index) => ({ ...t, index }));
+  const dissolve = (splitId) => { for (const t of tabs) if (t.splitViewId === splitId) t.splitViewId = -1; };
+  const api = {
+    query: vi.fn(async () => view()),
+    get: vi.fn(async (id) => {
+      const tab = view().find(t => t.id === id);
+      if (!tab) throw new Error(`No tab ${id}`);
+      return tab;
+    }),
+    remove: vi.fn(async (ids) => {
+      log.push(['remove', [].concat(ids)]);
+      for (const t of tabs) if ([].concat(ids).includes(t.id) && t.splitViewId !== -1) dissolve(t.splitViewId);
+      tabs = tabs.filter(t => ![].concat(ids).includes(t.id));
+    }),
+    move: vi.fn(async (ids, { index }) => {
+      const moving = [].concat(ids).map(id => tabs.find(t => t.id === id));
+      log.push(['move', moving.map(t => t.id), index]);
+      for (const t of moving) if (t.splitViewId !== -1) dissolve(t.splitViewId);
+      tabs = tabs.filter(t => !moving.includes(t));
+      tabs.splice(Math.min(index, tabs.length), 0, ...moving);
+    }),
+    unsplit: vi.fn(async (splitId) => {
+      if (!tabs.some(t => t.splitViewId === splitId)) throw new Error(`No split ${splitId}`);
+      log.push(['unsplit', splitId]);
+      dissolve(splitId);
+    }),
+    createSplit: vi.fn(async ([left, right]) => {
+      const a = tabs.findIndex(t => t.id === left);
+      const b = tabs.findIndex(t => t.id === right);
+      const [l, r] = [tabs[a], tabs[b]];
+      if (b !== a + 1 || l.splitViewId !== -1 || r.splitViewId !== -1 || l.pinned !== r.pinned || l.groupId !== r.groupId) {
+        throw new Error(`Cannot split ${left} and ${right}`);
+      }
+      log.push(['createSplit', [left, right]]);
+      l.splitViewId = r.splitViewId = nextSplit++;
+      return l.splitViewId;
+    }),
+  };
+  // What the window looks like, independent of tab and split ids: each tab's
+  // page, pinned state, group, and the page of the tab it is split with.
+  const snapshot = () => tabs.map((t) => [t.url, t.pinned, t.groupId,
+    t.splitViewId === -1 ? null : tabs.find(o => o !== t && o.splitViewId === t.splitViewId)?.url ?? null]);
+  return { api, log, snapshot, tabs: () => tabs };
+}
 
-  beforeEach(() => {
-    log = [];
-    tabs = [
-      tab(1, 'https://b.test/', { splitViewId: 5 }), tab(2, 'https://a.test/', { splitViewId: 5 }),
-      tab(3, 'https://c.test/'), tab(4, 'https://a.test/'), tab(5, 'https://d.test/'),
-    ];
-    const current = () => tabs.map((t, index) => ({ ...t, index }));
-    chrome.tabs.query.mockImplementation(async () => current());
-    chrome.tabs.get.mockImplementation(async (id) => current().find((t) => t.id === id));
-    chrome.tabs.unsplit = vi.fn(async (splitId) => {
-      log.push(`unsplit ${splitId}`);
-      for (const t of tabs) if (t.splitViewId === splitId) t.splitViewId = -1;
-    });
-    chrome.tabs.remove.mockImplementation(async (ids) => {
-      log.push(`remove ${ids}`);
-      tabs = tabs.filter((t) => !ids.includes(t.id));
-    });
-    chrome.tabs.move.mockImplementation(async (ids) => {
-      log.push('sort');
-      const order = [].concat(ids);
-      tabs.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-    });
-    chrome.tabs.createSplit = vi.fn(async (pair) => { log.push(`split ${pair}`); return 9; });
-  });
+function useStrip(strip) {
+  Object.assign(chrome.tabs, strip.api);
+  chrome.tabGroups.query.mockResolvedValue([]);
+}
 
+// Runs an async step that waits on Huddle's settle() under fake timers.
+async function withTimers(promise) {
+  let done = false;
+  promise.finally(() => { done = true; });
+  while (!done) await vi.advanceTimersByTimeAsync(250);
+  return promise;
+}
+
+describe('Huddle up', () => {
+  beforeEach(() => vi.useFakeTimers());
   afterEach(() => {
+    vi.useRealTimers();
     delete chrome.tabs.createSplit;
     delete chrome.tabs.unsplit;
   });
 
-  test('separates every split before closing a duplicate, and pairs only after the sort', async () => {
-    const sendResponse = vi.fn();
-    await handleHuddleUpWindow(false, sendResponse);
-    expect(log[0]).toBe('unsplit 5');
-    expect(log.indexOf('remove 4')).toBeGreaterThan(0);
-    const firstSplit = log.findIndex((entry) => entry.startsWith('split'));
-    expect(firstSplit).toBeGreaterThan(log.lastIndexOf('sort'));
-    // a, b, c, d are left, sorted, and paired as neighbours.
-    expect(tabs.map((t) => t.url)).toEqual(['https://a.test/', 'https://b.test/', 'https://c.test/', 'https://d.test/']);
-    expect(chrome.tabs.createSplit.mock.calls).toEqual([[[2, 1]], [[3, 5]]]);
-    expect(sendResponse).toHaveBeenCalledWith({ success: true, removed: 1, paired: 2, failed: 0, sortFailed: false });
+  test('step by step, it separates every split before closing a duplicate, and pairs only after the sort', async () => {
+    const strip = fakeStrip([
+      { url: 'https://b.test/', splitViewId: 5 }, { url: 'https://a.test/', splitViewId: 5 },
+      { url: 'https://c.test/' }, { url: 'https://a.test/' }, { url: 'https://d.test/' },
+    ]);
+    useStrip(strip);
+    const result = await withTimers(huddleUpStepByStep(1, false));
+    const kinds = strip.log.map(([kind]) => kind);
+    expect(kinds[0]).toBe('unsplit');
+    expect(kinds.indexOf('remove')).toBeGreaterThan(0);
+    expect(kinds.indexOf('createSplit')).toBeGreaterThan(kinds.lastIndexOf('move'));
+    expect(strip.snapshot().map(([url]) => url)).toEqual(['https://a.test/', 'https://b.test/', 'https://c.test/', 'https://d.test/']);
+    expect(result).toEqual({ removed: 1, paired: 2, failed: 0, sortFailed: false });
+  });
+
+  test.each([true, false])('it leaves every random window as the step-by-step version does, without falling back to it (Groups mode: %s)', async (respectGroups) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let compared = 0;
+    let changed = 0;
+    for (let seed = 1; seed <= 300; seed++) {
+      // Flat mode on a window with groups takes the step-by-step path, so Flat
+      // windows are compared without their groups.
+      const spec = randomWindow(seed).map(t => (respectGroups ? t : { ...t, groupId: -1 }));
+      const reference = fakeStrip(structuredClone(spec));
+      useStrip(reference);
+      await withTimers(huddleUpStepByStep(1, respectGroups));
+      const planned = fakeStrip(structuredClone(spec));
+      useStrip(planned);
+      const result = await withTimers(huddleUpFromPlan(1, respectGroups));
+      expect({ seed, window: planned.snapshot() }).toEqual({ seed, window: reference.snapshot() });
+      expect({ seed, failed: result.failed, fellBack: warn.mock.calls.length }).toEqual({ seed, failed: 0, fellBack: 0 });
+      compared++;
+      if (planned.log.length > 0) changed++;
+    }
+    warn.mockRestore();
+    // Most windows need real work; a few are already huddled.
+    expect(compared).toBe(300);
+    expect(changed).toBeGreaterThan(compared * 0.8);
+  });
+
+  test('a window that is already huddled is left alone: nothing closes, moves, separates or pairs', async () => {
+    const strip = fakeStrip([
+      { url: 'https://a.test/', splitViewId: 1 }, { url: 'https://b.test/', splitViewId: 1 },
+      { url: 'https://c.test/', splitViewId: 2 }, { url: 'https://d.test/', splitViewId: 2 },
+      { url: 'https://e.test/' },
+    ]);
+    useStrip(strip);
+    const result = await huddleUpFromPlan(1, true);
+    expect(strip.log).toEqual([]);
+    expect(result).toEqual({ removed: 0, paired: 2, failed: 0, sortFailed: false });
+  });
+
+  test('a new tab moves on its own, and the pairs before it stay', async () => {
+    const strip = fakeStrip([
+      { url: 'https://a.test/', splitViewId: 1 }, { url: 'https://b.test/', splitViewId: 1 },
+      { url: 'https://c.test/', splitViewId: 2 }, { url: 'https://d.test/', splitViewId: 2 },
+      { url: 'https://e.test/', splitViewId: 3 }, { url: 'https://f.test/', splitViewId: 3 },
+      { url: 'https://d.test/x' },
+    ]);
+    useStrip(strip);
+    await huddleUpFromPlan(1, true);
+    expect(strip.log.filter(([kind]) => kind === 'move')).toEqual([['move', [7], 4]]);
+    // a=b and c=d stay; the pairs after d are made again around the new tab.
+    expect(strip.log.filter(([kind]) => kind === 'unsplit')).toEqual([['unsplit', 3]]);
+    expect(strip.snapshot().map(([url, , , partner]) => [url, partner])).toEqual([
+      ['https://a.test/', 'https://b.test/'], ['https://b.test/', 'https://a.test/'],
+      ['https://c.test/', 'https://d.test/'], ['https://d.test/', 'https://c.test/'],
+      ['https://d.test/x', 'https://e.test/'], ['https://e.test/', 'https://d.test/x'],
+      ['https://f.test/', null],
+    ]);
+  });
+
+  test('when the window does not end as planned, it finishes step by step and still ends the same', async () => {
+    const spec = [{ url: 'https://c.test/' }, { url: 'https://a.test/' }, { url: 'https://b.test/' }, { url: 'https://a.test/' }];
+    const reference = fakeStrip(structuredClone(spec));
+    useStrip(reference);
+    await withTimers(huddleUpStepByStep(1, true));
+    const strip = fakeStrip(structuredClone(spec));
+    useStrip(strip);
+    // Chrome ignores the first single-tab move.
+    const move = strip.api.move;
+    let first = true;
+    chrome.tabs.move = vi.fn(async (ids, options) => {
+      if (first && !Array.isArray(ids)) { first = false; return; }
+      return move(ids, options);
+    });
+    await withTimers(huddleUpFromPlan(1, true));
+    expect(strip.snapshot()).toEqual(reference.snapshot());
   });
 
   test('a split it cannot separate and a pair it cannot make are counted, and the rest still runs', async () => {
-    chrome.tabs.unsplit.mockRejectedValueOnce(new Error('gone'));
+    const strip = fakeStrip([
+      { url: 'https://b.test/', splitViewId: 5 }, { url: 'https://a.test/', splitViewId: 5 },
+      { url: 'https://c.test/' }, { url: 'https://d.test/' },
+    ]);
+    useStrip(strip);
     chrome.tabs.createSplit.mockRejectedValueOnce(new Error('tab closed'));
+    const result = await withTimers(huddleUpFromPlan(1, true));
+    expect(result).toEqual(expect.objectContaining({ removed: 0, failed: 1, paired: 1 }));
+  });
+
+  test('Flat mode on a window with groups takes the step-by-step path', async () => {
+    const strip = fakeStrip([{ url: 'https://b.test/', groupId: 10 }, { url: 'https://a.test/' }]);
+    useStrip(strip);
     const sendResponse = vi.fn();
-    await handleHuddleUpWindow(false, sendResponse);
-    expect(chrome.tabs.remove).toHaveBeenCalled();
-    expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ success: true, removed: 1, failed: 2 }));
+    await withTimers(handleHuddleUpWindow(false, sendResponse));
+    // Sort's batch move: one move of every unpinned tab.
+    expect(strip.log.filter(([kind]) => kind === 'move')).toEqual([['move', [2, 1], 0]]);
+    expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
   });
 
   test('reports unsupported, and changes nothing, where Chrome cannot create Split Views', async () => {
+    const strip = fakeStrip([{ url: 'https://b.test/' }, { url: 'https://a.test/' }]);
+    useStrip(strip);
     delete chrome.tabs.createSplit;
     const sendResponse = vi.fn();
     await handleHuddleUpWindow(true, sendResponse);
     expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'unsupported' });
-    expect(log).toEqual([]);
+    expect(strip.log).toEqual([]);
+  });
+});
+
+describe('planHuddleUpMoves', () => {
+  // Applies the moves the way Chrome does: each tab lands at its index.
+  const apply = (units, moves) => {
+    const strip = units.flat();
+    for (const { id, index } of moves) {
+      strip.splice(strip.indexOf(id), 1);
+      strip.splice(index, 0, id);
+    }
+    return strip;
+  };
+
+  test('an ordered window needs no moves; a reversed one moves all but one tab', () => {
+    expect(planHuddleUpMoves([[1], [2], [3]], [1, 2, 3]).moves).toEqual([]);
+    const { moves } = planHuddleUpMoves([[4], [3], [2], [1]], [1, 2, 3, 4]);
+    expect(moves).toHaveLength(3);
+    expect(apply([[4], [3], [2], [1]], moves)).toEqual([1, 2, 3, 4]);
+  });
+
+  test('random orders end in the target with the fewest moves, and a staying pair is never split up', () => {
+    const rnd = seeded(7);
+    for (let round = 0; round < 500; round++) {
+      const n = 1 + Math.floor(rnd() * 12);
+      const target = [...Array(n).keys()].map(i => i + 1);
+      const current = [...target].sort(() => rnd() - 0.5);
+      // Pair up neighbours that are also neighbours in the target.
+      const units = [];
+      for (let i = 0; i < current.length; i++) {
+        if (i + 1 < current.length && current[i + 1] === current[i] + 1 && rnd() < 0.5) units.push([current[i], current[++i]]);
+        else units.push([current[i]]);
+      }
+      const { moves, stayingUnits } = planHuddleUpMoves(units, target);
+      const strip = apply(units, moves);
+      expect(strip).toEqual(target);
+      const movedIds = new Set(moves.map(m => m.id));
+      for (const unit of stayingUnits) for (const id of unit) expect(movedIds.has(id)).toBe(false);
+      // Every unit off the longest ordered run moves, and no other.
+      const stayingTabs = stayingUnits.flat().length;
+      expect(moves).toHaveLength(n - stayingTabs);
+    }
+  });
+});
+
+describe('planHuddleUp', () => {
+  test('closes the later copy, sorts each part as Sort does, and pairs neighbours as Compact does', () => {
+    const tab = (id, url, extra = {}) => ({ id, index: id, url, pinned: false, groupId: -1, splitViewId: -1, ...extra });
+    const plan = planHuddleUp([
+      tab(0, 'https://p.test/', { pinned: true }),
+      tab(1, 'https://c.test/'), tab(2, 'https://a.test/', { splitViewId: 9 }), tab(3, 'https://b.test/', { splitViewId: 9 }),
+      tab(4, 'https://z.test/', { groupId: 7 }), tab(5, 'https://y.test/', { groupId: 7 }),
+      tab(6, 'https://c.test/'),
+    ], true);
+    expect(plan.remove).toEqual([6]);
+    expect(plan.order).toEqual([0, 2, 3, 1, 5, 4]);
+    expect(plan.pairs).toEqual([[2, 3], [5, 4]]);
   });
 });
 
