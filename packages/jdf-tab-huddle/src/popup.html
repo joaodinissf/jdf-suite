@@ -143,6 +143,12 @@
       gap: 6px;
     }
 
+    .grid3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+    }
+
     button {
       font-family: var(--ui);
     }
@@ -738,11 +744,13 @@
         <button id="aiOrganize" class="btn" data-action="aiGroupTabs">Organize with AI</button>
       </div>
       <!-- Shown only where Chrome can create Split Views (Chrome 155+). -->
-      <div id="splitViewRow" class="grid2" style="margin-top: 6px" hidden>
+      <div id="splitViewRow" class="grid3" style="margin-top: 6px" hidden>
         <button id="compactWindow" class="btn" data-action="compactWindow"
           title="Pair adjacent tabs into Split Views">Compact</button>
         <button id="expandWindow" class="btn" data-action="expandWindow"
           title="Separate every Split View in this window">Expand</button>
+        <button id="huddleUpWindow" class="btn" data-action="huddleUpWindow"
+          title="Expand Split Views, remove duplicates, sort, and pair the tabs again">Huddle up</button>
       </div>
     </div>
 

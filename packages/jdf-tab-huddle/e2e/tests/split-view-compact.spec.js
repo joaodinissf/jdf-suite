@@ -110,3 +110,31 @@ test('2: Compact pairs only within pinned/group runs, skips existing splits, nev
   expect(expanded.map(x => x.id)).toEqual(before.map(x => x.id));
   expect(expanded.map(x => [x.pinned, x.groupId])).toEqual(before.map(x => [x.pinned, x.groupId]));
 });
+
+test('3: Huddle up separates splits, closes duplicates, sorts and pairs the tabs again', async ({ sw, context, extensionId }) => {
+  const [b, a, , dup] = await createTabs(sw, [URLS.EXAMPLE_B, URLS.EXAMPLE_A, URLS.TEST_A, URLS.EXAMPLE_A]);
+  await sleep(300);
+  const windowId = await getCurrentWindowId(sw);
+  await sw.evaluate(ids => chrome.tabs.createSplit(ids), [b, a]);
+
+  const popup = await openPopup(context, extensionId);
+  await clickPopupButton(popup, 'huddleUpWindow');
+  // One duplicate closes, so the reset tab, three pages and the popup are
+  // left: two pairs, and one tab on its own.
+  const after = await waitForCondition(async () => {
+    const tabs = await getWindowTabs(sw, windowId);
+    return tabs.length === 5 && splitIds(tabs).size === 2 ? tabs : null;
+  });
+  await popup.close();
+
+  expect(after.map(t => t.id)).not.toContain(dup);
+  const pages = after.map(t => t.url).filter(url => url.startsWith('http'));
+  expect(pages).toEqual([...pages].sort());
+  expect(new Set(pages).size).toBe(pages.length);
+  // Each split is two neighbours.
+  for (const id of splitIds(after)) {
+    const halves = after.filter(t => t.splitViewId === id).map(t => t.index);
+    expect(halves).toHaveLength(2);
+    expect(halves[1] - halves[0]).toBe(1);
+  }
+});

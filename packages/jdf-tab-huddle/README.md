@@ -18,7 +18,9 @@ Every action works in one of two modes, chosen at the top of the popup:
 - **Sort**: sort the window's tabs by URL.
 - **Deduplicate**: close duplicate tabs in the window. In Groups mode the same page in two different groups is kept; duplicates inside one group are closed.
 - **Ungroup**: remove every tab group in the window.
-- **Compact** and **Expand** (Chrome 155+): pair neighbouring tabs into Split Views, (1,2), (3,4), …, without moving any tab, and separate them again. Chrome only splits two adjacent tabs with the same pinned state and group, so pairing restarts at every pinned or group boundary and at every tab already in a split; an odd tab left at the end of a run stays as it is. Expand separates every Split View in the window, including ones you made yourself. Both appear only where Chrome can create Split Views.
+- **Compact** and **Expand** (Chrome 155+): pair neighbouring tabs into Split Views, (1,2), (3,4), …, without moving any tab, and separate them again. Chrome only splits two adjacent tabs with the same pinned state and group, so pairing restarts at every pinned or group boundary and at every tab already in a split; an odd tab left at the end of a run stays as it is. Expand separates every Split View in the window, including ones you made yourself.
+- **Huddle up** (**H**, Chrome 155+): Expand, Deduplicate and Compact in one go. Every Split View in the window is separated, duplicates close, the tabs are sorted, and neighbours are paired again from scratch. It follows Groups or Flat like Deduplicate.
+- Compact, Expand and Huddle up appear only where Chrome can create Split Views.
 
 **Extract & copy**
 - **Extract domain**: move every tab of the current tab's domain, from any window, into a new window.
@@ -109,7 +111,7 @@ The store's Huddle has a different extension ID from a copy you loaded unpacked,
 
 ## Browser compatibility
 
-- **Chrome** 147 or later (Manifest V3). Split View Compact and Expand need Chrome 155 and are hidden on older versions.
+- **Chrome** 147 or later (Manifest V3). Split View Compact, Expand and Huddle up need Chrome 155 and are hidden on older versions.
 - **Edge**: Chromium-based Edge.
 - **Firefox**: not supported (Huddle uses Chrome-specific APIs).
 
@@ -146,8 +148,8 @@ Open links as tabs is inspired by [linkclump](https://github.com/benblack86/link
 
 ```bash
 pnpm install           # Install dependencies
-pnpm test              # Run unit tests (1025 tests)
-pnpm test:e2e          # Run E2E tests (140 tests, requires Chromium)
+pnpm test              # Run unit tests (1037 tests)
+pnpm test:e2e          # Run E2E tests (141 tests, requires Chromium)
 pnpm run lint          # Run ESLint
 pnpm run validate      # Validate manifest.json
 pnpm run package       # Create extension zip
@@ -167,7 +169,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── popup.html / popup.js      # Extension popup UI
 │   ├── confirmation-dialog.*      # Split domains confirmation and result
 │   └── icons/                     # Extension icons
-├── tests/                         # Vitest unit tests (1025 tests in 22 files)
+├── tests/                         # Vitest unit tests (1037 tests in 22 files)
 │   ├── setup.js                   # Chrome API mock, page scripts loaded, dispatch() to the worker
 │   ├── senders.js                 # The sender each caller (popup, pages, content script) arrives with
 │   ├── routing.test.js            # Every worker action, routed from its real caller; refused from a content script
@@ -176,7 +178,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 │   ├── snooze.test.js             # Snoozing and waking, through the worker's handlers
 │   ├── store-listing.test.js      # The manifest's description and icons, and store/ kept in step with them
 │   └── confirmation-dialog.test.js
-├── e2e/                           # Playwright E2E tests (140 tests)
+├── e2e/                           # Playwright E2E tests (141 tests)
 │   ├── playwright.config.js       # Playwright configuration
 │   ├── fixtures/extension.js      # Custom fixture loading extension into Chromium
 │   ├── helpers/                   # Tab management, popup interaction, assertions
@@ -191,7 +193,7 @@ packages/jdf-tab-huddle/           # Inside the jdf-suite monorepo
 ### Testing
 
 #### Unit tests (Vitest + jest-chrome shim)
-1025 tests across 22 files covering core logic with mocked Chrome APIs:
+1037 tests across 22 files covering core logic with mocked Chrome APIs:
 ```bash
 pnpm test                # Run all unit tests
 pnpm run test:coverage   # With coverage report
@@ -200,7 +202,7 @@ pnpm run test:coverage   # With coverage report
 `tests/routing.test.js` sends every action the service worker handles through its real `onMessage` listener, from the page that sends it (with the sender Chrome gives that page), and checks the reply and the Chrome call the handler makes. The dispatcher is an if/else chain on `message.action`, except the popup's logging message, which is keyed on `message.type`, and its first branch, the sender check: only Huddle's own pages (a sender `url` under `chrome-extension://<id>/`) may send anything but `clumpOpenUrls`, the one action the Open links as tabs content script (`content-clumper.js`) sends (the worker injects it into a page when Open links as tabs is started there). The test reads every branch of that chain from the source, fails on a branch it does not understand, and checks its table against the actions (and the logging message) found there and against what each page's scripts send; it also sends every row's message from the content script and expects `forbidden`. So a new worker action needs a row there. The test's `dispatch(message, sender)` (in `tests/setup.js`) resolves with the worker's reply, and fails when an action that replies later does not keep the channel open by returning `true`.
 
 #### E2E tests (Playwright + real Chromium)
-140 tests across 20 spec files that load the extension into a real browser:
+141 tests across 20 spec files that load the extension into a real browser:
 
 | Spec File | Tests | Coverage |
 |---|---|---|
@@ -216,7 +218,7 @@ pnpm run test:coverage   # With coverage report
 | popup-ui | 9 | Mode switching, button visibility, no text below 10.5px but the key badges |
 | confirmation-dialog | 5 | Confirm/cancel flow, the result shown in the dialog, keyboard |
 | flatten-window | 3 | Ungrouping, pinned immunity |
-| split-view-compact | 2 | Compact then Expand; pinned/group runs, existing splits, no tab moves (skips below Chrome 155) |
+| split-view-compact | 3 | Compact then Expand; pinned/group runs, existing splits, no tab moves; Huddle up separates, deduplicates, sorts and pairs again (skips below Chrome 155) |
 | split-view-repair | 5 | Splits survive sort (both modes), merge and extract; a separated pair is not forced back together (skips below Chrome 155) |
 | keyboard | 4 | Popup hotkey dispatch |
 | open-links | 8 | On the shipped manifest, started through the toolbar button (DevTools `Extensions.triggerAction`): nothing opens until it is started; its hint; one plain drag opens 5 at once and ends it, so the next drag opens nothing; starting again re-arms it; over 25 links asks and opens the first 25; Escape cancels; a reload ends it; a page's own events open nothing; `chrome://` is refused; no site access and no `windows` permission |

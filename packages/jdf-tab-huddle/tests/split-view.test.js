@@ -317,6 +317,73 @@ describe('Compact / Expand handlers', () => {
   });
 });
 
+describe('Huddle up: Expand, Deduplicate, then Compact', () => {
+  // A window the fakes keep up to date, and the order of what was done to it.
+  let tabs;
+  let log;
+  const tab = (id, url, extra = {}) => ({ id, url, windowId: 1, pinned: false, groupId: -1, splitViewId: -1, ...extra });
+
+  beforeEach(() => {
+    log = [];
+    tabs = [
+      tab(1, 'https://b.test/', { splitViewId: 5 }), tab(2, 'https://a.test/', { splitViewId: 5 }),
+      tab(3, 'https://c.test/'), tab(4, 'https://a.test/'), tab(5, 'https://d.test/'),
+    ];
+    const current = () => tabs.map((t, index) => ({ ...t, index }));
+    chrome.tabs.query.mockImplementation(async () => current());
+    chrome.tabs.get.mockImplementation(async (id) => current().find((t) => t.id === id));
+    chrome.tabs.unsplit = vi.fn(async (splitId) => {
+      log.push(`unsplit ${splitId}`);
+      for (const t of tabs) if (t.splitViewId === splitId) t.splitViewId = -1;
+    });
+    chrome.tabs.remove.mockImplementation(async (ids) => {
+      log.push(`remove ${ids}`);
+      tabs = tabs.filter((t) => !ids.includes(t.id));
+    });
+    chrome.tabs.move.mockImplementation(async (ids) => {
+      log.push('sort');
+      const order = [].concat(ids);
+      tabs.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    });
+    chrome.tabs.createSplit = vi.fn(async (pair) => { log.push(`split ${pair}`); return 9; });
+  });
+
+  afterEach(() => {
+    delete chrome.tabs.createSplit;
+    delete chrome.tabs.unsplit;
+  });
+
+  test('separates every split before closing a duplicate, and pairs only after the sort', async () => {
+    const sendResponse = vi.fn();
+    await handleHuddleUpWindow(false, sendResponse);
+    expect(log[0]).toBe('unsplit 5');
+    expect(log.indexOf('remove 4')).toBeGreaterThan(0);
+    const firstSplit = log.findIndex((entry) => entry.startsWith('split'));
+    expect(firstSplit).toBeGreaterThan(log.lastIndexOf('sort'));
+    // a, b, c, d are left, sorted, and paired as neighbours.
+    expect(tabs.map((t) => t.url)).toEqual(['https://a.test/', 'https://b.test/', 'https://c.test/', 'https://d.test/']);
+    expect(chrome.tabs.createSplit.mock.calls).toEqual([[[2, 1]], [[3, 5]]]);
+    expect(sendResponse).toHaveBeenCalledWith({ success: true, removed: 1, paired: 2, failed: 0, sortFailed: false });
+  });
+
+  test('a split it cannot separate and a pair it cannot make are counted, and the rest still runs', async () => {
+    chrome.tabs.unsplit.mockRejectedValueOnce(new Error('gone'));
+    chrome.tabs.createSplit.mockRejectedValueOnce(new Error('tab closed'));
+    const sendResponse = vi.fn();
+    await handleHuddleUpWindow(false, sendResponse);
+    expect(chrome.tabs.remove).toHaveBeenCalled();
+    expect(sendResponse).toHaveBeenCalledWith(expect.objectContaining({ success: true, removed: 1, failed: 2 }));
+  });
+
+  test('reports unsupported, and changes nothing, where Chrome cannot create Split Views', async () => {
+    delete chrome.tabs.createSplit;
+    const sendResponse = vi.fn();
+    await handleHuddleUpWindow(true, sendResponse);
+    expect(sendResponse).toHaveBeenCalledWith({ success: false, error: 'unsupported' });
+    expect(log).toEqual([]);
+  });
+});
+
 describe('Re-pairing dissolved Split Views (#46)', () => {
   const tab = (id, extra = {}) => ({ id, index: id, windowId: 1, pinned: false, groupId: -1, splitViewId: -1, ...extra });
   let byId;

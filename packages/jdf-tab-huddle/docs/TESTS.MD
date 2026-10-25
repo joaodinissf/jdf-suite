@@ -2,8 +2,8 @@
 
 ## Overview
 
-- **Unit Tests**: 1025 tests across 22 Vitest files (mocked Chrome APIs)
-- **E2E Tests**: 140 tests across 20 Playwright spec files (real Chromium browser)
+- **Unit Tests**: 1037 tests across 22 Vitest files (mocked Chrome APIs)
+- **E2E Tests**: 141 tests across 20 Playwright spec files (real Chromium browser)
 - **Total**: 1203 tests
 
 ## Unit Tests (Vitest)
@@ -12,15 +12,15 @@
 
 | Suite | Tests | Coverage |
 |---|---|---|
-| routing.test.js | 134 | Every worker action routed from its real caller; the table checked against the dispatcher's if/else chain and each page's scripts; which tabs each Deduplicate closes |
+| routing.test.js | 137 | Every worker action routed from its real caller; the table checked against the dispatcher's if/else chain and each page's scripts; which tabs each Deduplicate closes |
 | background.test.js | 53 | Worker logic: sort (Groups mode's exact moves), dedupe (a loading tab by its pendingUrl), merge into the active tab's window, split domains, results |
 | snooze.test.js | 96 | Snoozing and waking: records, custom times, window groups, alarms, failed reads, a wake cut short and done again by a new worker, the window a wake opens in; clicking a wake notification focuses its window and tab, and any other notification is only cleared |
 | snooze-ui.test.js | 45 | Snooze controls in the popup and the nap room, including the waking state and failed reads; keyboard focus after Wake, Discard, Undo and a re-render (popup and nap room), Undo with no time limit, the picker's focus and inert header |
 | nap-room.test.js | 27 | The nap room page: overdue tabs counted and dated, group rows, Wake now's name, the main landmark |
-| popup.test.js | 74 | Popup UI and message passing |
+| popup.test.js | 80 | Popup UI and message passing |
 | popup-feedback.test.js | 24 | Popup result and error messages; a running action's button is `aria-busy`; keyboard focus scrolls clear of a toast |
 | keyboard.test.js | 29 | Popup hotkeys, including K for Open links as tabs and I for Settings |
-| split-view.test.js | 46 | Split view compact, expand and repair; sort order (a loading tab by its pendingUrl) |
+| split-view.test.js | 49 | Split view compact, expand, Huddle up (its order: separate, deduplicate, sort, pair) and repair; sort order (a loading tab by its pendingUrl) |
 | confirmation-dialog.test.js | 28 | Split domains dialog |
 | content-clumper.test.js | 46 | The Open links as tabs content script: armed on start with Huddle's own crosshair (system crosshair as fallback) and no text selection; one plain drag opens and ends it, a click or a drag under 4 px cancels, Escape cancels, the click after a drag is swallowed once; a drag in flight ends on blur and hidden tabs; only trusted events; the confirm and the 25 cap; an orphaned copy after an update; the worker's top-frame, http(s) and 25-link checks |
 | open-links.test.js | 40 | Open links as tabs: the shipped manifest (activeTab and scripting, no content script, no host permission at all, OpenRouter's included, no `windows`, the open-links command and its ChromeOS key); the shortcut starts it in its own tab, and on a page Chrome won't script (each of Chrome's refusals) or a PDF the toolbar badge gives the reason, then clears, each tab on its own timer; starting it again re-arms the copy already there; the clumper loads into the very document checked, and a page that changed in between says to start again; the popup's footer action (K) sends its tab and closes, is `aria-disabled` with the reason over restricted pages, and shows the bound shortcuts; the page hint (shadow root, polite status, no clicks or focus, Esc, 3 s, Escape, no motion under reduced motion) |
@@ -57,7 +57,7 @@ Real browser tests that load the extension into Chromium and verify end-to-end b
 | move-all-to-single-window.spec.js | 7 | Consolidate tabs (pinned immunity, group recreation; Flat leaves no groups and sorts) |
 | copy-all-tabs.spec.js | 8 | Clipboard copy, window vs all-windows scope; Flat has no blank lines |
 | flatten-window.spec.js | 3 | Ungrouping, pinned immunity |
-| split-view-compact.spec.js | 2 | Compact then Expand (skips below Chrome 155) |
+| split-view-compact.spec.js | 3 | Compact then Expand; Huddle up (skips below Chrome 155) |
 | split-view-repair.spec.js | 5 | Splits survive sort, merge and extract (skips below Chrome 155) |
 | popup-ui.spec.js | 9 | Mode switching, preference persistence, button visibility, no text below the compact 10.5px step but the key badges |
 | keyboard.spec.js | 4 | Popup hotkeys |

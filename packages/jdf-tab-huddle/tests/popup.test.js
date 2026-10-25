@@ -24,6 +24,7 @@ describe('Popup Script', () => {
       <div id="splitViewRow" hidden>
         <button id="compactWindow">Compact</button>
         <button id="expandWindow">Expand</button>
+        <button id="huddleUpWindow">Huddle up</button>
       </div>
       <div id="copyFeedback" class="copy-feedback">Copied!</div>
       <button id="aiOrganize">Organize with AI</button>
@@ -233,6 +234,11 @@ describe('Popup Script', () => {
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'compactWindow' }, expect.any(Function));
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'expandWindow' }, expect.any(Function));
     });
+
+    test('huddleUpWindow sends its action with the Groups/Flat choice', () => {
+      huddleUpWindow(false);
+      expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'huddleUpWindow', respectGroups: false }, expect.any(Function));
+    });
   });
 
   describe('Copy tabs (this window / all windows)', () => {
@@ -432,6 +438,13 @@ describe('Popup Script', () => {
       expect(document.getElementById('splitViewRow').hidden).toBe(false);
       expect(document.getElementById('compactWindow').disabled).toBe(false);
       expect(document.getElementById('expandWindow').disabled).toBe(true);
+      expect(document.getElementById('huddleUpWindow').disabled).toBe(false);
+    });
+
+    test('Huddle up needs at least two tabs', () => {
+      withSplitApi();
+      updateSplitViewButtons([tab(1)]);
+      expect(document.getElementById('huddleUpWindow').disabled).toBe(true);
     });
 
     test('a window already fully split disables Compact and enables Expand', () => {
@@ -524,6 +537,10 @@ describe('Action results (UI review F2)', () => {
     ['compactWindow', { paired: 0, failed: 2 }, "Couldn't pair any tabs"],
     ['expandWindow', { unsplit: 1, failed: 1 }, "Separated 1 Split View; 1 couldn't be separated"],
     ['expandWindow', { unsplit: 0, failed: 1 }, "Couldn't separate any Split Views"],
+    ['huddleUpWindow', { removed: 2, paired: 3 }, 'Closed 2 duplicates, sorted and paired 3 Split Views'],
+    ['huddleUpWindow', { removed: 0, paired: 0 }, 'No duplicates, sorted, nothing to pair'],
+    ['huddleUpWindow', { removed: 1, paired: 2, failed: 1 }, "Closed 1 duplicate, sorted and paired 2 Split Views; 1 couldn't be split or paired"],
+    ['huddleUpWindow', { removed: 1, paired: 2, sortFailed: true }, "Closed 1 duplicate, sorted and paired 2 Split Views; couldn't sort, try Sort"],
     ['removeDuplicatesWindow', { removed: 2, sortFailed: true }, "Closed 2 duplicates; couldn't sort, try Sort"],
     ['removeDuplicatesGlobally', { removed: 0, sortFailed: true }, "No duplicates found; couldn't sort, try Sort"],
     ['extractDomain', { moved: 3, notMoved: 2, domain: 'a.test' }, "Moved 3 tabs from a.test to a new window; 2 couldn't be moved"],
