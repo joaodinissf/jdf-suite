@@ -22,7 +22,7 @@ Heavy-tab power users: people who keep dozens to hundreds of tabs across several
 - suggest tab groups with AI, for review before anything moves;
 - snooze tabs, windows or groups until a chosen time, with the nap room as the full list of sleeping tabs;
 - open a set of links on a page as tabs (Open links as tabs: start it, then drag over them);
-- compact neighbouring tabs into Split Views, and expand them again (Chrome 155+).
+- compact neighbouring tabs into Split Views, and expand them again, or do Expand, Deduplicate and Compact in one go with Huddle up (Chrome 155+).
 
 ## Positioning
 
@@ -55,7 +55,7 @@ Heavy-tab power users: people who keep dozens to hundreds of tabs across several
 ## Evidence on Hand
 
 - Feature documentation: `README.md` and the specs in `specs/` (tab snoozing, extract to tab groups, reconciler-based updates, Split View Compact).
-- 1025 unit tests and 140 Playwright e2e tests that describe behaviour ([docs/TESTS.MD](docs/TESTS.MD)).
+- 1037 unit tests and 141 Playwright e2e tests that describe behaviour ([docs/TESTS.MD](docs/TESTS.MD)).
 - The design review of 2026-09-27 (Impeccable audit and critique) is the baseline for the redesign.
 - There are no users outside the maintainer yet, and no testimonials or usage data. The store listing for v1.0.0 is drafted in [`store/`](store/README.md), unpublished; its screenshots use invented tabs on `example.com` addresses. Future work must not invent users, testimonials or usage.
 

@@ -38,6 +38,7 @@ function buildPopupDom({ respectGroups = true, singleWindow = false, groupDisabl
         <div id="splitViewRow" class="grid2"${splitView ? '' : ' hidden'}>
           <button id="compactWindow" class="btn" data-action="compactWindow">Compact</button>
           <button id="expandWindow" class="btn" data-action="expandWindow">Expand</button>
+          <button id="huddleUpWindow" class="btn" data-action="huddleUpWindow">Huddle up</button>
         </div>
         <button id="aiOrganize" class="btn" data-action="aiGroupTabs">Organize with AI</button>
       </div>
@@ -210,13 +211,16 @@ describe('Popup keyboard shortcuts (redesigned DOM)', () => {
       expect(boundIds).toContain('sortCurrentWindow');
     });
 
-    test('Compact/Expand bind to v/j only when the Split View row is shown', () => {
-      expect([...buildHotkeyMap().values()].map((el) => el.id)).not.toContain('compactWindow');
+    test('Compact/Expand/Huddle up bind to v/j/h only when the Split View row is shown', () => {
+      const hidden = [...buildHotkeyMap().values()].map((el) => el.id);
+      expect(hidden).not.toContain('compactWindow');
+      expect(hidden).not.toContain('huddleUpWindow');
 
       document.body.innerHTML = buildPopupDom({ splitView: true });
       const map = buildHotkeyMap();
       expect(map.get('v')?.id).toBe('compactWindow');
       expect(map.get('j')?.id).toBe('expandWindow');
+      expect(map.get('h')?.id).toBe('huddleUpWindow');
       assertNoDuplicateKeys(map);
     });
 

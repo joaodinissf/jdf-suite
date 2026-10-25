@@ -251,6 +251,13 @@ const ROUTES = [
     effect: () => expect(chrome.tabs.unsplit).toHaveBeenCalledWith(8),
   },
   {
+    action: 'huddleUpWindow', page: 'popup.html', senders: POPUP,
+    split: true,
+    message: { action: 'huddleUpWindow', respectGroups: true },
+    reply: expect.objectContaining({ success: true }),
+    effect: () => expect(chrome.tabs.unsplit).toHaveBeenCalledWith(8),
+  },
+  {
     action: 'aiGroupTabs', page: 'popup.html', senders: POPUP,
     message: { action: 'aiGroupTabs', respectGroups: true },
     reply: { success: true, action: 'opened' },

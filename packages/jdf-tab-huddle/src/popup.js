@@ -128,6 +128,7 @@ function setupEventListeners() {
   document.getElementById('flattenWindow').addEventListener('click', () => flattenWindow());
   document.getElementById('compactWindow').addEventListener('click', () => compactWindow());
   document.getElementById('expandWindow').addEventListener('click', () => expandWindow());
+  document.getElementById('huddleUpWindow').addEventListener('click', () => huddleUpWindow(getRespectGroups()));
 
   // AI listeners
   document.getElementById('aiOrganize').addEventListener('click', () => aiOrganize(getRespectGroups()));
@@ -202,6 +203,7 @@ const ACTION_VERBS = {
   moveAllToSingleWindow: 'merge windows',
   compactWindow: 'compact',
   expandWindow: 'expand',
+  huddleUpWindow: 'huddle up',
   aiGroupTabs: 'organize with AI',
 };
 
@@ -259,6 +261,10 @@ function describeActionResult(action, r) {
           : 'Couldn\'t separate any Split Views';
       }
       return r.unsplit ? `Separated ${plural(r.unsplit, 'Split View')}` : 'No Split Views to separate';
+    case 'huddleUpWindow':
+      return (r.removed ? `Closed ${plural(r.removed, 'duplicate')}` : 'No duplicates')
+        + (r.paired ? `, sorted and paired ${plural(r.paired, 'Split View')}` : ', sorted, nothing to pair')
+        + (r.failed ? `; ${r.failed} couldn't be split or paired` : '') + sortNote;
     default:
       return '';
   }
@@ -364,6 +370,11 @@ function compactWindow() {
 
 function expandWindow() {
   sendAction('expandWindow');
+}
+
+// Expand, Deduplicate and Compact in one go.
+function huddleUpWindow(respectGroups = true) {
+  sendAction('huddleUpWindow', { respectGroups });
 }
 
 // Move all tabs to a single window
@@ -665,6 +676,7 @@ function updateSplitViewButtons(tabs) {
   const isSplit = t => t.splitViewId != null && t.splitViewId !== -1;
   document.getElementById('compactWindow').disabled = tabs.filter(t => !isSplit(t)).length < 2;
   document.getElementById('expandWindow').disabled = !tabs.some(isSplit);
+  document.getElementById('huddleUpWindow').disabled = tabs.length < 2;
 }
 
 // Disable the Group button when the active tab is not in a group.
@@ -1088,6 +1100,7 @@ const HOTKEY_PREFERENCES = {
   flattenWindow: ['u'],               // Ungroup
   compactWindow: ['v'],               // split View
   expandWindow: ['j'],                // Expand (e and x are taken)
+  huddleUpWindow: ['h'],              // Huddle up
   aiOrganize: ['o'],                  // Organize with AI
   // All windows
   sortAllWindows: ['a'],              // sort All windows

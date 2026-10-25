@@ -184,6 +184,7 @@ const backgroundWrapper = `
   if (typeof restoreSplitPairs !== 'undefined') global.restoreSplitPairs = restoreSplitPairs;
   if (typeof handleCompactWindow !== 'undefined') global.handleCompactWindow = handleCompactWindow;
   if (typeof handleExpandWindow !== 'undefined') global.handleExpandWindow = handleExpandWindow;
+  if (typeof handleHuddleUpWindow !== 'undefined') global.handleHuddleUpWindow = handleHuddleUpWindow;
   if (typeof handleSortAllWindows !== 'undefined') global.handleSortAllWindows = handleSortAllWindows;
   if (typeof handleSortCurrentWindow !== 'undefined') global.handleSortCurrentWindow = handleSortCurrentWindow;
   if (typeof handleRemoveDuplicatesWindow !== 'undefined') global.handleRemoveDuplicatesWindow = handleRemoveDuplicatesWindow;
@@ -345,6 +346,7 @@ const popupWrapper = `
   if (typeof flattenWindow !== 'undefined') global.flattenWindow = flattenWindow;
   if (typeof compactWindow !== 'undefined') global.compactWindow = compactWindow;
   if (typeof expandWindow !== 'undefined') global.expandWindow = expandWindow;
+  if (typeof huddleUpWindow !== 'undefined') global.huddleUpWindow = huddleUpWindow;
   if (typeof updateSplitViewButtons !== 'undefined') global.updateSplitViewButtons = updateSplitViewButtons;
   if (typeof updateStatusBar !== 'undefined') global.updateStatusBar = updateStatusBar;
   if (typeof loadBrowserSnapshot !== 'undefined') global.loadBrowserSnapshot = loadBrowserSnapshot;

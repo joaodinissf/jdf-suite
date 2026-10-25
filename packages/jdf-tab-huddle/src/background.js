@@ -1591,6 +1591,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.action === 'expandWindow') {
     handleExpandWindow(sendResponse);
     return true;
+  } else if (message.action === 'huddleUpWindow') {
+    handleHuddleUpWindow(message.respectGroups, sendResponse);
+    return true;
   } else if (message.action === 'aiGroupTabs') {
     handleAiGroupTabs(message, sendResponse);
     return true;
@@ -2479,6 +2482,25 @@ function planCompactPairs(tabs) {
   return pairs;
 }
 
+// Pairs a window's neighbouring tabs into Split Views. One pair at a time: a
+// rejected pair (e.g. a tab closed meanwhile) must not stop the rest.
+async function pairWindowTabs(tabs) {
+  const pairs = planCompactPairs(tabs);
+  console.log('[Huddle] Compacting the window into', pairs.length, 'split views');
+  let paired = 0;
+  let failed = 0;
+  for (const pair of pairs) {
+    try {
+      await chrome.tabs.createSplit(pair);
+      paired++;
+    } catch (error) {
+      failed++;
+      console.error('[Huddle] Could not split tabs', pair, error);
+    }
+  }
+  return { paired, failed };
+}
+
 async function handleCompactWindow(sendResponse) {
   try {
     if (!splitWriteSupported()) {
@@ -2486,29 +2508,30 @@ async function handleCompactWindow(sendResponse) {
       return;
     }
     const tabs = await chrome.tabs.query({ currentWindow: true });
-    const pairs = planCompactPairs(tabs);
-
-    console.log('[Huddle] Compacting current window into', pairs.length, 'split views');
-
-    // One pair at a time: a rejected pair (e.g. a tab closed meanwhile) must
-    // not stop the rest.
-    let paired = 0;
-    let failed = 0;
-    for (const pair of pairs) {
-      try {
-        await chrome.tabs.createSplit(pair);
-        paired++;
-      } catch (error) {
-        failed++;
-        console.error('[Huddle] Could not split tabs', pair, error);
-      }
-    }
-
-    sendResponse({ success: true, paired, failed });
+    sendResponse({ success: true, ...(await pairWindowTabs(tabs)) });
   } catch (error) {
     console.error('[Huddle] Error in compactWindow:', error);
     sendResponse({ success: false, error: error.message });
   }
+}
+
+// Separates every Split View among a window's tabs, one at a time for the
+// same reason.
+async function unsplitWindowTabs(tabs) {
+  const splitIds = [...new Set(tabs.map(tabSplitViewId).filter(id => id !== null))];
+  console.log('[Huddle] Expanding', splitIds.length, 'split views');
+  let unsplit = 0;
+  let failed = 0;
+  for (const splitId of splitIds) {
+    try {
+      await chrome.tabs.unsplit(splitId);
+      unsplit++;
+    } catch (error) {
+      failed++;
+      console.error('[Huddle] Could not unsplit', splitId, error);
+    }
+  }
+  return { unsplit, failed };
 }
 
 async function handleExpandWindow(sendResponse) {
@@ -2518,25 +2541,40 @@ async function handleExpandWindow(sendResponse) {
       return;
     }
     const tabs = await chrome.tabs.query({ currentWindow: true });
-    const splitIds = [...new Set(tabs.map(tabSplitViewId).filter(id => id !== null))];
-
-    console.log('[Huddle] Expanding', splitIds.length, 'split views in current window');
-
-    let unsplit = 0;
-    let failed = 0;
-    for (const splitId of splitIds) {
-      try {
-        await chrome.tabs.unsplit(splitId);
-        unsplit++;
-      } catch (error) {
-        failed++;
-        console.error('[Huddle] Could not unsplit', splitId, error);
-      }
-    }
-
-    sendResponse({ success: true, unsplit, failed });
+    sendResponse({ success: true, ...(await unsplitWindowTabs(tabs)) });
   } catch (error) {
     console.error('[Huddle] Error in expandWindow:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+// Huddle up: Expand, Deduplicate (which also sorts), then Compact, in one go
+// on the window it started in. Expanding first lets the tabs pair afresh
+// once the duplicates are gone, rather than around the old pairs.
+async function handleHuddleUpWindow(respectGroups = true, sendResponse) {
+  try {
+    if (!splitWriteSupported()) {
+      sendResponse({ success: false, error: 'unsupported' });
+      return;
+    }
+    const start = await chrome.tabs.query({ currentWindow: true });
+    const { windowId } = start[0];
+    const expanded = await unsplitWindowTabs(start);
+    await settle();
+    const { tabsToRemove } = findDuplicateTabs([await chrome.tabs.query({ windowId })], respectGroups);
+    if (tabsToRemove.length > 0) await chrome.tabs.remove(tabsToRemove);
+    await settle();
+    const sorted = await sortWindowTabs(windowId, respectGroups);
+    const compacted = await pairWindowTabs(await chrome.tabs.query({ windowId }));
+    sendResponse({
+      success: true,
+      removed: tabsToRemove.length,
+      paired: compacted.paired,
+      failed: expanded.failed + compacted.failed,
+      sortFailed: !sorted,
+    });
+  } catch (error) {
+    console.error('[Huddle] Error in huddleUpWindow:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
