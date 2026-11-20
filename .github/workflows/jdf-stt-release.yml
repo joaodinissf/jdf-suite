@@ -62,7 +62,11 @@ jobs:
         test -f "dist/jdf_stt-${VERSION}-py3-none-any.whl"
         test -f "dist/jdf_stt-${VERSION}.tar.gz"
     - name: Check the package metadata
-      run: uvx twine check --strict dist/*
+      # Exact version, >= 3 days old when chosen; bump by hand (Dependabot
+      # doesn't track it). The cutoff also caps twine's transitive deps.
+      env:
+        UV_EXCLUDE_NEWER: '2026-11-17T00:00:00Z'
+      run: uvx twine@7.0.0 check --strict dist/*
     - name: Write release notes
       run: |
         previous="$(git tag --list 'jdf-stt-v*' --sort=-v:refname | grep -vxF "$TAG" | head -1 || true)"

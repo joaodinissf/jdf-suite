@@ -49,10 +49,13 @@ jobs:
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: '20'
-    - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
-      with:
-        toolchain: stable
-        components: rustfmt, clippy
+    # rustup ships on the GitHub-hosted Ubuntu images, so install an exact
+    # toolchain with it instead of a third-party action pinned to a branch head
+    # that Dependabot can't bump. Bump the version by hand (>= 3 days old).
+    - name: Install Rust toolchain
+      run: |
+        rustup toolchain install 1.100.0 --profile minimal --component rustfmt,clippy
+        rustup default 1.100.0
     - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
       with:
         distribution: temurin
@@ -60,17 +63,23 @@ jobs:
     - name: Install shfmt
       run: sudo apt-get update && sudo apt-get install -y shfmt
     - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+    # Exact versions, each >= 3 days old when chosen. Dependabot doesn't track
+    # these, so bump them by hand. The cutoff date caps transitive deps too
+    # (npm --before, uv --exclude-newer); keep it >= the newest pin's date.
     - name: Install lefthook toolchain
       if: matrix.manager == 'lefthook'
+      env:
+        npm_config_before: '2026-11-17T00:00:00Z'
+        UV_EXCLUDE_NEWER: '2026-11-17T00:00:00Z'
       run: |
-        npm install -g lefthook prettier markdownlint-cli
-        uv tool install pycln
-        uv tool install isort
-        uv tool install ruff
-        uv tool install ty
-        uv tool install yamlfix
-        uv tool install sqlfluff
-        cargo install taplo-cli
+        npm install -g lefthook@2.2.2 prettier@3.10.1 markdownlint-cli@0.50.0
+        uv tool install pycln==2.6.1
+        uv tool install isort==9.0.2
+        uv tool install ruff==0.17.5
+        uv tool install ty==0.0.104
+        uv tool install yamlfix==1.19.1
+        uv tool install sqlfluff==4.5.0
+        cargo install --locked --version 0.10.0 taplo-cli
     - name: Run integration test
       run: uv run python tests/integration/test_${{ matrix.manager }}.py
 
@@ -79,7 +88,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-    - run: npm install -g lefthook
+    - run: npm install -g lefthook@2.2.2  # keep in step with the integration job
+      env:
+        npm_config_before: '2026-11-17T00:00:00Z'
     - name: Validate lefthook.yml
       # Lefthook resolves its config relative to the git root, not CWD,
       # so in a monorepo we must point it at the per-package config via
