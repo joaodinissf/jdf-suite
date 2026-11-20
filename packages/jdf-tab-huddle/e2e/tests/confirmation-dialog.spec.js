@@ -201,7 +201,7 @@ test('63: Operation summary correct', async ({ sw, context, extensionId }) => {
 });
 
 test('64: Keyboard: Cancel has the focus and Escape cancels', async ({ sw, context }) => {
-  await createTabs(sw, [
+  const tabIds = await createTabs(sw, [
     URLS.EXAMPLE_A, URLS.EXAMPLE_B,
     URLS.GITHUB_A, URLS.GITHUB_B,
     URLS.TEST_A, URLS.TEST_B,
@@ -209,10 +209,24 @@ test('64: Keyboard: Cancel has the focus and Escape cancels', async ({ sw, conte
     URLS.WIKI_A, URLS.WIKI_B,
     URLS.SO_A, URLS.SO_B,
   ]);
+  // Wait until every new tab reports the URL it was opened with, so the
+  // domain count below sees all six domains.
+  await waitForCondition(async () => {
+    const pending = await sw.evaluate(async (ids) => {
+      const tabs = await Promise.all(ids.map(id => chrome.tabs.get(id)));
+      return tabs.filter(t => !(t.pendingUrl || t.url)).length;
+    }, tabIds);
+    if (pending === 0) return true;
+    throw new Error(`${pending} new tabs have no URL yet`);
+  });
 
-  sw.evaluate(async (respectGroups) => {
-    handleExtractAllDomains(respectGroups, () => {});
-  }, false);
+  // The handler replies { pending: true } once it has opened the dialog. Any
+  // other reply means it split straight away, and says why.
+  const reply = await sw.evaluate(
+    (respectGroups) => new Promise((resolve) => handleExtractAllDomains(respectGroups, resolve)),
+    false,
+  );
+  expect(reply).toMatchObject({ success: true, pending: true });
 
   const dialogPage = await findDialogPage(context);
   await expect(dialogPage.locator('#cancelButton')).toBeFocused();
