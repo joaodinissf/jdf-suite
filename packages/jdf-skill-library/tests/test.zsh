@@ -74,4 +74,37 @@ done
 sync_with 'github:joao/skills a.c'
 check "'a.c' does not match abc/" [ $? -ne 0 -a ! -e "$root/library/a.c" ]
 
+# status --check: the lock written by sync against sources and manifest.
+fresh() { "$tool" status --check "$root" >"$tmp/out" 2>&1; }
+rm -f "$root/library.lock"
+sync_with 'browser github:joao/skills' 'github:joao/skills demo'
+check "lock written" grep -q "^demo github:joao/skills $(git -C "$src" rev-parse main)$" "$root/library.lock"
+check "lock names the check command" grep -q "^# check with: $tool status --check $root$" "$root/library.lock"
+fresh; check "fresh after sync" [ $? -eq 0 ]
+print v4 > "$src/skills/demo/SKILL.md"
+git -C "$src" commit -qam v4
+git -C "$src" push -q "$tmp/gh/joao/skills.git" main
+fresh; check "new commit is stale" [ $? -eq 1 ]
+check "stale names the skill" grep -q '^stale: demo ' "$tmp/out"
+sync_with 'browser github:joao/skills' 'github:joao/skills demo'
+fresh; check "fresh after resync" [ $? -eq 0 ]
+print -l 'browser github:joao/skills' 'github:joao/skills demo skill-browser' > "$root/manifest.txt"
+fresh; check "skill added to manifest is not synced" [ $? -eq 1 ]
+check "not synced names the skill" grep -q '^not synced: skill-browser ' "$tmp/out"
+print -l 'browser github:joao/skills' 'github:joao/skills@feature demo' > "$root/manifest.txt"
+fresh; check "changed ref is not synced" [ $? -eq 1 ]
+sync_with "github:joao/skills@${old[1,10]} demo"
+fresh; check "pinned commit stays fresh" [ $? -eq 0 ]
+sync_with 'github:joao/skills@v1 demo'
+fresh; check "tag stays fresh" [ $? -eq 0 ]
+sync_with "$src demo"
+fresh; check "local source fresh" [ $? -eq 0 ]
+git -C "$src" commit -q --allow-empty -m v5
+fresh; check "local source moved is stale" [ $? -eq 1 ]
+sync_with 'github:joao/skills demo'
+JDF_SKILL_LIBRARY_GITHUB=file://$tmp/nowhere "$tool" status --check "$root" >"$tmp/out" 2>&1
+check "unreachable source exits 2" [ $? -eq 2 ]
+rm "$root/library.lock"
+fresh; check "missing lock is not tracked" [ $? -eq 1 ]
+
 (( failures == 0 )) && echo "all passed" || { echo "$failures failed"; exit 1; }

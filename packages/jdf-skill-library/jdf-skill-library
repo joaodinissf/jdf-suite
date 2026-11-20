@@ -1,8 +1,8 @@
 #!/bin/zsh
 # Fill a skill library that agents do not discover on their own.
 #
-#   jdf-skill-library sync    [library_root=~/Dropbox/skills/skill-browser]
-#   jdf-skill-library status  [library_root]
+#   jdf-skill-library sync            [library_root=~/Dropbox/skills/skill-browser]
+#   jdf-skill-library status [--check] [library_root]
 #
 # The library root holds the skill-browser skill (the only skill linked into
 # agents), a manifest, and library/<skill>/ folders. Each library skill keeps
@@ -15,13 +15,21 @@
 # A source is a local git repo path (~/Git/jdf-skills, optionally @ref,
 # default HEAD) or github:owner/repo[@ref] (default branch). Only committed
 # content is used.
+#
+# sync records the commit each skill came from in library.lock next to the
+# manifest. status --check compares it with the sources and the manifest, and
+# exits 1 if anything is stale, 2 if a source could not be reached.
 
 set -euo pipefail
 
+self=${0:A}
 cmd=${1:-status}
+check=0
+if [[ $cmd == status && ${2:-} == --check ]]; then check=1; shift; fi
 root=${2:-$HOME/Dropbox/skills/skill-browser}
 root=${root/#\~/$HOME}
 manifest=$root/manifest.txt
+lock=$root/library.lock
 library=$root/library
 cache=${XDG_CACHE_HOME:-$HOME/Library/Caches}/jdf-skill-library
 github=${JDF_SKILL_LIBRARY_GITHUB:-https://github.com}
@@ -60,6 +68,46 @@ resolve() {
   esac
 }
 
+# Print the commit a source points at now, without fetching content, or fail.
+current() {  # source
+  local src=$1 want=HEAD
+  [[ $src == *@* ]] && want=${src##*@}
+  src=${src%@*}
+  case $src in
+    github:*)
+      local url=$github/${src#github:}.git out
+      local -a refs=($want) hits peeled
+      [[ $want == HEAD ]] || refs=(refs/heads/$want refs/tags/$want "refs/tags/$want^{}")
+      out=$(git ls-remote "$url" $refs 2>/dev/null) || return 1
+      hits=(${(f)out})
+      # A peeled tag (^{}) names the commit; prefer it.
+      peeled=(${(M)hits:#*\^\{\}})
+      (( ${#peeled} )) && hits=($peeled)
+      if (( ! ${#hits} )); then
+        # Not a branch or tag: a commit id never moves.
+        [[ $want =~ '^[0-9a-f]{7,40}$' ]] && { echo "$want"; return 0; }
+        return 1
+      fi
+      echo "${hits[1]%%[[:space:]]*}" ;;
+    *)
+      git -C "${src/#\~/$HOME}" rev-parse --verify -q "$want^{commit}" ;;
+  esac
+}
+
+# Read the manifest into lines, checking every skill name.
+read_manifest() {
+  [[ -f $manifest ]] || die "no manifest at $manifest"
+  local line name
+  lines=()
+  while IFS= read -r line; do
+    line=${line%%\#*}
+    local -a f=(${=line})
+    (( ${#f} )) || continue
+    [[ ${f[1]} == browser ]] || for name in ${f[2,-1]}; do valid_name "$name"; done
+    lines+=$line
+  done < "$manifest"
+}
+
 # A skill name is one plain folder name: it becomes a path under library/.
 valid_name() {
   [[ $1 =~ '^[A-Za-z0-9_][A-Za-z0-9._-]*$' ]] || die "invalid skill name: '$1'"
@@ -83,17 +131,10 @@ export_to() {  # repo ref path dest
 }
 
 sync() {
-  [[ -f $manifest ]] || die "no manifest at $manifest"
-  local -a lines wanted
-  local line src repo ref spath tmp name
+  local -a lines wanted locked
+  local line src repo ref spath tmp name commit
   # Read and check the whole manifest before changing anything.
-  while IFS= read -r line; do
-    line=${line%%\#*}
-    local -a f=(${=line})
-    (( ${#f} )) || continue
-    [[ ${f[1]} == browser ]] || for name in ${f[2,-1]}; do valid_name "$name"; done
-    lines+=$line
-  done < "$manifest"
+  read_manifest
   mkdir -p "$library"
   for line in $lines; do
     local -a f=(${=line})
@@ -105,10 +146,12 @@ sync() {
       cp "$tmp/SKILL.md" "$root/SKILL.md"
       [[ -f $tmp/README.md ]] && cp "$tmp/README.md" "$root/README.md"
       rm -rf "$tmp"
+      locked+="browser $src $(git -C "$repo" rev-parse "$ref^{commit}")"
       say "browser   <- $src ($ref)"
       continue
     fi
     src=${f[1]}; resolve "$src"
+    commit=$(git -C "$repo" rev-parse "$ref^{commit}")
     for name in ${f[2,-1]}; do
       spath=$(skill_path "$repo" "$ref" "$name")
       tmp=$library/.$name.new
@@ -118,15 +161,69 @@ sync() {
       rm -rf "$library/$name"
       mv "$tmp" "$library/$name"
       wanted+=$name
+      locked+="$name $src $commit"
       say "library/$name <- $src ($ref)"
     done
   done
+
+  # Written last, so a sync that fails part-way leaves the old lock in place.
+  {
+    print "# Written by jdf-skill-library sync. Do not edit."
+    print "# check with: $self status --check $root"
+    print -l $locked
+  } > "$lock.new"
+  mv "$lock.new" "$lock"
 
   # Never delete what the manifest no longer lists; report it.
   local d
   for d in "$library"/*(N/); do
     (( ${wanted[(Ie)${d:t}]} )) || say "not in manifest (left alone): library/${d:t}"
   done
+}
+
+# Compare the lock with the manifest and with each source's current commit.
+check_fresh() {
+  local -a lines
+  read_manifest
+  [[ -f $lock ]] || { say "not tracked: no $lock"; say "run: $self sync $root"; exit 1; }
+  local -A locked now
+  local line name src commit
+  while IFS= read -r line; do
+    [[ $line == \#* || -z $line ]] && continue
+    local -a f=(${=line})
+    locked[${f[1]}]="${f[2]} ${f[3]}"
+  done < "$lock"
+
+  local -a wanted
+  for line in $lines; do
+    local -a f=(${=line})
+    if [[ ${f[1]} == browser ]]; then wanted+=("browser ${f[2]}")
+    else for name in ${f[2,-1]}; do wanted+=("$name ${f[1]}"); done
+    fi
+  done
+
+  local stale=0 unknown=0 entry
+  for entry in $wanted; do
+    name=${entry%% *}; src=${entry#* }
+    if [[ ${locked[$name]-} != "$src "* ]]; then
+      say "not synced: $name (manifest: $src)"; stale=1; continue
+    fi
+    commit=${locked[$name]#* }
+    if [[ -z ${now[$src]-} ]]; then
+      now[$src]=$(current "$src") || now[$src]=unreachable
+      # Anything but a commit id would make the prefix match below meaningless.
+      [[ ${now[$src]} =~ '^[0-9a-f]{7,40}$' ]] || now[$src]=unreachable
+    fi
+    if [[ ${now[$src]} == unreachable ]]; then
+      say "unknown: $name (could not reach $src)"; unknown=1
+    elif [[ $commit != ${now[$src]}* ]]; then
+      say "stale: $name (${commit[1,7]} -> ${now[$src][1,7]}, $src)"; stale=1
+    fi
+  done
+
+  if (( stale )); then say "run: $self sync $root"; exit 1; fi
+  (( unknown )) && exit 2
+  say "up to date: ${#wanted} entries"
 }
 
 status() {
@@ -144,6 +241,6 @@ status() {
 
 case $cmd in
   sync) sync ;;
-  status) status ;;
-  *) die "usage: jdf-skill-library sync|status [library_root]" ;;
+  status) (( check )) && check_fresh || status ;;
+  *) die "usage: jdf-skill-library sync|status [--check] [library_root]" ;;
 esac
