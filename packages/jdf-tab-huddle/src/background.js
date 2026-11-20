@@ -1998,7 +1998,9 @@ async function analyzeDomainDistribution(excludeTabId) {
       if (tab.pinned) {continue;}
       if (excludeTabId !== undefined && tab.id === excludeTabId) {continue;}
 
-      const domain = lexHost(tab.url);
+      // A tab still loading reports its target in pendingUrl; url may be
+      // empty or the page it is leaving.
+      const domain = lexHost(tab.pendingUrl || tab.url);
       if (!domainTabCounts.has(domain)) {
         domainTabCounts.set(domain, 0);
         domainTabs.set(domain, []);

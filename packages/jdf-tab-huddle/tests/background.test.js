@@ -243,6 +243,18 @@ describe('Background Script', () => {
       expect(Array.isArray(result.extractableDomains)).toBe(true);
       expect(Array.isArray(result.singleTabDomains)).toBe(true);
     });
+
+    test('counts a loading tab by the URL it is loading (pendingUrl)', async () => {
+      chrome.tabs.query.mockResolvedValue([
+        { id: 1, url: '', pendingUrl: 'https://example.com/a', status: 'loading', pinned: false, groupId: -1 },
+        { id: 2, url: 'https://old.test/', pendingUrl: 'https://example.com/b', status: 'loading', pinned: false, groupId: -1 },
+      ]);
+      chrome.tabGroups.query.mockResolvedValue([]);
+      const result = await analyzeDomainDistribution();
+
+      expect(result.extractableDomains).toHaveLength(1);
+      expect(result.singleTabDomains).toHaveLength(0);
+    });
   });
 
   describe('formatTabsAsText', () => {
