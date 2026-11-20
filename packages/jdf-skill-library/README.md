@@ -13,14 +13,16 @@ them only when you ask the browser for them.
 <root>/                 default ~/Dropbox/skills/skill-browser
   SKILL.md, README.md   skill-browser itself
   manifest.txt          where each skill comes from
+  library.lock          the commit each skill came from (written by sync)
   library/<skill>/      SKILL.dormant.md + the skill's other files
 ```
 
 ## Usage
 
 ```sh
-jdf-skill-library sync   [root]   # fill root/ and library/ from manifest.txt
-jdf-skill-library status [root]   # list library skills; warn about live SKILL.md files
+jdf-skill-library sync           [root]  # fill root/ and library/ from manifest.txt
+jdf-skill-library status         [root]  # list library skills; warn about live SKILL.md files
+jdf-skill-library status --check [root]  # is the library behind its sources or manifest?
 ```
 
 `manifest.txt`, one source per line (`#` starts a comment):
@@ -40,6 +42,27 @@ it changes anything.
 
 `sync` replaces each listed skill's folder. It never deletes a library skill
 the manifest no longer lists; it reports it instead.
+
+## Staleness
+
+The library is a copy, so it falls behind when a source moves on. `sync`
+writes `library.lock` with the source and commit of each skill, and a
+`# check with:` line giving the exact `status --check` command, with this
+tool's absolute path. A caller such as `skill-browser` can run that line
+without the tool being on `PATH`.
+
+`status --check` compares the lock with the manifest and with each source's
+current commit (`git ls-remote` for GitHub, nothing is downloaded;
+`rev-parse` for a local repo). A source pinned to a commit id never goes
+stale.
+
+| Exit | Meaning |
+|---|---|
+| 0 | up to date |
+| 1 | a skill is stale or not synced (manifest changed, or no lock yet); prints the `sync` command |
+| 2 | nothing stale, but a source could not be reached |
+
+A `sync` that fails part-way leaves the old lock in place; run it again.
 
 ## Tests
 
