@@ -28,7 +28,7 @@ jobs:
     - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
       with:
         python-version: '3.14'
-    - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+    - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
     - run: uv run --extra dev pytest -v
     - name: Own hooks are in sync with the bundled templates (dogfooding)
       run: uv run jdf-hooks check --offline
@@ -62,7 +62,7 @@ jobs:
         java-version: '21'
     - name: Install shfmt
       run: sudo apt-get update && sudo apt-get install -y shfmt
-    - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+    - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
     # Exact versions, each >= 3 days old when chosen. Dependabot doesn't track
     # these, so bump them by hand. The cutoff date caps transitive deps too
     # (npm --before, uv --exclude-newer); keep it >= the newest pin's date.
