@@ -42,7 +42,7 @@ jobs:
         persist-credentials: false
     - name: Install ffmpeg (for the lavfi microphone stand-in)
       run: sudo apt-get update && sudo apt-get install -y ffmpeg
-    - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+    - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
     - name: Check the tag matches pyproject.toml
       id: version
       run: |
